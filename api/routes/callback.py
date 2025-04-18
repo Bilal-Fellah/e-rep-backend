@@ -18,3 +18,7 @@ def callback():
         return "OK", 200
 
 
+@callback_bp.route("/oauth/callback")
+def oauth_callback():
+    code = request.args.get("code")
+    return f"Received code: {code}"
