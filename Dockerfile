@@ -1,5 +1,5 @@
 # Use official Playwright base image with browser dependencies
-FROM mcr.microsoft.com/playwright/python:v1.53.0-focal
+FROM mcr.microsoft.com/playwright/python:latest
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
