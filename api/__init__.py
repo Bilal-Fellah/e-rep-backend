@@ -1,4 +1,9 @@
 from flask import Flask
+from flask_apscheduler import APScheduler
+import requests
+
+
+scheduler = APScheduler()
 
 def create_app():
     app = Flask(__name__)
@@ -7,4 +12,17 @@ def create_app():
     from .routes import register_routes
     register_routes(app)
 
-    return app
+     # Initialize the scheduler
+    scheduler.init_app(app)
+    scheduler.start()
+
+    # Register your jobs
+    @scheduler.task('cron', id='daily_job', hour=6, minute=57)
+    def job():
+        try:
+            requests.get("http://localhost:5000/api/facebook/get_all_followers_and_likes")
+            print(" Job executed")
+        except Exception as e:
+            print(" Job failed:", e)
+
+    return app    
