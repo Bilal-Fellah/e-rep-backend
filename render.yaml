@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: e-rep-backend
-    runtime: python
-    buildCommand: ./build.sh
-    startCommand: hypercorn run:app --bind 0.0.0.0:10000
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
