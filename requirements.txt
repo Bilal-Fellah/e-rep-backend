@@ -4,3 +4,4 @@ hypercorn>=0.16.0
 Flask-APScheduler== 1.13.1
 requests== 2.32.3
 supabase==2.10.0
+dotenv==0.9.9
