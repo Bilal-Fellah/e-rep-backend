@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify, request
 from api.db.connection import supabase
-from api.classes.sync_facebook_scraper import FacebookPlaywrightScraper
+from api.classes.facebook_playwrite_scraper import FacebookPlaywrightScraper
 
 fb_bp = Blueprint("facebook", __name__)
 scraper = FacebookPlaywrightScraper(headless=True, slow_mo=500)
