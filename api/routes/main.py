@@ -1,7 +1,7 @@
-from flask import Blueprint, jsonify
+from flask import  jsonify
 
-main_bp = Blueprint("main", __name__)
+def error_response(message, status=400):
+    return jsonify({"success": False, "error": message}), status
 
-@main_bp.route("/")
-def index():
-    return jsonify({"message": "API is running"})
+def success_response(data, status_code=200):
+    return {"success": True, "data": data}, status_code
