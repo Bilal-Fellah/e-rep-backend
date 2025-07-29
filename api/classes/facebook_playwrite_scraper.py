@@ -373,7 +373,7 @@ class FacebookPlaywrightScraper:
                 
                 # Random delay between pages
                 if i < len(urls) - 1:
-                    delay = random.uniform(5, 10)
+                    delay = random.uniform(2, 4)
                     print(f" Waiting {delay:.1f} seconds before next page...")
                     await asyncio.sleep(delay)
             

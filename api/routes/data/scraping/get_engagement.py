@@ -14,27 +14,12 @@ async def get_all_pages_engagement(platform, scraper=None):
     }
 
     try:
-        response = supabase.from_("pages") \
-            .select("id, platform, link, influence_history(page_id, status)") \
-            .eq("platform", platform) \
-            .execute()
-
-        pages = response.data
-        # print(f"Total pages fetched: {len(pages)}")
-
-        # print(pages)
-        # Filter pages where influence_history.status != 'done'
-        filtered_pages = []
-        for page in pages:
-            influence_histories = page.get("influence_history", [])
-            if influence_histories==[] or any(not history.get("status") or history.get("status") != "done" for history in influence_histories):
-                filtered_pages.append(page)
-
-        # print(f"Filtered pages (before random sampling): {len(filtered_pages)}")
-
-        if not filtered_pages:
-            return jsonify({"message": "No Facebook pages found.", "status": "no_data"}), 404
-
+        response = supabase.rpc("get_pages_to_scrape", {"query_platform": platform}).execute()
+        if not hasattr(response, "data"):
+            return jsonify({"message": "No pages found.", "status": "no_data"}), 500
+        
+        filtered_pages = response.data
+        
         # Randomly shuffle the filtered pages
         random.shuffle(filtered_pages)
 
@@ -64,7 +49,7 @@ async def get_all_pages_engagement(platform, scraper=None):
             matching_result = next((res for res in results if res["page_url"] == page["link"]), None)
             if matching_result:
                 insertion_data = {
-                    "page_id": page["id"],
+                    "page_id": page["page_id"],
                     "followers": matching_result["followers"],
                     "likes": matching_result.get("likes", None),
                     "status": "done"
@@ -72,27 +57,27 @@ async def get_all_pages_engagement(platform, scraper=None):
                 insertion_response = supabase.table("influence_history").insert(insertion_data).execute()
 
                 if hasattr(insertion_response,"data"):
-                    result_summary["inserted"].append(page["id"])
+                    result_summary["inserted"].append(page["page_id"])
                 else:
                     result_summary["failed_insert"].append({
-                        "page_id": page["id"],
+                        "page_id": page["page_id"],
                         "error": insertion_response.data
                     })
                 result_summary["scraped"].append({
-                    "page_id": page["id"],
+                    "page_id": page["page_id"],
                     "followers": matching_result["followers"]
                 })
             else:
                 # Scrape failure for this page
                 insertion_data = {
-                    "page_id": page["id"],
+                    "page_id": page["page_id"],
                     "followers": None,
                     "status": "failure"
                 }
                 insertion_response = supabase.table("influence_history").insert(insertion_data).execute()
 
                 result_summary["failed_scrape"].append({
-                    "page_id": page["id"],
+                    "page_id": page["page_id"],
                     "reason": "No matching result from scraper",
                     "insertion_status": insertion_response.data["status"] 
                 })
@@ -100,7 +85,7 @@ async def get_all_pages_engagement(platform, scraper=None):
         except Exception as e:
             error_details = traceback.format_exc()
             result_summary["errors"].append({
-                "page_id": page["id"],
+                "page_id": page["page_id"],
                 "error": str(e),
                 "traceback": error_details
             })
@@ -108,7 +93,6 @@ async def get_all_pages_engagement(platform, scraper=None):
     # Summary Response
     return jsonify({
         "summary": {
-            "total_pages_fetched": len(pages),
             "filtered_pages": len(filtered_pages),
             "pages_processed": len(pages_to_process),
             "successfully_scraped": len(result_summary["scraped"]),
