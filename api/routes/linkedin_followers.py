@@ -48,11 +48,12 @@ async def get_all_pages_engagement():
         pages = response.data
         # print(f"Total pages fetched: {len(pages)}")
 
+        print(pages)
         # Filter pages where influence_history.status != 'done'
         filtered_pages = []
         for page in pages:
             influence_histories = page.get("influence_history", [])
-            if any(not history.get("status") or history.get("status") != "done" for history in influence_histories):
+            if influence_histories==[] or any(not history.get("status") or history.get("status") != "done" for history in influence_histories):
                 filtered_pages.append(page)
 
         print(f"Filtered pages (before random sampling): {len(filtered_pages)}")
