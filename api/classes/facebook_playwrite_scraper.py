@@ -89,7 +89,6 @@ class FacebookPlaywrightScraper:
     
     async def scrape_page(self, url):
         """Scrape a single Facebook page."""
-        await self.setup_browser() #### added this line 
         
         page = await self.context.new_page()
         
