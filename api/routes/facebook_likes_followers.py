@@ -13,20 +13,16 @@ async def get_engagement():
     
     url = request.args.get("url")
     result = await scraper.scrape_page(url)
-    response = supabase.table("entities").select("*").execute()
 
-    return jsonify({"result": result, "response": response.data})
+    return jsonify({"result": result})
 
 
 @fb_bp.route("/get_all_followers_and_likes", methods=["GET"])
 async def get_all_pages_engagement():
-    # pages = [
-    #     {"url": "https://web.facebook.com/sarl.cebon", "page_id": 2},
-    #     {"url": "https://www.facebook.com/Aromes.Alimentaires", "page_id": 4}
-    # ]
+   
     
     # getting pages from supabase
-    response = supabase.table("pages").select("*").execute()
+    response = supabase.table("pages").select("*").eq("platform", "facebook").execute()
     pages = response.data
     print(pages)
     results = []

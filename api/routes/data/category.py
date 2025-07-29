@@ -27,7 +27,7 @@ def add_category():
         if not data:
             return error_response("Insert succeeded but returned no data.", 500)
 
-        return success_response(data, 200)
+        return success_response(data, 201)
 
     except Exception as e:
         return error_response(str(e), 500)
