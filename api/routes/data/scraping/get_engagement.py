@@ -39,7 +39,7 @@ async def get_all_pages_engagement(platform, scraper=None):
         random.shuffle(filtered_pages)
 
         # Pick the first 5 (or less if not enough pages)
-        pages_to_process = filtered_pages[:1]
+        pages_to_process = filtered_pages[:2]
 
     except Exception as e:
         error_details = traceback.format_exc()
