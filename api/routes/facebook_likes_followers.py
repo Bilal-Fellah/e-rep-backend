@@ -13,6 +13,8 @@ async def get_engagement():
     
     url = request.args.get("url")
     result = await scraper.scrape_page(url)
+    insertion_response = supabase.table("influence_history").insert({"page_id": 2, "followers": result["followers"], "likes": result["likes"] }).execute()
+    print(insertion_response)
 
     return jsonify({"result": result})
 

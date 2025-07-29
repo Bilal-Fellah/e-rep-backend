@@ -56,7 +56,7 @@ async def get_all_pages_engagement():
             if influence_histories==[] or any(not history.get("status") or history.get("status") != "done" for history in influence_histories):
                 filtered_pages.append(page)
 
-        print(f"Filtered pages (before random sampling): {len(filtered_pages)}")
+        # print(f"Filtered pages (before random sampling): {len(filtered_pages)}")
 
         if not filtered_pages:
             return jsonify({"message": "No LinkedIn pages found.", "status": "no_data"}), 404
@@ -64,8 +64,8 @@ async def get_all_pages_engagement():
         # Randomly shuffle the filtered pages
         random.shuffle(filtered_pages)
 
-        # Pick the first 10 (or less if not enough pages)
-        pages_to_process = filtered_pages[:5]
+        # Pick the first 5 (or less if not enough pages)
+        pages_to_process = filtered_pages[:1]
 
     except Exception as e:
         error_details = traceback.format_exc()
@@ -96,7 +96,7 @@ async def get_all_pages_engagement():
                 }
                 insertion_response = supabase.table("influence_history").insert(insertion_data).execute()
 
-                if insertion_response.status_code == 201:
+                if hasattr(insertion_response,"data"):
                     result_summary["inserted"].append(page["id"])
                 else:
                     result_summary["failed_insert"].append({
@@ -119,7 +119,7 @@ async def get_all_pages_engagement():
                 result_summary["failed_scrape"].append({
                     "page_id": page["id"],
                     "reason": "No matching result from scraper",
-                    "insertion_status": insertion_response.status_code
+                    "insertion_status": insertion_response.data["status"] 
                 })
 
         except Exception as e:
