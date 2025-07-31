@@ -14,18 +14,6 @@ linkedin_bp = Blueprint("linkedin", __name__)
 scraper = LinkedInPlaywrightScraper(headless=True, slow_mo=500)
 
 
-@linkedin_bp.route("/get_followers", methods=["GET"])
-async def get_engagement():
-    
-    url = request.args.get("url")
-    urls = [url]
-    result = await scraper.scrape_multiple_pages(urls)
-    print(result)
-    # response = supabase.table("entities").select("*").execute()
-
-    # return jsonify({"result": result, "response": response.data})
-    return jsonify({"result": result})
-
 
 
 

@@ -72,6 +72,7 @@ async def get_all_pages_engagement(platform, scraper=None):
                 insertion_data = {
                     "page_id": page["page_id"],
                     "followers": None,
+                    "likes": None,
                     "status": "failure"
                 }
                 insertion_response = supabase.table("influence_history").insert(insertion_data).execute()
