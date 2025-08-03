@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import request
 from api.routes.main import error_response, success_response
 from api.db.connection import supabase
@@ -44,7 +45,7 @@ def get_influence_history():
         response = supabase.table("influence_history").select("*").execute()
 
         if hasattr(response, "error") and response.error:
-            return error_response(f"Error fetching influence history: {getattr(response.error, 'message', str(response.error))}", 500)
+            return error_response(f"Error fetching influence history: {getattr(response, 'message', str(response.error))}", 500)
         if not getattr(response, "data", []):
             return error_response("No influence history found.", 404)
 
@@ -58,10 +59,21 @@ def get_influence_history():
 def get_page_influence():
     try:
         page_id = request.args.get("page_id")
+        date_str = request.args.get('date')  
+        date_obj = datetime.fromisoformat(date_str) if date_str else None
         if not page_id:
             return error_response("Missing required query param: 'page_id'.", 400)
+        
+        response = None
+        
+        if date_obj:
+            date_iso = date_obj.isoformat() 
+            
+            response = supabase.table("influence_history").select("*").eq('page_id', page_id).gte('recorded_at', date_iso).execute()
+        else:
+            response = supabase.table("influence_history").select("*").eq('page_id', page_id).execute()
+        
 
-        response = supabase.table("influence_history").select("*").eq('page_id', page_id).execute()
 
         if hasattr(response, "error") and response.error:
             return error_response(f"Error fetching influence: {getattr(response.error, 'message', str(response.error))}", 500)

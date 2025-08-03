@@ -1,7 +1,5 @@
-# app/routes/myworker.py
 
-from flask import Blueprint, jsonify, request
-from api.db.connection import supabase
+from flask import Blueprint
 from api.classes.linkedin_playwright_scraper import LinkedInPlaywrightScraper
 import traceback
 import random

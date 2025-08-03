@@ -1,3 +1,4 @@
+import argparse
 from api import create_app
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -6,4 +7,7 @@ logging.basicConfig(level=logging.INFO)
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    parser = argparse.ArgumentParser(description='Run Flask app on a specific port.')
+    parser.add_argument('--port', type=int, default=5000, help='Port to run the server on')
+    args = parser.parse_args()
+    app.run(debug=True, port=args.port)

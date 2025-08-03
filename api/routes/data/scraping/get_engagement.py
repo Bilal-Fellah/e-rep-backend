@@ -3,6 +3,7 @@ from api.db.connection import supabase
 import traceback
 import random
 
+pages_per_request = 5  # Number of pages to process per request
 
 async def get_all_pages_engagement(platform, scraper=None):
     result_summary = {
@@ -19,22 +20,26 @@ async def get_all_pages_engagement(platform, scraper=None):
             return jsonify({"message": "No pages found.", "status": "no_data"}), 500
         
         filtered_pages = response.data
+        if filtered_pages is None or len(filtered_pages) == 0:
+            return jsonify({"message": "No pages found to scrape.", "status": "no_data"}), 500
         
         # Randomly shuffle the filtered pages
         random.shuffle(filtered_pages)
 
         # Pick the first 5 (or less if not enough pages)
-        pages_to_process = filtered_pages[:2]
+        pages_to_process = filtered_pages[:pages_per_request]
 
     except Exception as e:
         error_details = traceback.format_exc()
-        return jsonify({"message": "Error fetching or filtering pages.", "error": str(e), "traceback": error_details}), 500
+        return jsonify({"message": "Error fetching or filtering pages.", "status": "error", "error": str(e), "traceback": error_details}), 500
 
     links = [page["link"] for page in pages_to_process]
 
     # Scrape followers
     try:
+        # print("before scraping")
         results = await scraper.scrape_multiple_pages(links)
+        # print("after scraping")
         if not results:
             return jsonify({"message": "Scraper returned no results.", "status": "scrape_failed"}), 500
     except Exception as e:
@@ -102,5 +107,6 @@ async def get_all_pages_engagement(platform, scraper=None):
             "failed_inserts": len(result_summary["failed_insert"]),
             "errors": len(result_summary["errors"])
         },
-        "details": result_summary
+        "details": result_summary,
+        "status": "success"
     }), 200
