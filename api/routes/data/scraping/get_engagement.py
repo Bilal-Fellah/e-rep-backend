@@ -15,11 +15,13 @@ async def get_all_pages_engagement(platform, scraper=None):
     }
 
     try:
-        response = supabase.rpc("get_pages_to_scrape", {"query_platform": platform}).execute()
+        response = supabase.rpc("get_scraped_pages", {"query_platform": platform}).execute()
         if not hasattr(response, "data"):
             return jsonify({"message": "No pages found.", "status": "no_data"}), 500
         
-        filtered_pages = response.data
+        data = response.data
+        
+        filtered_pages = [page for page in data if page.get("status") is None]
         if filtered_pages is None or len(filtered_pages) == 0:
             return jsonify({"message": "No pages found to scrape.", "status": "no_data"}), 500
         
@@ -47,6 +49,11 @@ async def get_all_pages_engagement(platform, scraper=None):
         return jsonify({"message": "Error during scraping.", "error": str(e), "traceback": error_details}), 500
 
     # print(results)
+    platform_field_map = {
+    "facebook": "likes",
+    "linkedin": "employees",
+    "instagram": "posts"
+    }
 
     # Process insertion per page
     for page in pages_to_process:
@@ -56,7 +63,7 @@ async def get_all_pages_engagement(platform, scraper=None):
                 insertion_data = {
                     "page_id": page["page_id"],
                     "followers": matching_result["followers"],
-                    "likes": matching_result.get("likes", None),
+                    f"{platform_field_map[platform]}": matching_result.get(platform_field_map[platform], None),
                     "status": "done"
                 }
                 insertion_response = supabase.table("influence_history").insert(insertion_data).execute()

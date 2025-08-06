@@ -73,3 +73,24 @@ def get_all_categories():
 
     except Exception as e:
         return error_response(str(e), 500)
+
+@data_bp.route("/toa", methods=["GET"])
+def toa():
+    try:
+        response = supabase.rpc("get_scraped_pages", {"query_platform": "instagram"}).execute()
+
+        error = getattr(response, "error", None)
+        if error:
+            return error_response(f"Error fetching pages: {error.message}", 500)
+        
+        data = getattr(response, "data", None)
+        if not data:
+            return error_response("No pages found.", 404)
+
+        # Filter for pages where status is None (null)
+        filtered_pages = [page for page in data if page.get("status") is None]
+
+        return success_response(filtered_pages, 200)
+
+    except Exception as e:
+        return error_response(str(e), 500)

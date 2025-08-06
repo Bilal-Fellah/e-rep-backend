@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 from flask import request
 from api.routes.main import error_response, success_response
@@ -55,6 +56,7 @@ def get_influence_history():
         return error_response(str(e), 500)
 
 
+
 @data_bp.route("/get_page_influence", methods=["GET"])
 def get_page_influence():
     try:
@@ -84,3 +86,53 @@ def get_page_influence():
 
     except Exception as e:
         return error_response(str(e), 500)
+
+
+
+@data_bp.route("/get_ranking", methods=["GET"])
+def get_ranking():
+    try:    
+        
+        response = supabase.rpc("get_entity_platform_followers").execute()
+        
+        if hasattr(response, "error") and response.error:
+            return error_response(f"Error fetching influence: {getattr(response.error, 'message', str(response.error))}", 500)
+        if not getattr(response, "data", []):
+            return error_response("No influence history found for this page.", 404)
+        data = response.data
+
+        # Step 1: Aggregate Data per Entity
+        entity_map = defaultdict(lambda: {"total_followers": 0, "platforms": defaultdict(int)})
+
+        for row in data:
+            entity_id = row["entity_id"]
+            entity_name = row["entity_name"]
+            followers = row["total_followers"]
+            platform = row["platform"]
+
+            entity_map[entity_id]["entity_name"] = entity_name
+            entity_map[entity_id]["total_followers"] += followers
+            entity_map[entity_id]["platforms"][platform] += followers
+
+        # Step 2: Convert to List and Rank Entities
+        entities_list = []
+        for entity_id, info in entity_map.items():
+            entities_list.append({
+                "entity_id": entity_id,
+                "entity_name": info["entity_name"],
+                "total_followers": info["total_followers"],
+                "platforms": dict(info["platforms"])
+            })
+            
+        # Step 3: Rank by Total Followers
+        entities_list.sort(key=lambda x: x["total_followers"], reverse=True)
+        for idx, entity in enumerate(entities_list, start=1):
+            entity["rank"] = idx
+
+
+        
+        return success_response(entities_list, 200)
+
+    except Exception as e:
+        return error_response(str(e), 500)
+
