@@ -88,6 +88,38 @@ def get_page_influence():
         return error_response(str(e), 500)
 
 
+@data_bp.route("/get_entity_influence", methods=["GET"])
+def get_entity_influence():
+    try:
+        entity_id = request.args.get("entity_id")
+        date_str = request.args.get('date')  
+        date_obj = datetime.fromisoformat(date_str) if date_str else None
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+        
+        response = None
+        
+        if date_obj:
+            date_iso = date_obj.isoformat() 
+            
+            response = supabase.rpc("get_entity_influence_scores", { "entity_id_input": int(entity_id) }).gte("recorded_at", date_iso).execute()
+        else:
+            response = supabase.rpc("get_entity_influence_scores", { "entity_id_input": int(entity_id) }).execute()
+        
+
+
+        if hasattr(response, "error") and response.error:
+            return error_response(f"Error fetching influence: {getattr(response.error, 'message', str(response.error))}", 500)
+        if not getattr(response, "data", []):
+            return error_response("No influence history found for this entity.", 404)
+
+        return success_response(response.data, 200)
+
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+
 
 @data_bp.route("/get_ranking", methods=["GET"])
 def get_ranking():
