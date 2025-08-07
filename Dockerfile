@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies
+# Install system dependencies early to cache this layer
 RUN apt-get update && apt-get install -y \
     curl wget gnupg unzip fonts-liberation libnss3 libatk-bridge2.0-0 \
     libgtk-3-0 libxss1 libasound2 libxcomposite1 libxrandr2 libxdamage1 \
@@ -11,14 +11,17 @@ RUN apt-get update && apt-get install -y \
 # Set workdir
 WORKDIR /app
 
-# Copy your files
-COPY . .
+# Copy only requirements first to leverage Docker cache
+COPY requirements.txt ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers
+# Install Playwright browsers and cache it
 RUN python -m playwright install --with-deps
+
+# Now copy the rest of your app code
+COPY . .
 
 EXPOSE 10000
 
