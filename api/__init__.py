@@ -2,12 +2,16 @@ from flask import Flask
 from flask_cors import CORS
 from flask_apscheduler import APScheduler
 import requests
-import os
+from flask_cors import CORS
+
+
 
 scheduler = APScheduler()
 
 def create_app():
     app = Flask(__name__)
+    CORS(app, resources={r"/*": {"origins": "*"}})
+
     app.config.from_object("config")
     
     # Get environment

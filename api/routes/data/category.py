@@ -4,56 +4,56 @@ from api.db.connection import supabase
 from . import data_bp
 
 
-@data_bp.route("/add_category", methods=["POST"])
-def add_category():
-    try:
-        data = request.get_json()
-        name = data.get("name", "").strip().lower()
-        parent_id = data.get("parent_id")
+# @data_bp.route("/add_category", methods=["POST"])
+# def add_category():
+#     try:
+#         data = request.get_json()
+#         name = data.get("name", "").strip().lower()
+#         parent_id = data.get("parent_id")
 
-        if not name:
-            return error_response("Missing required field: 'name'.", 400)
+#         if not name:
+#             return error_response("Missing required field: 'name'.", 400)
 
-        response = supabase.table("categories").insert({
-            "name": name,
-            "parent_id": parent_id
-        }).execute()
+#         response = supabase.table("categories").insert({
+#             "name": name,
+#             "parent_id": parent_id
+#         }).execute()
 
-        error = getattr(response, "error", None)
-        if error:
-            return error_response(f"Failed to insert category: {error.message}", 400)
+#         error = getattr(response, "error", None)
+#         if error:
+#             return error_response(f"Failed to insert category: {error.message}", 400)
 
-        data = getattr(response, "data", None)
-        if not data:
-            return error_response("Insert succeeded but returned no data.", 500)
+#         data = getattr(response, "data", None)
+#         if not data:
+#             return error_response("Insert succeeded but returned no data.", 500)
 
-        return success_response(data, 201)
+#         return success_response(data, 201)
 
-    except Exception as e:
-        return error_response(str(e), 500)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
 
-@data_bp.route("/delete_category", methods=["POST"])
-def delete_category():
-    try:
-        id = request.json.get("id")
-        if not id:
-            return error_response("Missing required field: 'id'.", 400)
+# @data_bp.route("/delete_category", methods=["POST"])
+# def delete_category():
+#     try:
+#         id = request.json.get("id")
+#         if not id:
+#             return error_response("Missing required field: 'id'.", 400)
 
-        response = supabase.table("categories").delete().eq('id', id).execute()
+#         response = supabase.table("categories").delete().eq('id', id).execute()
 
-        error = getattr(response, "error", None)
-        if error:
-            return error_response(f"Delete failed: {error.message}", 400)
+#         error = getattr(response, "error", None)
+#         if error:
+#             return error_response(f"Delete failed: {error.message}", 400)
 
-        data = getattr(response, "data", None)
-        if not data:
-            return error_response(f"No category found with id {id} or already deleted.", 404)
+#         data = getattr(response, "data", None)
+#         if not data:
+#             return error_response(f"No category found with id {id} or already deleted.", 404)
 
-        return success_response(data, 200)
+#         return success_response(data, 200)
 
-    except Exception as e:
-        return error_response(str(e), 500)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
 
 @data_bp.route("/get_all_categories", methods=["GET"])
@@ -74,23 +74,23 @@ def get_all_categories():
     except Exception as e:
         return error_response(str(e), 500)
 
-@data_bp.route("/toa", methods=["GET"])
-def toa():
-    try:
-        response = supabase.rpc("get_scraped_pages", {"query_platform": "instagram"}).execute()
+# @data_bp.route("/toa", methods=["GET"])
+# def toa():
+#     try:
+#         response = supabase.rpc("get_scraped_pages", {"query_platform": "instagram"}).execute()
 
-        error = getattr(response, "error", None)
-        if error:
-            return error_response(f"Error fetching pages: {error.message}", 500)
+#         error = getattr(response, "error", None)
+#         if error:
+#             return error_response(f"Error fetching pages: {error.message}", 500)
         
-        data = getattr(response, "data", None)
-        if not data:
-            return error_response("No pages found.", 404)
+#         data = getattr(response, "data", None)
+#         if not data:
+#             return error_response("No pages found.", 404)
 
-        # Filter for pages where status is None (null)
-        filtered_pages = [page for page in data if page.get("status") is None]
+#         # Filter for pages where status is None (null)
+#         filtered_pages = [page for page in data if page.get("status") is None]
 
-        return success_response(filtered_pages, 200)
+#         return success_response(filtered_pages, 200)
 
-    except Exception as e:
-        return error_response(str(e), 500)
+#     except Exception as e:
+#         return error_response(str(e), 500)
