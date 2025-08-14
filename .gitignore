@@ -2,7 +2,7 @@
 *.log
 *.pyc
 __pycache__
-
+flask-env/*
 # Environments 
 .env 
 .venv 
