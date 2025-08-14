@@ -3,14 +3,14 @@ from flask_cors import CORS
 from flask_apscheduler import APScheduler
 import requests
 from flask_cors import CORS
-
+import os
 
 
 scheduler = APScheduler()
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, resources={r"/*": {"origins": "*"}})
+
 
     app.config.from_object("config")
     
