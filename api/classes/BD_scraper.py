@@ -34,6 +34,10 @@ class BrightDataScraper:
             "twitter": {
                 "dataset_id": "gd_lwxmeb2u1cniijd7t4",
                 "required_fields": ["url", "max_number_of_posts"]
+            },
+             "youtube": {  
+                "dataset_id": "gd_lk538t2k2p1k3oos71",
+                "required_fields": ["url"]
             }
         }
 
