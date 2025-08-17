@@ -1,6 +1,7 @@
 from flask import request
 from api.routes.main import error_response, success_response
-from api.database.supabase_connection import supabase
+from api.repositories.entity_repository import EntityRepository
+from api.repositories.entity_category_repository import EntityCategoryRepository
 from . import data_bp
 
 
@@ -16,34 +17,22 @@ def add_entity():
             return error_response("Missing required fields: 'name', 'type', or 'category_id'.", status=400)
 
         # Insert entity
-        response_entity = supabase.table("entities").insert({
-            "name": name,
-            "type": entity_type
-        }).execute()
-
-        entity_data = getattr(response_entity, "data", None)
-        if not entity_data:
-            return error_response("Failed to insert entity.", status=500)
-
-        entity = entity_data[0]
-        entity_id = entity.get("id")
-        if not entity_id:
-            return error_response("Entity inserted but no ID returned.", status=500)
+        entity = EntityRepository.create(name=name, type_=entity_type)
 
         # Link entity to category
-        response_link = supabase.table("entity_category").insert({
-            "entity_id": entity_id,
-            "category_id": category_id
-        }).execute()
-
-        link_data = getattr(response_link, "data", None)
-        if not link_data:
-            return error_response("Failed to insert entity-category relation.", status=500)
+        entity_category = EntityCategoryRepository.create(entity_id=entity.id, category_id=category_id)
 
         return success_response({
-            "entity": entity,
-            "entity_category": link_data
-        },status_code=201)   # Created
+            "entity": {
+                "id": entity.id,
+                "name": entity.name,
+                "type": entity.type,
+            },
+            "entity_category": {
+                "entity_id": entity_category.entity_id,
+                "category_id": entity_category.category_id,
+            }
+        }, status_code=201)
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status=500)
@@ -52,13 +41,15 @@ def add_entity():
 @data_bp.route("/get_all_entities", methods=["GET"])
 def get_all_entities():
     try:
-        response = supabase.table("entities").select("*").execute()
-
-        entities = getattr(response, "data", None)
+        entities = EntityRepository.get_all()
         if not entities:
             return error_response("No entities found.", status=404)
 
-        return success_response(entities)
+        data = [
+            {"id": e.id, "name": e.name, "type": e.type}
+            for e in entities
+        ]
+        return success_response(data, 200)
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status=500)
@@ -72,16 +63,14 @@ def delete_entity():
             return error_response("Missing required field: 'id'.", status=400)
 
         # Delete entity-category relations
-        supabase.table("entity_category").delete().eq('entity_id', entity_id).execute()
+        EntityCategoryRepository.delete_by_entity(entity_id)
 
         # Delete entity
-        response = supabase.table("entities").delete().eq('id', entity_id).execute()
-
-        deleted_data = getattr(response, "data", None)
-        if not deleted_data:
+        deleted = EntityRepository.delete(entity_id)
+        if not deleted:
             return error_response(f"No entity found with id {entity_id} or already deleted.", status=404)
 
-        return success_response(deleted_data)
+        return success_response({"deleted_id": entity_id}, 200)
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status=500)
