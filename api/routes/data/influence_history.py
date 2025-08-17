@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import datetime
 from flask import request
 from api.routes.main import error_response, success_response
-from api.db.connection import supabase
+from api.database.supabase_connection import supabase
 from . import data_bp
 
 

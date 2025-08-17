@@ -1,6 +1,5 @@
 
-from flask import Blueprint, jsonify, request
-from api.db.connection import supabase
+from flask import Blueprint
 from api.classes.facebook_playwrite_scraper import FacebookPlaywrightScraper
 from api.routes.data.scraping.get_engagement import get_all_pages_engagement
 

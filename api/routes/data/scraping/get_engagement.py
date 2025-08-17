@@ -1,5 +1,5 @@
 from flask import jsonify
-from api.db.connection import supabase
+from api.database.supabase_connection import supabase
 import traceback
 import random
 

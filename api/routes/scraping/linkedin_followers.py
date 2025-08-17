@@ -1,8 +1,7 @@
 
 from flask import Blueprint
 from api.classes.linkedin_playwright_scraper import LinkedInPlaywrightScraper
-import traceback
-import random
+
 
 from api.routes.data.scraping.get_engagement import get_all_pages_engagement
 

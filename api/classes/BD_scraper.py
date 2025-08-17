@@ -18,7 +18,7 @@ class BrightDataScraper:
             "Content-Type": "application/json"
         }
 
-        self.PLATFORM_CONFIG = {
+        self.   PLATFORM_CONFIG = {
             "tiktok": {
                 "dataset_id": "gd_l1villgoiiidt09ci",
                 "required_fields": ["url", "country"]
@@ -31,7 +31,7 @@ class BrightDataScraper:
                 "dataset_id": "gd_l1vikfnt1wgvvqz95w",
                 "required_fields": ["url"]
             },
-            "twitter": {
+            "x": {
                 "dataset_id": "gd_lwxmeb2u1cniijd7t4",
                 "required_fields": ["url", "max_number_of_posts"]
             },
