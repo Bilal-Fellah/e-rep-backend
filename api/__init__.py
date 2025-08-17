@@ -11,9 +11,15 @@ migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
+    VPS_ADDRESS = os.getenv("VPS_ADDRESS")
+    VPS_DB_PORT = os.getenv("VPS_DB_PORT")
+    DB_USER = os.getenv("DB_USER")
+    DB_PWD = os.getenv("DB_PWD")
+    DB_NAME = os.getenv("DB_NAME")
 
+    
     # ---- Config ----
-    app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://bilal:bilal7230@135.181.66.165:5432/erep-db"
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{DB_USER}:{DB_PWD}@{VPS_ADDRESS}:{VPS_DB_PORT}/{DB_NAME}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     db.init_app(app)
