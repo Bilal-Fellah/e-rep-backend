@@ -1,5 +1,4 @@
 from api import db
-from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import relationship
 
 class Category(db.Model):
