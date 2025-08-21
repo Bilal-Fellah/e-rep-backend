@@ -13,7 +13,7 @@ def add_page():
         entity_id = data.get("entity_id")
 
         if not platform or not link or not entity_id:
-            return error_response("Missing required fields: 'platform', 'link', or 'entity_id'.", status=400)
+            return error_response("Missing required fields: 'platform', 'link', or 'entity_id'.", status_code=400)
 
         page = PageRepository.create(
             name=data.get("name", "").strip() or link,  # fallback if name not given
@@ -31,7 +31,7 @@ def add_page():
         }, status_code=201)
 
     except Exception as e:
-        return error_response(str(e), status=500)
+        return error_response(str(e), status_code=500)
 
 
 @data_bp.route("/delete_page", methods=["POST"])
@@ -39,16 +39,16 @@ def delete_page():
     try:
         page_id = request.json.get("id")
         if not page_id:
-            return error_response("Missing required field: 'id'.", status=400)
+            return error_response("Missing required field: 'id'.", status_code=400)
 
         deleted = PageRepository.delete(page_id)
         if not deleted:
-            return error_response(f"No page found with id {page_id} or already deleted.", status=404)
+            return error_response(f"No page found with id {page_id} or already deleted.", status_code=404)
 
         return success_response({"deleted_id": page_id}, status_code=200)
 
     except Exception as e:
-        return error_response(str(e), status=500)
+        return error_response(str(e), status_code=500)
 
 
 @data_bp.route("/get_all_pages", methods=["GET"])
@@ -56,7 +56,7 @@ def get_all_pages():
     try:
         pages = PageRepository.get_all()
         if not pages:
-            return error_response("No pages found.", status=404)
+            return error_response("No pages found.", status_code=404)
 
         data = [
             {
@@ -71,4 +71,27 @@ def get_all_pages():
         return success_response(data, status_code=200)
 
     except Exception as e:
-        return error_response(str(e), status=500)
+        return error_response(str(e), status_code=500)
+
+@data_bp.route("/get_pages_by_platform", methods=["GET"])
+def get_pages_by_platform():
+    platform = request.args.get("platform")
+    try:
+        pages = PageRepository.get_by_platform(platform)
+        if not pages:
+            return error_response("No pages found.", status_code=404)
+
+        data = [
+            {
+                "id": p.id,
+                "name": p.name,
+                "link": p.link,
+                "platform": p.platform,
+                "entity_id": p.entity_id
+            }
+            for p in pages
+        ]
+        return success_response(data, status_code=200)
+
+    except Exception as e:
+        return error_response(str(e), status_code=500)

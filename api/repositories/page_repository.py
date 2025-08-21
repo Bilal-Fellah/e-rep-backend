@@ -1,5 +1,7 @@
 from api import db
 from api.models import Page
+from sqlalchemy import select
+
 
 class PageRepository:
     @staticmethod
@@ -9,6 +11,13 @@ class PageRepository:
     @staticmethod
     def get_all() -> list[Page]:
         return Page.query.all()
+
+    @staticmethod
+    def get_by_platform(query_platform) -> list[Page]:
+        return db.session.scalars(
+            select(Page).where(Page.platform == query_platform)
+        ).all()
+
 
     @staticmethod
     def create(name: str, link: str, platform: str, entity_id: int) -> Page:
