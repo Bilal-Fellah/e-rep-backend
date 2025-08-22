@@ -1,8 +1,11 @@
 from flask import request
 from api.routes.main import error_response, success_response
 from api.repositories.page_repository import PageRepository
+import uuid
 from . import data_bp
 
+
+# ... other imports
 
 @data_bp.route("/add_page", methods=["POST"])
 def add_page():
@@ -15,15 +18,19 @@ def add_page():
         if not platform or not link or not entity_id:
             return error_response("Missing required fields: 'platform', 'link', or 'entity_id'.", status_code=400)
 
+        # Generate the UUID by hashing the platform and link
+        new_uuid = uuid.uuid5(uuid.NAMESPACE_URL, platform + link)
+
         page = PageRepository.create(
-            name=data.get("name", "").strip() or link,  # fallback if name not given
+            uuid=new_uuid, 
+            name=data.get("name", "").strip() or link,
             platform=platform,
             link=link,
             entity_id=entity_id
         )
 
         return success_response({
-            "id": page.id,
+            "uuid": str(page.uuid),  # Convert the UUID object to a string for the response
             "name": page.name,
             "link": page.link,
             "platform": page.platform,
@@ -32,7 +39,6 @@ def add_page():
 
     except Exception as e:
         return error_response(str(e), status_code=500)
-
 
 @data_bp.route("/delete_page", methods=["POST"])
 def delete_page():
@@ -60,11 +66,11 @@ def get_all_pages():
 
         data = [
             {
-                "id": p.id,
                 "name": p.name,
                 "link": p.link,
                 "platform": p.platform,
-                "entity_id": p.entity_id
+                "entity_id": p.entity_id,
+                "uuid": p.uuid
             }
             for p in pages
         ]

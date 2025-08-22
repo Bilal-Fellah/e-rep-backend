@@ -1,15 +1,20 @@
 from api import db
 from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+import uuid
+
+
 
 class Page(db.Model):
     __tablename__ = "pages"
 
-    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text, nullable=False)
     link = db.Column(db.Text, unique=True, nullable=False)
     platform = db.Column(db.String(20), nullable=False)
     entity_id = db.Column(db.Integer, db.ForeignKey("entities.id"), nullable=False)
+    uuid = db.Column(UUID(as_uuid=True), unique=True, primary_key = True, nullable=False, default=uuid.uuid4)
+
 
     __table_args__ = (
         CheckConstraint(platform.in_(["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"])),

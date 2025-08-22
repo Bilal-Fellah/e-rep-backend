@@ -27,7 +27,7 @@ def create_app():
     migrate.init_app(app, db)
 
     # ---- Import models so Alembic sees them ----
-    from api import models
+    from .models import category_model, entity_category_model, entity_model, page_model, page_history_model
 
     
     # Get environment
