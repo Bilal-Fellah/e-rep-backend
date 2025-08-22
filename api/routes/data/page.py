@@ -89,7 +89,7 @@ def get_pages_by_platform():
 
         data = [
             {
-                "id": p.id,
+                "uuid": p.uuid,
                 "name": p.name,
                 "link": p.link,
                 "platform": p.platform,
