@@ -1,0 +1,20 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    ports:
+      - "80:8000"         # public HTTP
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./instance:/app/instance   # if you use Flask instance folder
+      - ./uploads:/app/uploads     # if your app writes uploads

@@ -1,13 +1,12 @@
 import argparse
 from api import create_app
 import logging
+from flask import jsonify
 logging.basicConfig(level=logging.INFO)
 
 
 app = create_app()
 
-
-from api.repositories.entity_repository import EntityRepository
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
+    
     VPS_ADDRESS = os.getenv("VPS_ADDRESS")
     VPS_DB_PORT = os.getenv("VPS_DB_PORT")
     DB_USER = os.getenv("DB_USER")
@@ -54,6 +55,9 @@ def create_app():
 
     from .routes import register_routes
     register_routes(app)
+
+   
+
 
     
     return app

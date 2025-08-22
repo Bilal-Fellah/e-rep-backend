@@ -1,4 +1,4 @@
-from flask import request
+from flask import request, jsonify
 from api.routes.main import error_response, success_response
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
@@ -74,3 +74,5 @@ def delete_entity():
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
+
+
