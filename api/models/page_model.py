@@ -23,3 +23,8 @@ class Page(db.Model):
     # Relationships
     entity = relationship("Entity", back_populates="pages")
     histories = relationship("PageHistory", back_populates="page", cascade="all, delete-orphan")
+
+    @staticmethod
+    def generate_uuid(link, platform=None):
+        base_str = f"{link}{platform or ''}"
+        return uuid.uuid5(uuid.NAMESPACE_DNS, base_str)

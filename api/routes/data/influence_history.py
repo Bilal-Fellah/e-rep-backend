@@ -85,6 +85,27 @@ def get_page_history():
         return error_response(str(e), 500)
 
 
+@data_bp.route("/get_platform_history", methods=["GET"])
+def get_platform_history():
+    try:
+        platform = request.args.get("platform")
+        if not platform:
+            return error_response("Missing platform parameter", 400)
+
+        history_list = PageHistoryRepository().get_platform_history(platform)
+        if not history_list:
+            return error_response("No history found", 404)
+
+        data = [
+            {"id": h.id, "page_id": h.page_id, "data": h.data}
+            for h in history_list
+        ]
+        return success_response(data, 200)
+
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
 @data_bp.route("/get_entity_history", methods=["GET"])
 def get_entity_history():
     """

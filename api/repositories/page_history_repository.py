@@ -57,7 +57,13 @@ class PageHistoryRepository:
             .where(PageHistory.recorded_at > time_threshold)
         )
         return db.session.scalars(stmt).all()
-
+    def get_platform_history(self, platform: str):
+        stmt =( select(PageHistory)
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .filter(Page.platform == platform)
+        )
+            
+        return db.session.scalars(stmt).all()
     @staticmethod
     def create(page_id: int, data: dict) -> PageHistory:
         history = PageHistory(page_id=page_id, data=data)
