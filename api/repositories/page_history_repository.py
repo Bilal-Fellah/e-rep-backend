@@ -36,7 +36,7 @@ class PageHistoryRepository:
     def get_entity_data_by_date( entity_id: int, target_date: date):
         stmt = (
             select(PageHistory)
-            .join(Page, Page.id == PageHistory.page_id)
+            .join(Page, Page.uuid == PageHistory.page_id)
             .where(
                 and_(
                     Page.entity_id == entity_id,
