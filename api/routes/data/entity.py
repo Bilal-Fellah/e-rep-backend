@@ -1,3 +1,4 @@
+from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request, jsonify
 from api.routes.main import error_response, success_response
 from api.repositories.entity_repository import EntityRepository
@@ -74,5 +75,30 @@ def delete_entity():
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
+
+
+@data_bp.route("/get_entity_profile_card", methods=["GET"])
+def get_entity_profile_card():
+
+
+    try:
+        entity_id = request.args.get("entity_id")
+        attributes_list = ["Image_link","Entity_name","Description","Rank","Score","Urls_by_platform","Followers_by_platform"]
+        data = PageHistoryRepository.get_entity_info_from_history(entity_id)
+        return data
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", status_code=500)
+
+
+@data_bp.route("/get_entities_ranking", methods=["GET"])
+def get_entities_ranking():
+
+
+    try:
+        data = PageHistoryRepository.get_all_entities_ranking()
+        return data
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", status_code=500)
+
 
 

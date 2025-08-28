@@ -6,38 +6,7 @@ from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
 
 
-# @data_bp.route("/add_influence", methods=["POST"])
-# def add_influence():
-#     try:
-#         data = request.get_json()
-#         page_id = data.get("page_id")
-#         followers = data.get("followers")
-#         likes = data.get("likes")
-#         recorded_at = data.get("recorded_at")  # Optional
 
-#         if not page_id or followers is None or likes is None:
-#             return error_response("Missing required fields: 'page_id', 'followers', or 'likes'.", 400)
-
-#         payload = {
-#             "page_id": page_id,
-#             "followers": followers,
-#             "likes": likes
-#         }
-
-#         if recorded_at:
-#             payload["recorded_at"] = recorded_at
-
-#         response = supabase.table("influence_history").insert(payload).execute()
-
-#         if hasattr(response, "error") and response.error:
-#             return error_response(f"Failed to insert influence record: {getattr(response.error, 'message', str(response.error))}", 500)
-#         if not getattr(response, "data", []):
-#             return error_response("Insert succeeded but returned no data.", 204)
-
-#         return success_response(response.data, 201)
-
-#     except Exception as e:
-#         return error_response(str(e), 500)
 
 @data_bp.route("/get_after_time", methods=["GET"])
 def get_after_time():
@@ -69,7 +38,7 @@ def get_today_pages_history():
         return error_response(str(e), 500)
 
 
-@data_bp.route("/get_page_history", methods=["GET"])
+@data_bp.route("/get_page_history_today", methods=["GET"])
 def get_page_history():
     try:
         page_id = request.args.get("page_id")
@@ -139,40 +108,72 @@ def get_entity_history():
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)
-# @data_bp.route("/get_entity_influence", methods=["GET"])
-# def get_entity_influence():
-#     try:
-#         entity_id = request.args.get("entity_id")
-#         date_str = request.args.get('date')  
-#         date_obj = datetime.fromisoformat(date_str) if date_str else None
-#         if not entity_id:
-#             return error_response("Missing required query param: 'entity_id'.", 400)
-        
-#         response = None
-        
-#         if date_obj:
-#             date_iso = date_obj.isoformat() 
-            
-#             response = supabase.rpc("get_entity_influence_scores", { "entity_id_input": int(entity_id) }).gte("recorded_at", date_iso).execute()
-#         else:
-#             response = supabase.rpc("get_entity_influence_scores", { "entity_id_input": int(entity_id) }).execute()
-        
+    
 
+@data_bp.route("/get_entity_followers_history", methods=["GET"])
+def get_entity_followers_history():
+    """
+    Fetch all page histories for a given entity_id (all pages belonging to entity).
+    Optional: filter by date (default = today).
+    """
+    try:
+        entity_id = request.args.get("entity_id", type=int)
 
-#         if hasattr(response, "error") and response.error:
-#             return error_response(f"Error fetching influence: {getattr(response.error, 'message', str(response.error))}", 500)
-#         if not getattr(response, "data", []):
-#             return error_response("No influence history found for this entity.", 404)
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
 
-#         return success_response(response.data, 200)
+        history = PageHistoryRepository().get_followers_history_by_entity(entity_id)
+        if not history:
+            return error_response("No history found for this entity.", 404)
 
-#     except Exception as e:
-#         return error_response(str(e), 500)
+        data = [{'page_id': h.page_id, 'followers': h.followers, 'date': h.recorded_at, "platform": h.platform} for h in history]
+        return success_response(data, 200)
+
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)
+    
 
 
 
+@data_bp.route("/get_entity_recent_posts", methods=["GET"])
+def get_entity_recent_posts():
+    """
+    get recent posts (5) from all platforms, get the most recent
+    """
+    try:
+        entity_id = request.args.get("entity_id", type=int)
 
-# @data_bp.route("/get_ranking", methods=["GET"])
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
+        history = PageHistoryRepository().get_entity_recent_posts(entity_id)
+        if not history:
+            return error_response("No history found for this entity.", 404)
+
+        return success_response(history, 200)
+
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)
+    
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # def get_ranking():
 #     try:    
         
