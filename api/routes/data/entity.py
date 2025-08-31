@@ -3,6 +3,8 @@ from flask import request, jsonify
 from api.routes.main import error_response, success_response
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
+from sqlalchemy.exc import SQLAlchemyError
+
 from . import data_bp
 
 
@@ -83,22 +85,64 @@ def get_entity_profile_card():
 
     try:
         entity_id = request.args.get("entity_id")
-        attributes_list = ["Image_link","Entity_name","Description","Rank","Score","Urls_by_platform","Followers_by_platform"]
         data = PageHistoryRepository.get_entity_info_from_history(entity_id)
-        return data
+        if type(data) != dict:
+            if type(data) == list and len(data) < 1:
+                message = "no data found for this entity"
+                return error_response(message, status_code=404) 
+            
+        return success_response(data, status_code=200)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
-
-@data_bp.route("/get_entities_ranking", methods=["GET"])
-def get_entities_ranking():
-
-
+@data_bp.route("/get_entity_followers_history", methods=["GET"])
+def get_entity_followers_history():
+    """
+    Fetch all page histories for a given entity_id (all pages belonging to entity).
+    Optional: filter by date (default = today).
+    """
     try:
-        data = PageHistoryRepository.get_all_entities_ranking()
-        return data
+        entity_id = request.args.get("entity_id", type=int)
+
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
+        history = PageHistoryRepository().get_followers_history_by_entity(entity_id)
+        if not history or (type(history) == list and len(history)<1):
+            return error_response("No history found for this entity.", 404)
+
+        data = [{'page_id': h.page_id, 'followers': h.followers, 'date': h.recorded_at, "platform": h.platform} for h in history]
+        return success_response(data, 200)
+
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+        return error_response(f"Unexpected error: {str(e)}", 500)
+    
 
 
+
+@data_bp.route("/get_entity_recent_posts", methods=["GET"])
+def get_entity_recent_posts():
+    """
+    get recent posts (5) from all platforms, get the most recent
+    """
+    try:
+        entity_id = request.args.get("entity_id", type=int)
+
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
+        history = PageHistoryRepository().get_entity_recent_posts(entity_id)
+        if not history or (type(history) == list and len(history)<1):
+            return error_response("No history found for this entity.", 404)
+
+        return success_response(history, 200)
+
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)
+    
+   
 
