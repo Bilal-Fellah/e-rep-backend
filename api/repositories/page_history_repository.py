@@ -8,6 +8,7 @@ from sqlalchemy import case, select, and_, cast, text
 from sqlalchemy.orm import aliased
 from sqlalchemy.dialects.postgresql import JSONB
 
+RootCategory = aliased(Category, name="root_category")
 
 from datetime import date, datetime, time
 
@@ -180,7 +181,6 @@ class PageHistoryRepository:
 
     @staticmethod
     def get_all_entities_ranking():
-        # --- Step 1: Subquery to get latest history per page ---
 # --- Step 1: Latest snapshot per page (instead of separate latest_history_subq + ph join) ---
         latest_page_data = (
             select(
@@ -210,20 +210,28 @@ class PageHistoryRepository:
         )
 
         # --- Step 2: Aggregate per entity ---
+
         entity_totals = (
             select(
                 Entity.id.label("entity_id"),
-                Category.name.label("category_name"),
+                RootCategory.name.label("root_category_name"),
                 db.func.sum(latest_page_data.c.followers).label("total_followers"),
                 db.func.rank()
-                    .over(order_by=db.func.sum(latest_page_data.c.followers).desc())
-                    .label("entity_rank"),
+                .over(order_by=db.func.sum(latest_page_data.c.followers).desc())
+                .label("entity_rank"),
             )
             .join(Page, Page.entity_id == Entity.id)
             .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
             .join(EntityCategory, EntityCategory.entity_id == Entity.id)
             .join(Category, Category.id == EntityCategory.category_id)
-            .group_by(Entity.id, Category.name)
+            .join(
+                RootCategory,
+                case(
+                    (Category.parent_id == None, Category.id),  # if no parent, use itself
+                    else_=Category.parent_id
+                ) == RootCategory.id   # <-- compare result to RootCategory.id
+            )
+            .group_by(Entity.id, RootCategory.name)
             .subquery()
         )
 
@@ -234,7 +242,7 @@ class PageHistoryRepository:
                 Entity.name.label("entity_name"),
                 entity_totals.c.total_followers,
                 entity_totals.c.entity_rank,
-                entity_totals.c.category_name,
+                entity_totals.c.root_category_name,
                 Page.platform,
                 Page.uuid.label("page_id"),
                 Page.link.label("page_url"),
@@ -259,7 +267,7 @@ class PageHistoryRepository:
                     "entity_name": row.entity_name,
                     "total_followers": row.total_followers,
                     "rank": row.entity_rank,
-                    "category": row.category_name,
+                    "category": row.root_category_name,
                     "platforms": {}
                 }
 
