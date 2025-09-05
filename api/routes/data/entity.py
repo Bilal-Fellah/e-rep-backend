@@ -1,3 +1,4 @@
+from collections import defaultdict
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request, jsonify
 from api.routes.main import error_response, success_response
@@ -145,4 +146,31 @@ def get_entity_recent_posts():
         return error_response(f"Unexpected error: {str(e)}", 500)
     
    
+@data_bp.route("/get_entity_followers_comparison", methods=["GET"])
+def get_entity_followers_comparison():
+    try:
+        entity_id = request.args.get("entity_id")
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+        raw_results = PageHistoryRepository.get_category_followers_competition(entity_id)
 
+        if not raw_results or len(raw_results) < 1:
+            return error_response("No data for this entity", 404)
+
+        data = defaultdict(lambda: defaultdict(list))
+
+        for row in raw_results:
+            if row.entity_name:
+                data[row.entity_name]["entity_id"] = row.entity_id
+
+            data[row.entity_name][row.platform].append({
+                "recorded_at": row.recorded_at.isoformat(),
+                "followers": row.followers,
+                "page_id": row.page_id,
+            })
+        return success_response(data)
+        # we get the entities or category
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)
