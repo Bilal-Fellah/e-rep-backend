@@ -10,5 +10,3 @@ conn = psycopg2.connect(
 cursor = conn.cursor()
 
 
-cursor.execute("SELECT NOW();")
-print(cursor.fetchone())

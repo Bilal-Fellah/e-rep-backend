@@ -7,7 +7,11 @@ class PageRepository:
     @staticmethod
     def get_by_id(page_id: int) -> Page | None:
         return Page.query.get(page_id)
-
+    
+    @staticmethod
+    def get_by_link(page_link: str) -> Page | None:
+        return Page.query.filter_by(link=page_link).first()
+    
     @staticmethod
     def get_all() -> list[Page]:
         return Page.query.all()

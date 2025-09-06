@@ -160,7 +160,7 @@ def get_entity_followers_comparison():
 
         data = defaultdict(lambda: {"entity_id": None, "records": defaultdict(int)})
 
-        for row in raw_results:
+        for idx, row in enumerate(raw_results):
             if row.entity_name:
                 if data[row.entity_name]["entity_id"] is None:
                     data[row.entity_name]["entity_id"] = row.entity_id

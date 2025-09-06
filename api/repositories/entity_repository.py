@@ -5,6 +5,10 @@ class EntityRepository:
     @staticmethod
     def get_by_id(entity_id: int) -> Entity | None:
         return Entity.query.get(entity_id)
+    
+    @staticmethod
+    def get_by_name(entity_name: str) -> Entity | None:
+        return Entity.query.filter_by(name=entity_name).first()
 
     @staticmethod
     def get_all() -> list[Entity]:
