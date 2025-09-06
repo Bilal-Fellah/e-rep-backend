@@ -216,7 +216,10 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                PageHistory.data['followers'].astext.cast(db.Integer).label("followers"),
+                case(
+                    (Page.platform == "youtube", PageHistory.data["subscribers"]),
+                    else_ = PageHistory.data["followers"]
+                ).cast(db.Integer).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )
@@ -227,20 +230,7 @@ class PageHistoryRepository:
         )
         results = db.session.execute(entities_history_stmt).mappings().all()
         return results
-        # Convert to list of dicts for jsonify
-        data = [
-            {
-                "recorded_at": row["recorded_at"].isoformat(),
-                "followers": row["followers"],
-                "page_id": str(row["page_id"]),   # cast UUID → str for JSON
-                "platform": row["platform"],
-                "entity_name": row["entity_name"]
-            }   
-            for row in results
-        ]
-        print(data[0])
-        return data
-    
+        
 
     @staticmethod
     def get_all_entities_ranking():

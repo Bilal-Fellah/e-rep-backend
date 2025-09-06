@@ -157,18 +157,23 @@ def get_entity_followers_comparison():
         if not raw_results or len(raw_results) < 1:
             return error_response("No data for this entity", 404)
 
-        data = defaultdict(lambda: defaultdict(list))
+
+        data = defaultdict(lambda: {"entity_id": None, "records": defaultdict(int)})
 
         for row in raw_results:
             if row.entity_name:
-                data[row.entity_name]["entity_id"] = row.entity_id
+                if data[row.entity_name]["entity_id"] is None:
+                    data[row.entity_name]["entity_id"] = row.entity_id
 
-            data[row.entity_name][row.platform].append({
-                "recorded_at": row.recorded_at.isoformat(),
-                "followers": row.followers,
-                "page_id": row.page_id,
-            })
-        return success_response(data)
+                date = row.recorded_at.date().isoformat()
+                mistakes = []
+                # sum directly by date (all platforms included)
+                if row.followers:
+                    data[row.entity_name]["records"][date] += row.followers
+                else:
+                    mistakes.append(row.followers)
+        print(mistakes)
+        return success_response(data, 200)
         # we get the entities or category
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
