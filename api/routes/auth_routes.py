@@ -32,7 +32,6 @@ def signup():
 @auth_bp.route("/register_entity", methods=["POST"])
 def register_entity():
     required_keys = ["entity_name","type", "category_id"]
-    pages_keys = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
     data = request.json
     
     for key in required_keys:

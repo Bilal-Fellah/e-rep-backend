@@ -158,7 +158,7 @@ def get_entity_followers_comparison():
             return error_response("No data for this entity", 404)
 
 
-        data = defaultdict(lambda: {"entity_id": None, "records": defaultdict(int)})
+        data = defaultdict(lambda: {"entity_id": None, "records": []})
 
         for idx, row in enumerate(raw_results):
             if row.entity_name:
@@ -166,10 +166,17 @@ def get_entity_followers_comparison():
                     data[row.entity_name]["entity_id"] = row.entity_id
 
                 date = row.recorded_at.date().isoformat()
+                platform = row.platform
+                followers = row.followers
                 mistakes = []
                 # sum directly by date (all platforms included)
                 if row.followers:
-                    data[row.entity_name]["records"][date] += row.followers
+                    data[row.entity_name]["records"].append({
+                        'date': date,
+                        'platform': platform,
+                        'followers': followers
+                    }
+                    )
                 else:
                     mistakes.append(row.followers)
         print(mistakes)
