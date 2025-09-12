@@ -193,6 +193,29 @@ class PageHistoryRepository:
             }
 
         return result
+    @staticmethod
+    def get_entites_followers_competition(entities):
+        OtherEntity = aliased(Entity)   # alias for the second Entity join
+        entities_history_stmt = (
+            select(
+                OtherEntity.name.label("entity_name"),
+                OtherEntity.id.label("entity_id"),
+                PageHistory.recorded_at,
+                case(
+                    (Page.platform == "youtube", PageHistory.data["subscribers"]),
+                    else_ = PageHistory.data["followers"]
+                ).cast(db.Integer).label("followers"),
+                PageHistory.page_id,
+                Page.platform
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .join(OtherEntity, OtherEntity.id == Page.entity_id)
+            .where(Page.entity_id.in_(entities))
+            .order_by(OtherEntity.name, PageHistory.recorded_at)
+        )
+        results = db.session.execute(entities_history_stmt).mappings().all()
+        return results
+        
 
     @staticmethod
     def get_category_followers_competition(entity_id):

@@ -186,3 +186,45 @@ def get_entity_followers_comparison():
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)
+
+@data_bp.route("/compare_entities_followers", methods=['POST'])
+def compare_entities_followers():
+    try:
+        data = request.get_json()
+        entity_ids = data.get("entity_ids")
+        if not entity_ids:
+            return error_response("Missing required query param: 'entity_ids'.", 400)
+        
+        raw_results = PageHistoryRepository.get_entites_followers_competition(entity_ids)
+        if not raw_results or len(raw_results) < 1:
+            return error_response("No data for this entities", 404)
+
+
+        data = defaultdict(lambda: {"entity_id": None, "records": []})
+
+        for idx, row in enumerate(raw_results):
+            if row.entity_name:
+                if data[row.entity_name]["entity_id"] is None:
+                    data[row.entity_name]["entity_id"] = row.entity_id
+
+                date = row.recorded_at.date().isoformat()
+                platform = row.platform
+                followers = row.followers
+                mistakes = []
+                # sum directly by date (all platforms included)
+                if row.followers:
+                    data[row.entity_name]["records"].append({
+                        'date': date,
+                        'platform': platform,
+                        'followers': followers
+                    }
+                    )
+                else:
+                    mistakes.append(row.followers)
+        print(mistakes)
+        return success_response(data, 200)
+        # we get the entities or category
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)    
