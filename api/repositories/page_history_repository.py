@@ -84,6 +84,31 @@ class PageHistoryRepository:
         return rows
     
     @staticmethod
+    def get_entity_recent_posts(entity_id: int):
+        stmt = (
+            select(
+                Page.uuid.label("page_id"),
+                Page.name.label("page_name"),
+                Page.platform,
+                PageHistory.recorded_at,
+                case(
+                    (Page.platform == "instagram", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "linkedin", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "tiktok", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_posts_data'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "youtube", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "x", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'), cast(text("'[]'"), JSONB))),
+                    else_=None
+                ).label("posts")
+            )
+            .select_from(PageHistory)
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .where(Page.entity_id == entity_id)
+        )
+
+        rows = db.session.execute(stmt).all()
+        return rows
+    
+    @staticmethod
     def get_entity_info_from_history(entity_id: int):
         # Step 1: Get latest history per page
         latest_history_subq = (
@@ -187,6 +212,7 @@ class PageHistoryRepository:
             }
 
         return result
+    
     @staticmethod
     def get_entites_followers_competition(entities):
         OtherEntity = aliased(Entity)   # alias for the second Entity join
@@ -391,6 +417,7 @@ class PageHistoryRepository:
             .where(PageHistory.recorded_at > time_threshold)
         )
         return db.session.scalars(stmt).all()
+    
     def get_platform_history(self, platform: str):
         stmt =( select(PageHistory)
             .join(Page, PageHistory.page_id == Page.uuid)
@@ -398,8 +425,6 @@ class PageHistoryRepository:
         )
             
         return db.session.scalars(stmt).all()
-    
-
 
     @staticmethod
     def create(page_id: int, data: dict) -> PageHistory:

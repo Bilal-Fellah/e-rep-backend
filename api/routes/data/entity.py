@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request, jsonify
 from api.routes.main import error_response, success_response
@@ -234,24 +234,20 @@ def compare_entities_followers():
         return error_response(f"Unexpected error: {str(e)}", 500)  
 
 
-
-
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
-
     try:
         entity_id = request.args.get("entity_id", type=int)
+        date_str = request.args.get("date")
         max_posts = request.args.get("max_posts", type=int)
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
-        if not max_posts:
-            return error_response("Missing required query param: 'max_posts'.", 400)
 
         history = PageHistoryRepository().get_entity_posts(entity_id)
-        if not history or (type(history) == list and len(history)<1):
+        if not history or (type(history) == list and len(history) < 1):
             return error_response("No history found for this entity.", 404)
-        
+
         sorting_map = {
             "instagram": "datetime",
             "linkedin": "date",
@@ -260,29 +256,62 @@ def get_entity_posts_timeline():
             "x": None
         }
 
+        # Convert the input date if provided
+        filter_date = None
+        if date_str:
+            try:
+                filter_date = ensure_datetime(date_str)
+                # Force into UTC-aware datetime
+                if filter_date.tzinfo is None:
+                    filter_date = filter_date.replace(tzinfo=timezone.utc)
+                else:
+                    filter_date = filter_date.astimezone(timezone.utc)
+            except Exception:
+                return error_response("Invalid date format provided.", 400)
+
         all_posts = []
         for row in history:
             platform = row.platform
+            page_id = row.page_id
+            page_name = row.page_name
             posts = row.posts
-            if len(posts)>0 and type(posts[0]) == list:
+            if len(posts) > 0 and isinstance(posts[0], list):
                 posts = posts[0]
             else:
                 print("didnt change here to posts[0]")
+
             for post in posts:
-                date = post[sorting_map[platform]]
-                if platform == 'youtube':
-                    date = parse_relative_time(date)
+                raw_date = post.get(sorting_map[platform]) if sorting_map[platform] else None
+                if not raw_date:
+                    continue
 
-                date = ensure_datetime(date)
+                if platform == "youtube":
+                    raw_date = parse_relative_time(raw_date)
 
-                post['compare_date'] = date
+                post_date = ensure_datetime(raw_date)
+                post["compare_date"] = post_date
+                post["platform"] = platform
+                post["page_id"] = page_id
+                post["page_name"] = page_name
+
+                # Apply date filter
+                if filter_date and post_date < filter_date:
+                    continue
+
                 all_posts.append(post)
-        
-        all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
-        max_posts = min(max_posts, len(all_posts))
-        data = all_posts[:max_posts]           
 
-        return success_response(data, 200)
+        # Sort descending by date
+        all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
+
+        # Apply max_posts if provided
+        if max_posts:
+            all_posts = all_posts[:max_posts]
+
+        return success_response(all_posts, 200)
+
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)
+
 
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
