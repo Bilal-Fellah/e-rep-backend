@@ -1,10 +1,13 @@
 from collections import defaultdict
+from datetime import datetime
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request, jsonify
 from api.routes.main import error_response, success_response
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from sqlalchemy.exc import SQLAlchemyError
+
+from api.utils.posts_utils import ensure_datetime, parse_relative_time
 
 from . import data_bp
 
@@ -189,6 +192,7 @@ def get_entity_followers_comparison():
 
 @data_bp.route("/compare_entities_followers", methods=['POST'])
 def compare_entities_followers():
+    
     try:
         data = request.get_json()
         entity_ids = data.get("entity_ids")
@@ -227,4 +231,61 @@ def compare_entities_followers():
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)    
+        return error_response(f"Unexpected error: {str(e)}", 500)  
+
+
+
+
+@data_bp.route("/get_entity_posts_timeline", methods=["GET"])
+def get_entity_posts_timeline():
+
+    try:
+        entity_id = request.args.get("entity_id", type=int)
+        max_posts = request.args.get("max_posts", type=int)
+
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+        if not max_posts:
+            return error_response("Missing required query param: 'max_posts'.", 400)
+
+        history = PageHistoryRepository().get_entity_posts(entity_id)
+        if not history or (type(history) == list and len(history)<1):
+            return error_response("No history found for this entity.", 404)
+        
+        sorting_map = {
+            "instagram": "datetime",
+            "linkedin": "date",
+            "tiktok": "create_time",
+            "youtube": "posted_time",
+            "x": None
+        }
+
+        all_posts = []
+        for row in history:
+            platform = row.platform
+            posts = row.posts
+            if len(posts)>0 and type(posts[0]) == list:
+                posts = posts[0]
+            else:
+                print("didnt change here to posts[0]")
+            for post in posts:
+                date = post[sorting_map[platform]]
+                if platform == 'youtube':
+                    date = parse_relative_time(date)
+
+                date = ensure_datetime(date)
+
+                post['compare_date'] = date
+                all_posts.append(post)
+        
+        all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
+        max_posts = min(max_posts, len(all_posts))
+        data = all_posts[:max_posts]           
+
+        return success_response(data, 200)
+
+    except SQLAlchemyError as e:
+        return error_response(f"Database error: {str(e)}", 500)
+    except Exception as e:
+        return error_response(f"Unexpected error: {str(e)}", 500)
+    

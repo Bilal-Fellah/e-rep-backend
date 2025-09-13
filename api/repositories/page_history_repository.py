@@ -59,17 +59,19 @@ class PageHistoryRepository:
     #     return db.session.execute(stmt).all()
     
     @staticmethod
-    def get_entity_recent_posts(entity_id: int):
+    def get_entity_posts(entity_id: int):
         stmt = (
             select(
                 Page.uuid.label("page_id"),
                 Page.name.label("page_name"),
                 Page.platform,
+                PageHistory.recorded_at,
                 case(
-                    (Page.platform == "instagram", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts[0 to 4]'), cast(text("'[]'"), JSONB))),
-                    (Page.platform == "linkedin", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates[0 to 4]'), cast(text("'[]'"), JSONB))),
-                    (Page.platform == "tiktok", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_posts_data[0 to 4]'), cast(text("'[]'"), JSONB))),
-                    (Page.platform == "youtube", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos[0 to 4]'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "instagram", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "linkedin", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "tiktok", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_posts_data'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "youtube", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'), cast(text("'[]'"), JSONB))),
+                    (Page.platform == "x", db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'), cast(text("'[]'"), JSONB))),
                     else_=None
                 ).label("posts")
             )
@@ -79,15 +81,7 @@ class PageHistoryRepository:
         )
 
         rows = db.session.execute(stmt).all()
-        return [
-            {
-                "page_id": row.page_id,
-                "page_name": row.page_name,
-                "platform": row.platform,
-                "posts": row.posts
-            }
-            for row in rows
-        ]
+        return rows
     
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
@@ -213,6 +207,7 @@ class PageHistoryRepository:
             .where(Page.entity_id.in_(entities))
             .order_by(OtherEntity.name, PageHistory.recorded_at)
         )
+
         results = db.session.execute(entities_history_stmt).mappings().all()
         return results
         
