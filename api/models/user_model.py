@@ -13,6 +13,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.Enum("public", "influencer", "company", "admin", name="user_roles"), default="public")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    refresh_token = db.Column(db.Text)
+    refresh_token_exp = db.Column(db.DateTime)
+
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

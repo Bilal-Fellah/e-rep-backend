@@ -1,4 +1,5 @@
 # repositories/user_repo.py
+from datetime import datetime
 from api.models.user_model import User
 from api import db
 
@@ -19,3 +20,14 @@ class UserRepository:
         db.session.add(user)
         db.session.commit()
         return user
+    
+    @staticmethod
+    def update_refresh_token(user_id: int, token: str, exp: datetime) -> None:
+       
+        user = db.session.get(User, user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        user.refresh_token = token
+        user.refresh_token_exp = exp
+        db.session.commit()

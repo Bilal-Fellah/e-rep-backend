@@ -71,21 +71,45 @@ def register_entity():
     return success_response(payload, status_code=201)
 
 
+
+
 @auth_bp.route("/login", methods=["POST"])
 def login():
     data = request.json
     user = UserRepository.find_by_email(data["email"])
     if not user or not user.check_password(data["password"]):
-        return jsonify({"error": "Invalid credentials"}), 401
+        return error_response("Invalid credentials", status_code=401)
 
-    payload = {
+    # Access token (2 hours)
+    access_payload = {
         "user_id": user.id,
         "role": user.role,
         "exp": datetime.utcnow() + timedelta(hours=2)
     }
-    token = jwt.encode(payload, SECRET, algorithm="HS256")
+    access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
 
-    return jsonify({"token": token, "role": user.role})
+    # Refresh token (7 days)
+    refresh_payload = {
+        "user_id": user.id,
+        "exp": datetime.utcnow() + timedelta(days=7)
+    }
+    refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
+
+    # Save refresh token & expiry in DB
+    UserRepository.update_refresh_token(
+        user.id,
+        token=refresh_token,
+        exp=datetime.utcnow() + timedelta(days=7)
+    )
+
+    response = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user_role": user.role,
+        "user_id": user.id
+    }
+
+    return success_response(response,status_code=200)
 
 @auth_bp.route("/get_user_data", methods=["POST"])
 def get_user_data():
@@ -102,8 +126,40 @@ def get_user_data():
             "email": user.email,
             "user_id": user.id,
             "role": user.role,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "created_at": user.created_at,
         })
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
+    
+
+@auth_bp.route("/refresh_token", methods=["POST"])
+def refresh():
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if not token:
+        return jsonify({"error": "Missing refresh token"}), 400
+
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        user = UserRepository.get_by_id(payload["user_id"])
+        if not user or user.refresh_token != token:
+            return jsonify({"error": "Invalid refresh token"}), 401
+        if user.refresh_token_exp < datetime.utcnow():
+            return jsonify({"error": "Refresh token expired"}), 401
+
+        # New 2-hour access token
+        new_access = jwt.encode({
+            "user_id": user.id,
+            "role": user.role,
+            "exp": datetime.utcnow() + timedelta(hours=2)
+        }, SECRET, algorithm="HS256")
+        response = {
+            "access_token": new_access
+        }
+        return success_response(response)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid refresh token", status_code=401)
+

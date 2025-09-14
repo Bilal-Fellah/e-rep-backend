@@ -206,11 +206,14 @@ No body parameters are needed.
 #### **Response**
 Returns a JSON object containing the user’s data.
 
-| Field    | Type   | Description                        |
-|----------|--------|------------------------------------|
-| email    | string | User’s email address               |
-| user_id  | int    | Unique identifier of the user      |
-| role     | string | User role (e.g. `admin`, `public`) |
+| Field      | Type   | Description                        |
+|----------  |--------|------------------------------------|
+| email      | string | User’s email address               |
+| user_id    | int    | Unique identifier of the user      |
+| role       | string | User role (e.g. `admin`, `public`) |
+| first_name | string |                                    |
+| last_name  | string |                                    |
+| created_at | string |                                    |
 
 **Example Successful Response (`200 OK`):**
 ```json
@@ -219,7 +222,10 @@ Returns a JSON object containing the user’s data.
   "data": {
     "email": "user@example.com",
     "user_id": 42,
-    "role": "admin"
+    "role": "admin",
+    "first_name": "chopa",
+    "last_name": "chopa",
+    "created_at": "kch date",
   }
 }
 ````
