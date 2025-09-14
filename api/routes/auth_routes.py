@@ -86,3 +86,24 @@ def login():
     token = jwt.encode(payload, SECRET, algorithm="HS256")
 
     return jsonify({"token": token, "role": user.role})
+
+@auth_bp.route("/get_user_data", methods=["POST"])
+def get_user_data():
+   
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        # Example: fetch the user from DB if needed
+        user = UserRepository.get_by_id(payload["user_id"])
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        return success_response(data={
+            "email": user.email,
+            "user_id": user.id,
+            "role": user.role,
+        })
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401

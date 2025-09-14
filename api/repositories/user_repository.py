@@ -4,6 +4,10 @@ from api import db
 
 class UserRepository:
     @staticmethod
+    def get_by_id(user_id: int) -> User | None:
+        return User.query.get(user_id)
+    
+    @staticmethod
     def find_by_email(email):
         return User.query.filter_by(email=email).first()
     
