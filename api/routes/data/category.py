@@ -60,19 +60,3 @@ def get_all_categories():
         return error_response(str(e), 500)
 
 
-@data_bp.route("/toa", methods=["GET"])
-def toa():
-    try:
-        entity_categories = EntityCategoryRepository.get_all()
-        if not entity_categories:
-            return error_response("No entity-category mappings found.", 404)
-
-        data = [
-            {"entity_id": ec.entity_id, "category_id": ec.category_id}
-            for ec in entity_categories
-        ]
-
-        return success_response(data, 200)
-
-    except Exception as e:
-        return error_response(str(e), 500)

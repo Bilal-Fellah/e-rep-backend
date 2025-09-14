@@ -183,11 +183,64 @@ Authenticates a user and returns a JWT token valid for 2 hours.
 }
 ```
 
----
 
-## Notes
+## **4. POST **
 
-* The ` ` returned from login is a JWT signed with the server `SECRET_KEY` using `HS256`.
-* The `exp` (expiration) field inside the JWT payload ensures tokens are valid only for 2 hours.
+**Endpoint:**
+
+```
+POST /auth/get_user_data
+```
+**Description:**
+
+Retrieve the authenticated user’s basic information from a valid JWT.
+
+#### **Headers**
+| Key            | Value example                             | Required |
+|----------------|--------------------------------------------|----------|
+| Authorization  | `Bearer <your_jwt_token>`                  | ✅       |
+
+#### **Request Body**
+No body parameters are needed.
+
+#### **Response**
+Returns a JSON object containing the user’s data.
+
+| Field    | Type   | Description                        |
+|----------|--------|------------------------------------|
+| email    | string | User’s email address               |
+| user_id  | int    | Unique identifier of the user      |
+| role     | string | User role (e.g. `admin`, `public`) |
+
+**Example Successful Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "email": "user@example.com",
+    "user_id": 42,
+    "role": "admin"
+  }
+}
+````
+
+#### **Error Responses**
+
+| Status | Example JSON                                     | When                                                |
+| ------ | ------------------------------------------------ | --------------------------------------------------- |
+| 400    | `{"error": "Missing required parameter: token"}` | Token header missing or empty.                      |
+| 401    | `{"error": "Token has expired"}`                 | Token is valid but expired.                         |
+| 401    | `{"error": "Invalid token"}`                     | Token is malformed or signature verification fails. |
+| 404    | `{"error": "User not found"}`                    | Token is valid but user no longer exists.           |
+
+#### **Notes**
+
+* Supply the token in the `Authorization` header using the Bearer scheme.
+* Token is valid for **2 hours** (as issued by the `/login` route).
+
+```
+
+
+
 
 
