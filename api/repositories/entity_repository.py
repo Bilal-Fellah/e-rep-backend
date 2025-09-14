@@ -1,5 +1,7 @@
 from api import db
 from api.models import Entity
+from api.models.page_history_model import PageHistory
+from api.models.page_model import Page
 
 class EntityRepository:
     @staticmethod
@@ -13,6 +15,18 @@ class EntityRepository:
     @staticmethod
     def get_all() -> list[Entity]:
         return Entity.query.all()
+    
+    @staticmethod
+    def get_who_has_history() -> list[Entity]:
+        
+        return (
+            Entity.query
+            .join(Page, Page.entity_id == Entity.id)
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .distinct()
+            .all()
+        )
+
 
     @staticmethod
     def create(name: str, type_: str) -> Entity:

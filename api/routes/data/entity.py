@@ -62,6 +62,23 @@ def get_all_entities():
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
 
+@data_bp.route("/get_data_existing_entities", methods=["GET"])
+def get_data_existing_entities():
+    try:
+        entities = EntityRepository.get_who_has_history()
+        if not entities:
+            return error_response("No entities found.", status_code=404)
+
+        data = [
+            {"id": e.id, "name": e.name, "type": e.type}
+            for e in entities
+        ]
+        return success_response(data, 200)
+
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", status_code=500)
+
+
 @data_bp.route("/delete_entity", methods=["POST"])
 def delete_entity():
     try:
@@ -236,7 +253,7 @@ def compare_entities_followers():
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
-    
+
     try:
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")
