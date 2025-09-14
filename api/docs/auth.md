@@ -187,7 +187,7 @@ Authenticates a user and returns a JWT token valid for 2 hours.
 
 ## Notes
 
-* The `token` returned from login is a JWT signed with the server `SECRET_KEY` using `HS256`.
+* The ` ` returned from login is a JWT signed with the server `SECRET_KEY` using `HS256`.
 * The `exp` (expiration) field inside the JWT payload ensures tokens are valid only for 2 hours.
 
 

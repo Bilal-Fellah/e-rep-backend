@@ -236,6 +236,7 @@ def compare_entities_followers():
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
+    
     try:
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")
