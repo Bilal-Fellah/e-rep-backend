@@ -127,6 +127,9 @@ def get_entities_ranking():
             return error_response("No data found for entities.", 404)
         
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not token:
+            return success_response(data[:5])
+        
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         user = UserRepository.get_by_id(payload["user_id"])
         if not user:
@@ -152,7 +155,7 @@ def get_entities_ranking():
             print(user.email, user.role)
             return success_response(filtered_entities, 200)
         else:
-            return error_response("You do not have access to this data")
+            return error_response(data[:5])
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
