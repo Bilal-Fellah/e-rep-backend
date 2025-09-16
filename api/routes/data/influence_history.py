@@ -195,35 +195,35 @@ def get_entity_history():
 @data_bp.route("/get_entities_ranking", methods=["GET"])
 def get_entities_ranking():
     allowed_roles = ["admin", "subscribed", "registered", "public"]
-
+    token = None
+    payload = None
     try:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
-        
+
+    except Exception:
+        pass
+        print("HHHHHHHHHHHHHHHHHHHHHHH0")
+
+    
+    try:
+        print("HHHHHHHHHHHHHHHHHHHHHHH1")
         data = PageHistoryRepository.get_all_entities_ranking()
         if not data or (type(data) == list and len(data)<1):
             return error_response("No data found for entities.", 404)
+        user = None
+        if payload:
+            user = UserRepository.get_by_id(payload["user_id"])
         
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        if not token:
-            return success_response(data[:5])
-        
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        user = UserRepository.get_by_id(payload["user_id"])
-        if not user:
-            return error_response("User not found"), 404
+        print("HHHHHHHHHHHHHHHHHHHHHHH2")
         
 
 
-        role = user.role
-        if role == 'admin' or role=='subscribed':
+        role = user.role if user else 'public'
+        if role == 'admin' or role=='subscribed' or role == 'registered':
             return success_response(data, 200)    
-        elif role =='registered':
+        elif role =='public':
+            print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH3")
             # rank by category
             filter_category = defaultdict(list)
             for row in data:
@@ -236,8 +236,7 @@ def get_entities_ranking():
                     filtered_entities.append(top_com_here)
 
             return success_response(filtered_entities, 200)
-        elif role=="public":
-            return success_response(data[:5])
+       
         else:
             return error_response("Role is not valid", 401)
     except jwt.ExpiredSignatureError:
