@@ -1,9 +1,15 @@
+from collections import defaultdict
 from datetime import datetime, date
+import os
+import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request
+from api.repositories.user_repository import UserRepository
 from api.routes.main import error_response, success_response
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
+
+SECRET = os.environ.get("SECRET_KEY")
 
 
 
@@ -119,8 +125,35 @@ def get_entities_ranking():
         data = PageHistoryRepository.get_all_entities_ranking()
         if not data or (type(data) == list and len(data)<1):
             return error_response("No data found for entities.", 404)
+        
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        user = UserRepository.get_by_id(payload["user_id"])
+        if not user:
+            return error_response("User not found"), 404
+        
 
-        return success_response(data, 200)    
+
+        role = user.role
+        if role == 'admin' or role=='registered':
+            return success_response(data, 200)    
+        elif role =='public':
+            # rank by category
+            filter_category = defaultdict(list)
+            for row in data:
+                filter_category[row['category']].append(row)
+
+            filtered_entities = data[:10]
+            for cat in filter_category.keys():
+                top_com_here = min(filter_category[cat], key= lambda e: e['rank'], default=None)
+                if top_com_here['entity_id'] not in [e['entity_id'] for e in filtered_entities]:
+                    filtered_entities.append(top_com_here)
+
+            print(user.email, user.role)
+            return success_response(filtered_entities, 200)
+        else:
+            return error_response("You do not have access to this data")
+
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 

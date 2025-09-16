@@ -1,48 +1,22 @@
-# Authentication & Entity Routes
-
-This document describes the authentication and entity-related routes defined in `routes/auth_routes.py`.
-```markdown
-# Auth API Documentation
-
-This document describes the authentication and entity registration API routes defined in `routes/auth_routes.py`.
-
----
-
-## Base URL
-All routes are prefixed with:  
-```
-
-/auth
-
-```
-
----
-
-## **1. Signup**
-**Endpoint:**  
-```
-
-POST /auth/signup
 
 ````
+# Auth Routes Documentation
 
-**Description:**  
-Creates a new user account.
+## **POST /signup**
+Create a new user account.
 
-**Request Body (JSON):**
+### Request
 ```json
 {
   "first_name": "John",
   "last_name": "Doe",
-  "email": "johndoe@example.com",
-  "password": "securepassword",
-  "role": "public"   // optional, defaults to "public"
+  "email": "john@example.com",
+  "password": "secret123",
+  "role": "public"
 }
 ````
 
-**Responses:**
-
-* **201 Created**
+### Success Response (201)
 
 ```json
 {
@@ -51,8 +25,7 @@ Creates a new user account.
 }
 ```
 
-* **400 Bad Request**
-  Email already exists:
+### Error Response (400)
 
 ```json
 {
@@ -62,45 +35,35 @@ Creates a new user account.
 
 ---
 
-## **2. Register Entity**
+## **POST /register\_entity**
 
-**Endpoint:**
+Register a new entity under a category.
 
-```
-POST /auth/register_entity
-```
-
-**Description:**
-Registers a new entity and associates it with a category.
-
-**Required Fields in Request Body (JSON):**
+### Request
 
 ```json
 {
-  "entity_name": "MyEntity",
-  "type": "organization",
+  "entity_name": "MyCompany",
+  "type": "business",
   "category_id": 2
 }
 ```
 
-**Responses:**
-
-* **201 Created**
+### Success Response (201)
 
 ```json
 {
   "success": true,
   "data": {
-    "id": 10,
-    "name": "MyEntity",
-    "type": "organization",
+    "id": 5,
+    "name": "MyCompany",
+    "type": "business",
     "category_id": 2
   }
 }
 ```
 
-* **400 Bad Request**
-  Missing required keys:
+### Error Response (400/500)
 
 ```json
 {
@@ -108,24 +71,17 @@ Registers a new entity and associates it with a category.
 }
 ```
 
-Invalid category\_id:
-
 ```json
 {
   "error": "wrong category_id"
 }
 ```
 
-Entity already exists:
-
 ```json
 {
-  "error": "entity name MyEntity already exists"
+  "error": "entity name MyCompany already exists"
 }
 ```
-
-* **500 Internal Server Error**
-  Failed to insert entity:
 
 ```json
 {
@@ -133,49 +89,36 @@ Entity already exists:
 }
 ```
 
-Failed to map entity to category:
-
-```json
-{
-  "error": "failed to map entity to category"
-}
-```
-
 ---
 
-## **3. Login**
+## **POST /login**
 
-**Endpoint:**
+Authenticate user and return tokens.
 
-```
-POST /auth/login
-```
-
-**Description:**
-Authenticates a user and returns a JWT token valid for 2 hours.
-
-**Request Body (JSON):**
+### Request
 
 ```json
 {
-  "email": "johndoe@example.com",
-  "password": "securepassword"
+  "email": "john@example.com",
+  "password": "secret123"
 }
 ```
 
-**Responses:**
-
-* **200 OK**
+### Success Response (200)
 
 ```json
 {
-  "token": "JWT_TOKEN_HERE",
-  "role": "public"
+  "success": true,
+  "data": {
+    "access_token": "jwt_access_token_here",
+    "refresh_token": "jwt_refresh_token_here",
+    "user_role": "public",
+    "user_id": 1
+  }
 }
 ```
 
-* **401 Unauthorized**
-  Invalid credentials:
+### Error Response (401)
 
 ```json
 {
@@ -183,70 +126,94 @@ Authenticates a user and returns a JWT token valid for 2 hours.
 }
 ```
 
+---
 
-## **4. POST **
+## **POST /get\_user\_data**
 
-**Endpoint:**
+Fetch user details from JWT access token.
+
+### Headers
 
 ```
-POST /auth/get_user_data
+Authorization: Bearer <access_token>
 ```
-**Description:**
 
-Retrieve the authenticated user’s basic information from a valid JWT.
+### Success Response (200)
 
-#### **Headers**
-| Key            | Value example                             | Required |
-|----------------|--------------------------------------------|----------|
-| Authorization  | `Bearer <your_jwt_token>`                  | ✅       |
-
-#### **Request Body**
-No body parameters are needed.
-
-#### **Response**
-Returns a JSON object containing the user’s data.
-
-| Field      | Type   | Description                        |
-|----------  |--------|------------------------------------|
-| email      | string | User’s email address               |
-| user_id    | int    | Unique identifier of the user      |
-| role       | string | User role (e.g. `admin`, `public`) |
-| first_name | string |                                    |
-| last_name  | string |                                    |
-| created_at | string |                                    |
-
-**Example Successful Response (`200 OK`):**
 ```json
 {
   "success": true,
   "data": {
-    "email": "user@example.com",
-    "user_id": 42,
-    "role": "admin",
-    "first_name": "chopa",
-    "last_name": "chopa",
-    "created_at": "kch date",
+    "email": "john@example.com",
+    "user_id": 1,
+    "role": "public",
+    "first_name": "John",
+    "last_name": "Doe",
+    "created_at": "2025-09-15T08:20:30Z"
   }
 }
-````
-
-#### **Error Responses**
-
-| Status | Example JSON                                     | When                                                |
-| ------ | ------------------------------------------------ | --------------------------------------------------- |
-| 400    | `{"error": "Missing required parameter: token"}` | Token header missing or empty.                      |
-| 401    | `{"error": "Token has expired"}`                 | Token is valid but expired.                         |
-| 401    | `{"error": "Invalid token"}`                     | Token is malformed or signature verification fails. |
-| 404    | `{"error": "User not found"}`                    | Token is valid but user no longer exists.           |
-
-#### **Notes**
-
-* Supply the token in the `Authorization` header using the Bearer scheme.
-* Token is valid for **2 hours** (as issued by the `/login` route).
-
 ```
 
+### Error Responses
 
+```json
+{
+  "error": "User not found"
+}
+```
 
+```json
+{
+  "error": "Token has expired"
+}
+```
 
+```json
+{
+  "error": "Invalid token"
+}
+```
+
+---
+
+## **POST /refresh\_token**
+
+Generate a new access token using a refresh token.
+
+### Headers
+
+```
+Authorization: Bearer <refresh_token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "new_jwt_access_token_here"
+  }
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "Missing refresh token"
+}
+```
+
+```json
+{
+  "error": "Invalid refresh token"
+}
+```
+
+```json
+{
+  "error": "Refresh token expired"
+}
+```
 

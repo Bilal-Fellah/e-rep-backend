@@ -27,6 +27,14 @@ class EntityRepository:
             .all()
         )
 
+    # @staticmethod
+    # def get_allowed_entites_in_ranking(role):
+    #     if role == 'admin' or role=='registered':
+    #         return (Entity.query.all())
+    #     if role == 'public':
+    #         return some_ids
+    #     else:
+    #         return []
 
     @staticmethod
     def create(name: str, type_: str) -> Entity:

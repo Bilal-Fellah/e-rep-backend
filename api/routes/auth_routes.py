@@ -61,6 +61,13 @@ def register_entity():
     if not entity_category:
         return error_response("failed to map entity to category", 500)
 
+    # pages_links = None
+    # if 'pages' in data:
+    #     pages_links = data['pages']
+    # if isinstance(pages_links, list) and len(pages_links) > 0:
+    #     # insert pages as well
+    #     for page in pages_links:
+            
     payload = {
                 "id": entity.id,
                 "name": entity.name,
@@ -113,9 +120,9 @@ def login():
 
 @auth_bp.route("/get_user_data", methods=["POST"])
 def get_user_data():
-   
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         # Example: fetch the user from DB if needed
         user = UserRepository.get_by_id(payload["user_id"])
