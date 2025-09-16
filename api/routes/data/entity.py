@@ -1,5 +1,8 @@
 from collections import defaultdict
 from datetime import datetime, timezone
+import os
+
+import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request, jsonify
 from api.routes.main import error_response, success_response
@@ -11,10 +14,20 @@ from api.utils.posts_utils import ensure_datetime, parse_relative_time
 
 from . import data_bp
 
+SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_entity", methods=["POST"])
 def add_entity():
+    allowed_roles = ['admin', 'subscribed', 'registered']
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         data = request.get_json()
         name = data.get("name", "").strip().lower()
         entity_type = data.get("type", "").strip().lower()
@@ -40,14 +53,27 @@ def add_entity():
                 "category_id": entity_category.category_id,
             }
         }, status_code=201)
-
+    
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
 
 @data_bp.route("/get_all_entities", methods=["GET"])
 def get_all_entities():
+    allowed_roles = ["admin", "subscribed", "registered"]
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entities = EntityRepository.get_all()
         if not entities:
             return error_response("No entities found.", status_code=404)
@@ -57,14 +83,28 @@ def get_all_entities():
             for e in entities
         ]
         return success_response(data, 200)
-
+    
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
 
 @data_bp.route("/get_data_existing_entities", methods=["GET"])
 def get_data_existing_entities():
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entities = EntityRepository.get_who_has_history()
         if not entities:
             return error_response("No entities found.", status_code=404)
@@ -75,13 +115,27 @@ def get_data_existing_entities():
         ]
         return success_response(data, 200)
 
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
 
 @data_bp.route("/delete_entity", methods=["POST"])
 def delete_entity():
+    allowed_roles = ["admin"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entity_id = request.json.get("id")
         if not entity_id:
             return error_response("Missing required field: 'id'.", status_code=400)
@@ -95,6 +149,11 @@ def delete_entity():
             return error_response(f"No entity found with id {entity_id} or already deleted.", status_code=404)
 
         return success_response({"deleted_id": entity_id}, 200)
+    
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
@@ -102,9 +161,16 @@ def delete_entity():
 
 @data_bp.route("/get_entity_profile_card", methods=["GET"])
 def get_entity_profile_card():
-
-
+    allowed_roles = ["admin","subscribed", "registered"]
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entity_id = request.args.get("entity_id")
         data = PageHistoryRepository.get_entity_info_from_history(entity_id)
         if type(data) != dict:
@@ -113,6 +179,11 @@ def get_entity_profile_card():
                 return error_response(message, status_code=404) 
             
         return success_response(data, status_code=200)
+    
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
@@ -122,7 +193,16 @@ def get_entity_followers_history():
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
+    allowed_roles = ["admin", "subscribed"]
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entity_id = request.args.get("entity_id", type=int)
 
         if not entity_id:
@@ -135,6 +215,10 @@ def get_entity_followers_history():
         data = [{'page_id': h.page_id, 'followers': h.followers, 'date': h.recorded_at, "platform": h.platform} for h in history]
         return success_response(data, 200)
 
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
@@ -168,7 +252,17 @@ def get_entity_followers_history():
    
 @data_bp.route("/get_entity_followers_comparison", methods=["GET"])
 def get_entity_followers_comparison():
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entity_id = request.args.get("entity_id")
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
@@ -190,7 +284,7 @@ def get_entity_followers_comparison():
                 followers = row.followers
                 mistakes = []
                 # sum directly by date (all platforms included)
-                if row.followers:
+                if followers:
                     data[row.entity_name]["records"].append({
                         'date': date,
                         'platform': platform,
@@ -199,18 +293,30 @@ def get_entity_followers_comparison():
                     )
                 else:
                     mistakes.append(row.followers)
-        print(mistakes)
         return success_response(data, 200)
         # we get the entities or category
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)
 
 @data_bp.route("/compare_entities_followers", methods=['POST'])
 def compare_entities_followers():
-    
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         data = request.get_json()
         entity_ids = data.get("entity_ids")
         if not entity_ids:
@@ -242,9 +348,13 @@ def compare_entities_followers():
                     )
                 else:
                     mistakes.append(row.followers)
-        print(mistakes)
         return success_response(data, 200)
         # we get the entities or category
+    
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
@@ -253,8 +363,17 @@ def compare_entities_followers():
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
+    allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")
         max_posts = request.args.get("max_posts", type=int)
@@ -327,10 +446,11 @@ def get_entity_posts_timeline():
 
         return success_response(all_posts, 200)
 
-    except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)
 
-
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:

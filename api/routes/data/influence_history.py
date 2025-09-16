@@ -16,7 +16,17 @@ SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/get_after_time", methods=["GET"])
 def get_after_time():
+    allowed_roles = ["admin"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         hour = int(request.args.get("hour"))
 
         history = PageHistoryRepository.get_after_time(hour)
@@ -26,13 +36,26 @@ def get_after_time():
         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
         return success_response(data, 200)
 
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), 500)
 
 @data_bp.route("/get_today_pages_history", methods=["GET"])
 def get_today_pages_history():
-    try:
+    allowed_roles = ["admin", "subscribed", "registered"]
 
+    try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         history = PageHistoryRepository().get_today_all()
         if not history:
             return error_response("No history found", 404)
@@ -40,13 +63,27 @@ def get_today_pages_history():
         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
         return success_response(data, 200)
 
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), 500)
 
 
 @data_bp.route("/get_page_history_today", methods=["GET"])
 def get_page_history():
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         page_id = request.args.get("page_id")
 
         history = PageHistoryRepository().get_page_data_today(page_id)
@@ -55,14 +92,27 @@ def get_page_history():
         
         data = {'id': history.id, 'page_id': history.page_id, 'data': history.data}
         return success_response(data, 200)
-
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), 500)
 
 
 @data_bp.route("/get_platform_history", methods=["GET"])
 def get_platform_history():
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         platform = request.args.get("platform")
         if not platform:
             return error_response("Missing platform parameter", 400)
@@ -76,7 +126,10 @@ def get_platform_history():
             for h in history_list
         ]
         return success_response(data, 200)
-
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), 500)
 
@@ -87,10 +140,27 @@ def get_entity_history():
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")  
 
+        allowed_roles = ['admin', 'registered',]
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        role = None
+        if payload:
+            role = payload['role']
+    
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
 
@@ -106,9 +176,14 @@ def get_entity_history():
         history = PageHistoryRepository().get_entity_data_by_date(entity_id, target_date)
         if not history:
             return error_response("No history found for this entity.", 404)
-
+        
         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data, 'date': h.recorded_at} for h in history]
         return success_response(data, 200)
+    
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
 
     except SQLAlchemyError as e:
         return error_response(f"Database error: {str(e)}", 500)
@@ -119,9 +194,17 @@ def get_entity_history():
 
 @data_bp.route("/get_entities_ranking", methods=["GET"])
 def get_entities_ranking():
-
+    allowed_roles = ["admin", "subscribed", "registered", "public"]
 
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         data = PageHistoryRepository.get_all_entities_ranking()
         if not data or (type(data) == list and len(data)<1):
             return error_response("No data found for entities.", 404)
@@ -138,9 +221,9 @@ def get_entities_ranking():
 
 
         role = user.role
-        if role == 'admin' or role=='registered':
+        if role == 'admin' or role=='subscribed':
             return success_response(data, 200)    
-        elif role =='public':
+        elif role =='registered':
             # rank by category
             filter_category = defaultdict(list)
             for row in data:
@@ -152,11 +235,15 @@ def get_entities_ranking():
                 if top_com_here['entity_id'] not in [e['entity_id'] for e in filtered_entities]:
                     filtered_entities.append(top_com_here)
 
-            print(user.email, user.role)
             return success_response(filtered_entities, 200)
+        elif role=="public":
+            return success_response(data[:5])
         else:
-            return error_response(data[:5])
-
+            return error_response("Role is not valid", 401)
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 

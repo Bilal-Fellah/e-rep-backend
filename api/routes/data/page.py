@@ -1,15 +1,28 @@
 from flask import request
+import jwt
 from api.routes.main import error_response, success_response
 from api.repositories.page_repository import PageRepository
 import uuid
 from . import data_bp
+import os
 
+SECRET = os.environ.get("SECRET_KEY")
 
 # ... other imports
 
 @data_bp.route("/add_page", methods=["POST"])
 def add_page():
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         data = request.get_json()
         platform = data.get("platform", "").strip().lower()
         link = data.get("link", "").strip().lower()
@@ -37,12 +50,28 @@ def add_page():
             "entity_id": page.entity_id
         }, status_code=201)
 
+
+
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), status_code=500)
 
 @data_bp.route("/delete_page", methods=["POST"])
 def delete_page():
+    allowed_roles = ["admin"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         page_id = request.json.get("id")
         if not page_id:
             return error_response("Missing required field: 'id'.", status_code=400)
@@ -53,13 +82,28 @@ def delete_page():
 
         return success_response({"deleted_id": page_id}, status_code=200)
 
+
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), status_code=500)
 
 
 @data_bp.route("/get_all_pages", methods=["GET"])
 def get_all_pages():
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
         pages = PageRepository.get_all()
         if not pages:
             return error_response("No pages found.", status_code=404)
@@ -76,13 +120,28 @@ def get_all_pages():
         ]
         return success_response(data, status_code=200)
 
+
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), status_code=500)
 
 @data_bp.route("/get_pages_by_platform", methods=["GET"])
 def get_pages_by_platform():
-    platform = request.args.get("platform")
+    allowed_roles = ["admin", "subscribed", "registered"]
+
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        if not payload:
+            return error_response("No valid token has been sent", 401)
+        role = payload['role']
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+        
+        platform = request.args.get("platform")
         pages = PageRepository.get_by_platform(platform)
         if not pages:
             return error_response("No pages found.", status_code=404)
@@ -99,5 +158,10 @@ def get_pages_by_platform():
         ]
         return success_response(data, status_code=200)
 
+
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), status_code=500)

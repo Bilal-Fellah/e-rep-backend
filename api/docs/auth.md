@@ -20,9 +20,13 @@ Create a new user account.
 
 ```json
 {
-  "message": "User created",
-  "id": 1
+  "data": {
+    "user_id": 9,
+    "user_role": "public"
+  },
+  "success": true
 }
+
 ```
 
 ### Error Response (400)

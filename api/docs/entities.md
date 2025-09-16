@@ -1,8 +1,10 @@
-````
+
 # Entity Routes Documentation
 
 ## **POST /add_entity**
 Add a new entity and link it to a category.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 ```json
@@ -52,6 +54,8 @@ Add a new entity and link it to a category.
 
 Fetch all entities.
 
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 ### Success Response (200)
 
 ```json
@@ -84,6 +88,8 @@ Fetch all entities.
 
 Fetch all entities that have history data.
 
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 ### Success Response (200)
 
 ```json
@@ -115,6 +121,8 @@ Fetch all entities that have history data.
 ## **POST /delete\_entity**
 
 Delete an entity by ID.
+
+####   allowed_roles = ["admin"]
 
 ### Request
 
@@ -161,6 +169,8 @@ Delete an entity by ID.
 
 Get entity profile card from history.
 
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 ### Request
 
 ```
@@ -199,6 +209,8 @@ Get entity profile card from history.
 ## **GET /get\_entity\_followers\_history**
 
 Fetch followers history for an entity.
+
+####  allowed_roles = ["admin", "subscribed"]
 
 ### Request
 
@@ -243,6 +255,8 @@ Fetch followers history for an entity.
 ## **GET /get\_entity\_followers\_comparison**
 
 Compare followers with other entities in the same category.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 
@@ -299,6 +313,8 @@ Compare followers with other entities in the same category.
 
 Compare followers history between multiple entities.
 
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 ### Request
 
 ```json
@@ -354,6 +370,8 @@ Compare followers history between multiple entities.
 ## **GET /get\_entity\_posts\_timeline**
 
 Fetch recent posts of an entity with optional filters.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 

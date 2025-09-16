@@ -1,10 +1,10 @@
-````
 # Page Routes Documentation
 
 ---
 
 ## **POST /add_page**
 Add a new page.
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 ```json
@@ -47,6 +47,8 @@ Add a new page.
 
 Delete an existing page by ID.
 
+####   allowed_roles = ["admin"]
+
 ### Request
 
 ```json
@@ -81,6 +83,9 @@ Delete an existing page by ID.
 ## **GET /get\_all\_pages**
 
 Fetch all pages.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 
 ### Request
 
@@ -127,6 +132,8 @@ Fetch all pages.
 ## **GET /get\_pages\_by\_platform**
 
 Fetch all pages for a given platform.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 

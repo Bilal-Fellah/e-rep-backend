@@ -16,6 +16,15 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.route("/signup", methods=["POST"])
 def signup():
     data = request.json
+    required_keys = ['first_name','last_name','email','password','role']
+    for key in required_keys:
+        if key not in data:
+            return error_response(f"missing required key: {key}", 400)
+
+    allowed_roles = ["public","registered","anonymous","subscribed","admin"]
+    if data['role'] not in allowed_roles:
+        return error_response(f"role must be in {allowed_roles}")
+    
     if UserRepository.find_by_email(data["email"]):
         return jsonify({"error": "Email already exists"}), 400
     
@@ -26,7 +35,12 @@ def signup():
         password=data["password"],
         role=data.get("role", "public")
     )
-    return jsonify({"message": "User created", "id": user.id}), 201
+
+    response = {
+        "user_role": user.role,
+        "user_id": user.id
+    }
+    return success_response(data=response )
 
 
 @auth_bp.route("/register_entity", methods=["POST"])
@@ -141,17 +155,20 @@ def get_user_data():
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
-    
+    except Exception as e:
+        return error_response(str(e), 500)
+
 
 @auth_bp.route("/refresh_token", methods=["POST"])
 def refresh():
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if not token:
-        return jsonify({"error": "Missing refresh token"}), 400
 
     try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not token:
+            return jsonify({"error": "Missing refresh token"}), 400
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         user = UserRepository.get_by_id(payload["user_id"])
+        
         if not user or user.refresh_token != token:
             return jsonify({"error": "Invalid refresh token"}), 401
         if user.refresh_token_exp < datetime.utcnow():

@@ -1,4 +1,4 @@
-```
+
 # Page History Routes Documentation
 
 ---
@@ -6,8 +6,10 @@
 ## **GET /get_after_time**
 Get all history records created after a given hour.
 
+####   allowed_roles = ["admin"]
+
 ### Request
-```
+````
 
 /get\_after\_time?hour=12
 
@@ -39,6 +41,8 @@ Get all history records created after a given hour.
 ## **GET /get\_today\_pages\_history**
 
 Get all page histories for today.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 
@@ -74,6 +78,8 @@ Get all page histories for today.
 
 Get today’s history for a specific page.
 
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 ### Request
 
 ```
@@ -104,6 +110,8 @@ Get today’s history for a specific page.
 ## **GET /get\_platform\_history**
 
 Get history for a given platform.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 
@@ -142,6 +150,8 @@ Get history for a given platform.
 ## **GET /get\_entity\_history**
 
 Get all histories for an entity, optionally filtered by date.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 
@@ -188,6 +198,8 @@ Get all histories for an entity, optionally filtered by date.
 ## **GET /get\_entities\_ranking**
 
 Get ranking data for all entities.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
 
 ### Request
 

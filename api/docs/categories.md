@@ -1,8 +1,11 @@
-````
+
 # Data Routes Documentation
 
 ## **POST /add_category**
 Add a new category.
+
+
+###     allowed_roles = ["admin"]
 
 ### Request
 ```json
@@ -44,6 +47,10 @@ Add a new category.
 ## **POST /delete\_category**
 
 Delete an existing category by ID.
+
+
+###     allowed_roles = ["admin"]
+
 
 ### Request
 
