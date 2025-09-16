@@ -221,3 +221,66 @@ Authorization: Bearer <refresh_token>
 }
 ```
 
+
+---
+
+
+## **POST /register\entity**
+
+Add a new entity with all related data in the database
+
+####   allowed_roles = ["admin"]
+
+### Headers
+
+```
+Authorization: Bearer <access_token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "data": {
+    "category_id": 3,
+    "id": 166,
+    "name": "chopit2",
+    "pages": [
+      {
+        "page_id": "71b5dd66-6cc9-5dfc-88ae-bff8d2c9d483",
+        "page_link": "chopa.com",
+        "platform": "instagram"
+      }
+    ],
+    "type": "company"
+  },
+  "success": true
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "Missing access token"
+}
+```
+
+```json
+{
+  "error": "Invalid access token"
+}
+```
+
+```json
+{
+  "error": "wrong category_id"
+}
+```
+
+```json
+{
+  "error": "Missing required parameters"
+}
+```
+

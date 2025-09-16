@@ -26,6 +26,7 @@ def add_entity():
             return error_response("No valid token has been sent", 401)
         role = payload['role']
         if role not in allowed_roles:
+            
             return error_response("Access denied", 403)
         
         data = request.get_json()
