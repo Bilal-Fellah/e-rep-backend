@@ -31,3 +31,17 @@ class UserRepository:
         user.refresh_token = token
         user.refresh_token_exp = exp
         db.session.commit()
+
+        
+    @staticmethod
+    def update_role(user_id: int, role: str) -> User:
+       
+        user = db.session.get(User, user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        user.role = role
+        db.session.commit()
+        return user
+
+

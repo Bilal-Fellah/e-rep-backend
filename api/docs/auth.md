@@ -225,7 +225,7 @@ Authorization: Bearer <refresh_token>
 ---
 
 
-## **POST /register\entity**
+## **POST /register\_entity**
 
 Add a new entity with all related data in the database
 
@@ -275,6 +275,50 @@ Authorization: Bearer <access_token>
 ```json
 {
   "error": "wrong category_id"
+}
+```
+
+```json
+{
+  "error": "Missing required parameters"
+}
+```
+
+## **POST /validate\_user\_role**
+
+Update the role of a user
+
+####   allowed_roles = ["admin"]
+
+### Headers
+
+```
+Authorization: Bearer <access_token>
+```
+
+### Success Response (200)
+
+```json
+{
+  "data": {
+    "role": "admin",
+    "user_id": 9
+  },
+  "success": true
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "Missing access token"
+}
+```
+
+```json
+{
+  "error": "Invalid access token"
 }
 ```
 

@@ -20,7 +20,7 @@ auth_bp = Blueprint("auth", __name__)
 def signup():
     try:
         data = request.json
-        required_keys = ['first_name','last_name','email','password','role']
+        required_keys = ['first_name','last_name','email','password']
         for key in required_keys:
             if key not in data:
                 return error_response(f"missing required key: {key}", 400)
@@ -37,7 +37,7 @@ def signup():
             last_name=data["last_name"],
             email=data["email"],
             password=data["password"],
-            role=data.get("role", "public")
+            role= 'public'
         )
 
         response = {
@@ -232,3 +232,38 @@ def refresh():
     except jwt.InvalidTokenError:
         return error_response("Invalid refresh token", status_code=401)
 
+
+
+@auth_bp.route("/validate_user_role", methods=["POST"])
+def validate_user_role():
+    allowed_roles = ["admin"]
+    required_keys = ["user_id", "role"]
+    try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        # Example: fetch the user from DB if needed
+        user = UserRepository.get_by_id(payload["user_id"])
+        if not user:
+            return error_response("User not found", 404)
+        role = user.role
+        if role not in allowed_roles:
+            return error_response("Access denied", 403)
+
+        data = request.get_json()
+        for key in required_keys:
+            if key not in data:
+                return error_response(f"Missing required key {key}", 400)
+
+        user_id = data['user_id']
+        role = data['role']
+
+        user = UserRepository.update_role(user_id=user_id, role= role)
+        response = {"user_id": user.id, 'role': user.role}
+        return success_response(data=response)
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+    except Exception as e:
+        return error_response(str(e), 500)
