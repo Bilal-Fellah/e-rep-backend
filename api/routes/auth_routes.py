@@ -37,7 +37,7 @@ def signup():
             last_name=data["last_name"],
             email=data["email"],
             password=data["password"],
-            role= 'public'
+            role= 'registered'
         )
 
         response = {
