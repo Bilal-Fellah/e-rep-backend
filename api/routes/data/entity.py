@@ -194,7 +194,7 @@ def get_entity_followers_history():
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
-    allowed_roles = ["admin", "subscribed"]
+    allowed_roles = ["admin", "subscribed", "registered"]
     try:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         payload = jwt.decode(token, SECRET, algorithms=['HS256'])
