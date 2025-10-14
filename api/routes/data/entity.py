@@ -1,3 +1,4 @@
+import ast
 from collections import defaultdict
 from datetime import datetime, timezone
 import os
@@ -323,6 +324,13 @@ def compare_entities_followers():
         if not entity_ids:
             return error_response("Missing required query param: 'entity_ids'.", 400)
         
+        # check that all entities exists
+        # entities = EntityRepository.get_who_has_history()
+        # valid_ids = [e['id'] for e in entities]
+        # for id in entity_ids:
+        #     if id not in valid_ids:
+        #         return error_response(f"id: {id} not valid")
+
         raw_results = PageHistoryRepository.get_entites_followers_competition(entity_ids)
         if not raw_results or len(raw_results) < 1:
             return error_response("No data for this entities", 404)

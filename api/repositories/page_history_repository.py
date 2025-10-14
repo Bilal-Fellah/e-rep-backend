@@ -247,10 +247,16 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "youtube", PageHistory.data["subscribers"]),
-                    else_ = PageHistory.data["followers"]
-                ).cast(db.Integer).label("followers"),
+                cast(
+                    db.func.coalesce(
+                        case(
+                            (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
+                            else_=PageHistory.data["followers"].astext
+                        ),
+                        "0"  # default if null
+                    ),
+                    db.Integer
+                ).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )
@@ -259,7 +265,6 @@ class PageHistoryRepository:
             .where(Page.entity_id.in_(entities))
             .order_by(OtherEntity.name, PageHistory.recorded_at)
         )
-
         results = db.session.execute(entities_history_stmt).mappings().all()
         return results
         
