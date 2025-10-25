@@ -5,7 +5,7 @@
 Add a new category.
 
 
-###     allowed_roles = ["admin"]
+#### allowed_roles = ["admin"]
 
 ### Request
 ```json
@@ -49,7 +49,7 @@ Add a new category.
 Delete an existing category by ID.
 
 
-###     allowed_roles = ["admin"]
+#### allowed_roles = ["admin"]
 
 
 ### Request
@@ -96,6 +96,9 @@ Delete an existing category by ID.
 ## **GET /get\_all\_categories**
 
 Fetch all categories.
+
+####   allowed_roles = ["admin", "subscribed", "registered"]
+
 
 ### Request
 

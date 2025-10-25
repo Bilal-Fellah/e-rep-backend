@@ -421,11 +421,16 @@ def get_entity_posts_timeline():
             page_id = row.page_id
             page_name = row.page_name
             posts = row.posts
+
             if len(posts) > 0 and isinstance(posts[0], list):
                 posts = posts[0]
             else:
                 print("didnt change here to posts[0]")
+                continue
 
+            if not posts or len(posts)==0:
+                continue
+            # print(type(posts))
             for post in posts:
                 raw_date = post[sorting_map[platform]] if sorting_map[platform] else None
                 if not raw_date:
@@ -444,13 +449,14 @@ def get_entity_posts_timeline():
                 if filter_date and post_date < filter_date:
                     continue
 
-                all_posts.append(post)
+                else:
+                    all_posts.append(post)
 
         # Sort descending by date
         all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
 
         # Apply max_posts if provided
-        if max_posts:
+        if max_posts and all_posts:
             all_posts = all_posts[:max_posts]
 
         return success_response(all_posts, 200)
