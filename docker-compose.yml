@@ -5,8 +5,8 @@ services:
     build: .
     container_name: flask-app
     env_file: .env
-    ports:
-      - "80:8000"         # expose Flask to host (can be removed if you only want tunnel access)
+    expose:
+      - "8000"                     # expose to other services (like Nginx), not to host
     restart: unless-stopped
     deploy:
       resources:
@@ -19,13 +19,5 @@ services:
         max-size: "10m"
         max-file: "3"
     volumes:
-      - ./instance:/app/instance   # Flask instance folder
-      - ./uploads:/app/uploads     # file uploads
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    command: tunnel --no-autoupdate --url http://web:8000
-    depends_on:
-      - web
-    restart: unless-stopped
+      - ./instance:/app/instance
+      - ./uploads:/app/uploads
