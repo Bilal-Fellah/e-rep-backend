@@ -8,8 +8,6 @@ import os
 
 SECRET = os.environ.get("SECRET_KEY")
 
-# ... other imports
-
 @data_bp.route("/add_page", methods=["POST"])
 def add_page():
     allowed_roles = ["admin", "subscribed", "registered"]

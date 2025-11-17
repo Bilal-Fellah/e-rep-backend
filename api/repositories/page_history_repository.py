@@ -251,7 +251,7 @@ class PageHistoryRepository:
                     db.func.coalesce(
                         case(
                             (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
-                            else_=PageHistory.data["followers"].astext
+                            else_=PageHistory.data["followers"]
                         ),
                         "0"  # default if null
                     ),
@@ -309,33 +309,45 @@ class PageHistoryRepository:
 
     @staticmethod
     def get_all_entities_ranking():
-        # --- Step 1: Latest snapshot per page (instead of separate latest_history_subq + ph join) ---
+        # Step 1: raw JSON value
+        raw_followers = case(
+            (Page.platform == "youtube", PageHistory.data["subscribers"]),
+            else_=PageHistory.data["followers"]
+        )
+
+        # Step 2: Cast AFTER evaluating it's not NULL
+        followers_case = db.cast(raw_followers, db.Integer)
+
+        # profile picture case
+        profile_url_case = case(
+            (Page.platform == "youtube", PageHistory.data["profile_image"]),
+            (Page.platform == "x", PageHistory.data["profile_image_link"]),
+            (Page.platform == "tiktok", PageHistory.data["profile_pic_url"]),
+            (Page.platform == "linkedin", PageHistory.data["logo"]),
+            (Page.platform == "instagram", PageHistory.data["profile_image_link"]),
+        )
+
         latest_page_data = (
             select(
                 PageHistory.page_id,
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "youtube", PageHistory.data["subscribers"]),
-                    else_=PageHistory.data["followers"]
-                ).cast(db.Integer).label("followers"),
-                case(
-                    (Page.platform == "youtube", PageHistory.data["profile_image"]),
-                    (Page.platform == "x", PageHistory.data["profile_image_link"]),
-                    (Page.platform == "tiktok", PageHistory.data["profile_pic_url"]),
-                    (Page.platform == "linkedin", PageHistory.data["logo"]),
-                    (Page.platform == "instagram", PageHistory.data["profile_image_link"]),
-                ).label("profile_url")
+                followers_case.label("followers"),
+                profile_url_case.label("profile_url"),
             )
             .join(Page, Page.uuid == PageHistory.page_id)
             .where(
                 PageHistory.recorded_at
-                == select(db.func.max(PageHistory.recorded_at))
-                .where(PageHistory.page_id == Page.uuid)
-                .correlate(Page)
-                .scalar_subquery()
+                == (
+                    select(db.func.max(PageHistory.recorded_at))
+                    .where(PageHistory.page_id == Page.uuid)
+                    .where(raw_followers.isnot(None))        # ⭐ USE RAW JSON HERE
+                    .correlate(Page)
+                    .scalar_subquery()
+                )
             )
             .subquery()
         )
+
 
         # --- Step 2: Aggregate per entity ---
 

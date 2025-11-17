@@ -226,31 +226,6 @@ def get_entity_followers_history():
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)
     
-
-
-
-# @data_bp.route("/get_entity_recent_posts", methods=["GET"])
-# def get_entity_recent_posts():
-#     """
-#     get recent posts (5) from all platforms, get the most recent
-#     """
-#     try:
-#         entity_id = request.args.get("entity_id", type=int)
-
-#         if not entity_id:
-#             return error_response("Missing required query param: 'entity_id'.", 400)
-
-#         history = PageHistoryRepository().get_entity_recent_posts(entity_id)
-#         if not history or (type(history) == list and len(history)<1):
-#             return error_response("No history found for this entity.", 404)
-
-#         return success_response(history, 200)
-
-#     except SQLAlchemyError as e:
-#         return error_response(f"Database error: {str(e)}", 500)
-#     except Exception as e:
-#         return error_response(f"Unexpected error: {str(e)}", 500)
-    
    
 @data_bp.route("/get_entity_followers_comparison", methods=["GET"])
 def get_entity_followers_comparison():
