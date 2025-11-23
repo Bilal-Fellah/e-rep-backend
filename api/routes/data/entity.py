@@ -21,14 +21,13 @@ SECRET = os.environ.get("SECRET_KEY")
 def add_entity():
     allowed_roles = ['admin', 'subscribed', 'registered']
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:   
+        #     return error_response("Access denied", 403)
         
         data = request.get_json()
         name = data.get("name", "").strip().lower()
@@ -68,13 +67,13 @@ def add_entity():
 def get_all_entities():
     allowed_roles = ["admin", "subscribed", "registered"]
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entities = EntityRepository.get_all()
         if not entities:
@@ -99,13 +98,13 @@ def get_data_existing_entities():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entities = EntityRepository.get_who_has_history()
         if not entities:
@@ -130,13 +129,13 @@ def delete_entity():
     allowed_roles = ["admin"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entity_id = request.json.get("id")
         if not entity_id:
@@ -165,13 +164,13 @@ def delete_entity():
 def get_entity_profile_card():
     allowed_roles = ["admin","subscribed", "registered"]
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entity_id = request.args.get("entity_id")
         data = PageHistoryRepository.get_entity_info_from_history(entity_id)
@@ -197,13 +196,13 @@ def get_entity_followers_history():
     """
     allowed_roles = ["admin", "subscribed", "registered"]
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entity_id = request.args.get("entity_id", type=int)
 
@@ -232,13 +231,13 @@ def get_entity_followers_comparison():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entity_id = request.args.get("entity_id")
         if not entity_id:
@@ -286,25 +285,18 @@ def compare_entities_followers():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         data = request.get_json()
         entity_ids = data.get("entity_ids")
         if not entity_ids:
             return error_response("Missing required query param: 'entity_ids'.", 400)
-        
-        # check that all entities exists
-        # entities = EntityRepository.get_who_has_history()
-        # valid_ids = [e['id'] for e in entities]
-        # for id in entity_ids:
-        #     if id not in valid_ids:
-        #         return error_response(f"id: {id} not valid")
 
         raw_results = PageHistoryRepository.get_entites_followers_competition(entity_ids)
         if not raw_results or len(raw_results) < 1:
@@ -350,13 +342,13 @@ def get_entity_posts_timeline():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")

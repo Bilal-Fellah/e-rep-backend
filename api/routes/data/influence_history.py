@@ -17,13 +17,13 @@ def get_after_time():
     allowed_roles = ["admin"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         hour = int(request.args.get("hour"))
 
@@ -46,13 +46,13 @@ def get_today_pages_history():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         history = PageHistoryRepository().get_today_all()
         if not history:
@@ -74,13 +74,13 @@ def get_page_history():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         page_id = request.args.get("page_id")
 
@@ -103,13 +103,13 @@ def get_platform_history():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         platform = request.args.get("platform")
         if not platform:
@@ -141,13 +141,13 @@ def get_entity_history():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")  
@@ -195,12 +195,12 @@ def get_entities_ranking():
     allowed_roles = ["admin", "subscribed", "registered", "public"]
     token = None
     payload = None
-    try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+    # try:
+    #     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    #     payload = jwt.decode(token, SECRET, algorithms=['HS256'])
 
-    except Exception:
-        pass
+    # except Exception:
+    #     pass
 
     
     try:
@@ -208,30 +208,31 @@ def get_entities_ranking():
         if not data or (type(data) == list and len(data)<1):
             return error_response("No data found for entities.", 404)
         
-        user = None
-        if payload:
-            user = UserRepository.get_by_id(payload["user_id"])
+        # user = None
+        # if payload:
+        #     user = UserRepository.get_by_id(payload["user_id"])
 
-        role = user.role if user else 'public'
+        # role = user.role if user else 'public'
         
-        if role == 'admin' or role=='subscribed' or role == 'registered':
-            return success_response(data, 200)    
-        elif role =='public':
-            # rank by category
-            filter_category = defaultdict(list)
-            for row in data:
-                filter_category[row['category']].append(row)
+        # if role == 'admin' or role=='subscribed' or role == 'registered':
+        return success_response(data, 200)    
+        
+        # elif role =='public':
+        #     # rank by category
+        #     filter_category = defaultdict(list)
+        #     for row in data:
+        #         filter_category[row['category']].append(row)
 
-            filtered_entities = data[:10]
-            for cat in filter_category.keys():
-                top_com_here = min(filter_category[cat], key= lambda e: e['rank'], default=None)
-                if top_com_here['entity_id'] not in [e['entity_id'] for e in filtered_entities]:
-                    filtered_entities.append(top_com_here)
+        #     filtered_entities = data[:10]
+        #     for cat in filter_category.keys():
+        #         top_com_here = min(filter_category[cat], key= lambda e: e['rank'], default=None)
+        #         if top_com_here['entity_id'] not in [e['entity_id'] for e in filtered_entities]:
+        #             filtered_entities.append(top_com_here)
 
-            return success_response(filtered_entities, 200)
+        #     return success_response(filtered_entities, 200)
        
-        else:
-            return error_response("Role is not valid", 401)
+        # else:
+        #     return error_response("Role is not valid", 401)
     except jwt.ExpiredSignatureError:
         return error_response("Token has expired", 401)
     except jwt.InvalidTokenError:

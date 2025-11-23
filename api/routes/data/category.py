@@ -13,14 +13,14 @@ def add_category():
     allowed_roles = ['admin']
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
         
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403 )
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403 )
 
         data = request.get_json()
         name = data.get("name", "").strip().lower()
@@ -47,14 +47,14 @@ def add_category():
 def delete_category():
     allowed_roles = ['admin']
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
         
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403 )
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403 )
 
         category_id = request.json.get("id")
         if not category_id:
@@ -78,14 +78,14 @@ def delete_category():
 def get_all_categories():
     allowed_roles = ['admin', 'registered', 'subscribed']
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
         
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403 )
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403 )
 
         categories = CategoryRepository.get_all()
         if not categories:

@@ -13,13 +13,13 @@ def add_page():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         data = request.get_json()
         platform = data.get("platform", "").strip().lower()
@@ -62,13 +62,13 @@ def delete_page():
     allowed_roles = ["admin"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         page_id = request.json.get("id")
         if not page_id:
@@ -94,13 +94,13 @@ def get_all_pages():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         pages = PageRepository.get_all()
         if not pages:
@@ -131,13 +131,13 @@ def get_pages_by_platform():
     allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
         
         platform = request.args.get("platform")
         pages = PageRepository.get_by_platform(platform)
