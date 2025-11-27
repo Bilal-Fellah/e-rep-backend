@@ -96,7 +96,9 @@ class PageHistoryRepository:
                     db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
                                 cast(text("'[]'"), JSONB))),
                     else_=None
-                ).label("posts")
+                ).label("posts"),
+                Page.entity_id.label("entity_id")
+
             )
             .join(Page, PageHistory.page_id == Page.uuid)
             .join(latest,

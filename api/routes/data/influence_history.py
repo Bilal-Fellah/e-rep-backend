@@ -340,15 +340,16 @@ def get_copetitors_interaction_stats():
         post_scores = []
 
         for row in data:
-            # row: [page_id, page_name, platform, recorded_at, posts_list]
+            # row: [page_id, page_name, platform, recorded_at, posts, entity_id]
             platform = row[2]
+            page_id = row[0]
 
             if platform not in platform_metrics:
                 continue
 
             posts = row[4]
             if isinstance(posts, list) and len(posts) > 0:
-                posts = posts[0]  # your format: [[{post1}, {post2}, ...]]
+                posts = posts[0]  
             else:
                 continue
 
@@ -376,7 +377,9 @@ def get_copetitors_interaction_stats():
                         **{m["name"]: post.get(m["name"], 0) for m in metrics},
                         "score": post_sc,
                         "platform": platform,
-                        "create_time": post.get(platform_metrics[platform]['date'])
+                        "create_time": post.get(platform_metrics[platform]['date']),
+                        "page_id": page_id,
+                        "entity_id": row[5]
                     }
                 )
 

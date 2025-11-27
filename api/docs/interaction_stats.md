@@ -93,14 +93,16 @@ Example response:
 "success": true,
 "data": [
 {
-"comments_count": 1,
-"likes_count": 54,
-"platform": "linkedin",
-"post_id": "7399492135802277888",
-"create_time": "2025-11-27T09:02:46.232Z",
-"score": 22.2
-}
-]
+      "comments_count": 1,
+      "create_time": "2025-11-27T09:02:46.232Z",
+      "entity_id": 94,
+      "likes_count": 54,
+      "page_id": "89d53a4f-e978-5b46-8870-e7b70deee521",
+      "platform": "linkedin",
+      "post_id": "7399492135802277888",
+      "score": 22.200000000000003
+    },
+    ]
 }
 
 ---
