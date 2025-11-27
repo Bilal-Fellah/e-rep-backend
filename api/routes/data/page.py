@@ -1,8 +1,12 @@
 from flask import request
 import jwt
+from api.repositories.page_history_repository import PageHistoryRepository
 from api.routes.main import error_response, success_response
 from api.repositories.page_repository import PageRepository
+from api.utils.data_keys import platform_metrics
 import uuid
+
+from api.utils.posts_utils import ensure_datetime
 from . import data_bp
 import os
 
@@ -163,3 +167,68 @@ def get_pages_by_platform():
         return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), status_code=500)
+
+@data_bp.route("/get_page_interaction_stats", methods=["GET"])
+def get_page_interaction_stats():
+    try:
+        page_id = request.args.get("page_id")
+        start_date = request.args.get("start_date")
+        if start_date:
+            start_date = ensure_datetime(start_date)
+        else:
+            start_date = None
+
+        data = PageHistoryRepository.get_page_posts(page_id=page_id)
+
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response(f"No data found for page {page_id}.", 404)
+
+        post_scores = []
+
+        for row in data:
+            # row: [page_id, page_name, platform, recorded_at, posts_list]
+            platform = row[2]
+
+            if platform not in platform_metrics:
+                continue
+
+            posts = row[4]
+            if isinstance(posts, list) and len(posts) > 0:
+                posts = posts[0]  # your format: [[{post1}, {post2}, ...]]
+            else:
+                continue
+
+            id_key = platform_metrics[platform]["id_key"]
+            metrics = platform_metrics[platform]["metrics"]
+
+            for post in posts:
+                post_sc = 0
+
+                # check date
+                
+                post_date = post.get(platform_metrics[platform]['date'])
+                if start_date and start_date > ensure_datetime(post_date):
+                    continue # skip older posts
+
+                # calculate score
+                for m in metrics:
+                    metric_name = m["name"]
+                    metric_score = m["score"]
+
+                    value = post.get(metric_name, 0)
+                    post_sc += value * metric_score
+
+                post_scores.append(
+                    {
+                        "post_id": post.get(id_key),
+                        **{m["name"]: post.get(m["name"], 0) for m in metrics},
+                        "score": post_sc,
+                        "platform": platform,
+                        "create_time": post.get(platform_metrics[platform]['date'])
+                    }
+                )
+
+        return success_response(post_scores, 200)
+
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", 500)

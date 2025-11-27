@@ -6,8 +6,12 @@ from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request
 from api.repositories.user_repository import UserRepository
 from api.routes.main import error_response, success_response
+from api.utils.posts_utils import ensure_datetime
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
+from api.utils.data_keys import platform_metrics
+import traceback
+
 
 SECRET = os.environ.get("SECRET_KEY")
 
@@ -241,52 +245,21 @@ def get_entities_ranking():
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
 
-@data_bp.route("/get_interaction_stats", methods=["GET"])
-def get_interaction_stats():
+@data_bp.route("/get_entity_interaction_stats", methods=["GET"])
+def get_entity_interaction_stats():
     try:
         entity_id = request.args.get("entity_id", type=int)
+        start_date = request.args.get("start_date")
+        if start_date:
+            start_date = ensure_datetime(start_date)
+        else:
+            start_date = None
+
         data = PageHistoryRepository.get_entity_posts(entity_id=entity_id)
 
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response(f"No data found for entity {entity_id}.", 404)
 
-        platform_metrics = {
-            "instagram": {
-                "id_key": "id",
-                "weight": 1/4,
-                "metrics": [
-                    {"name": "comments", "score": 0.7},
-                    {"name": "likes", "score": 0.3},
-                ]
-            },
-            "linkedin": {
-                "id_key": "post_id",
-                "weight": 1/4,
-                "metrics": [
-                    {"name": "comments_count", "score": 0.6},
-                    {"name": "likes_count", "score": 0.4},
-                ]
-            },
-            "x": {
-                "id_key": "post_id",
-                "weight": 1/4,
-                "metrics": [
-                    {"name": "reposts", "score": 0.5},
-                    {"name": "likes", "score": 0.25},
-                    {"name": "replies", "score": 0.25},
-                ]
-            },
-            "tiktok": {
-                "id_key": "video_id",
-                "weight": 1/4,
-                "metrics": [
-                    {"name": "commentcount", "score": 0.4},
-                    {"name": "share_count", "score": 0.3},
-                    {"name": "favorites_count", "score": 0.2},
-                    {"name": "playcount", "score": 0.1},
-                ]
-            }
-        }
 
         post_scores = []
 
@@ -309,6 +282,10 @@ def get_interaction_stats():
             for post in posts:
                 post_sc = 0
 
+                post_date = post.get(platform_metrics[platform]['date'])
+                if start_date > ensure_datetime(post_date):
+                    continue # skip older posts
+
                 # calculate score
                 for m in metrics:
                     metric_name = m["name"]
@@ -323,10 +300,88 @@ def get_interaction_stats():
                         **{m["name"]: post.get(m["name"], 0) for m in metrics},
                         "score": post_sc,
                         "platform": platform,
+                        "create_time": post.get(platform_metrics[platform]['date'])
                     }
                 )
 
         return success_response(post_scores, 200)
 
     except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", 500)
+
+@data_bp.route("/get_competitors_interaction_stats", methods=["POST"])
+def get_copetitors_interaction_stats():
+
+    try:
+        inputs = request.get_json()
+
+        entity_ids = list(inputs.get("entity_ids"))
+        if not entity_ids:
+            return error_response(f"wrong value for entity_ids")
+        
+        start_date = inputs.get("start_date", None)
+        print(start_date)
+
+        if start_date:
+            start_date = ensure_datetime(start_date)
+        else:
+            start_date = None
+
+        if not isinstance(entity_ids, list):
+            return error_response(f"entity_ids must be a list not a {type(entity_ids)}")
+        
+        data = []
+        for id in entity_ids:
+            data.extend(PageHistoryRepository.get_entity_posts(entity_id=id))
+
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response(f"No data found for entity {entity_ids}.", 404)
+
+        post_scores = []
+
+        for row in data:
+            # row: [page_id, page_name, platform, recorded_at, posts_list]
+            platform = row[2]
+
+            if platform not in platform_metrics:
+                continue
+
+            posts = row[4]
+            if isinstance(posts, list) and len(posts) > 0:
+                posts = posts[0]  # your format: [[{post1}, {post2}, ...]]
+            else:
+                continue
+
+            id_key = platform_metrics[platform]["id_key"]
+            metrics = platform_metrics[platform]["metrics"]
+
+            for post in posts:
+                post_sc = 0
+
+                post_date = post.get(platform_metrics[platform]['date'])
+                if start_date and start_date > ensure_datetime(post_date):
+                    continue # skip older posts
+
+                # calculate score
+                for m in metrics:
+                    metric_name = m["name"]
+                    metric_score = m["score"]
+
+                    value = post.get(metric_name, 0)
+                    post_sc += value * metric_score
+
+                post_scores.append(
+                    {
+                        "post_id": post.get(id_key),
+                        **{m["name"]: post.get(m["name"], 0) for m in metrics},
+                        "score": post_sc,
+                        "platform": platform,
+                        "create_time": post.get(platform_metrics[platform]['date'])
+                    }
+                )
+
+        return success_response(post_scores, 200)
+
+    except Exception as e:
+        traceback.print_exc()
         return error_response(f"Internal server error: {str(e)}", 500)
