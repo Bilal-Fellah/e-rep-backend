@@ -22,6 +22,22 @@ class PageHistoryRepository:
         return PageHistory.query.all()
 
     @staticmethod
+    def create(page_id: int, data: dict) -> PageHistory:
+        history = PageHistory(page_id=page_id, data=data)
+        db.session.add(history)
+        db.session.commit()
+        return history
+
+    @staticmethod
+    def delete(history_id: int) -> bool:
+        history = PageHistory.query.get(history_id)
+        if not history:
+            return False
+        db.session.delete(history)
+        db.session.commit()
+        return True
+
+    @staticmethod
     def get_today_all() -> list[PageHistory]:
         today = date.today()
         return db.session.scalars(
@@ -43,23 +59,6 @@ class PageHistoryRepository:
         )
         return db.session.execute(stmt).all()
     
-    # @staticmethod
-    # def get_followers_history_for_(entities: int):
-    #     stmt = (
-    #         select(
-    #             PageHistory.recorded_at,
-    #             PageHistory.data['followers'].astext.cast(db.Integer).label("followers"),
-    #             PageHistory.page_id,
-    #             Page.platform
-    #         )
-    #         .join(Page, PageHistory.page_id == Page.uuid)
-    #         .where(Page.entity_id in entities)
-    #         .order_by(PageHistory.recorded_at)
-    #     )
-    #     return db.session.execute(stmt).all()
-    
-
-
     @staticmethod
     def get_entity_posts(entity_id: int):
         latest = (
@@ -88,7 +87,7 @@ class PageHistoryRepository:
                     db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
                                 cast(text("'[]'"), JSONB))),
                     (Page.platform == "tiktok",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_posts_data'),
+                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
                                 cast(text("'[]'"), JSONB))),
                     (Page.platform == "youtube",
                     db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
@@ -107,7 +106,6 @@ class PageHistoryRepository:
         )
 
         return db.session.execute(stmt).all()
-
     
     @staticmethod
     def get_entity_recent_posts(entity_id: int):
@@ -268,7 +266,6 @@ class PageHistoryRepository:
         results = db.session.execute(entities_history_stmt).mappings().all()
         return results
         
-
     @staticmethod
     def get_category_followers_competition(entity_id):
         EntityCategory2 = aliased(EntityCategory)
@@ -306,7 +303,6 @@ class PageHistoryRepository:
         results = db.session.execute(entities_history_stmt).mappings().all()
         return results
         
-
     @staticmethod
     def get_all_entities_ranking():
         # Step 1: raw JSON value
@@ -421,112 +417,6 @@ class PageHistoryRepository:
 
         # return list sorted by rank
         return sorted(result.values(), key=lambda x: x["rank"])
-    
-    
-    # @staticmethod
-    # def get_some_entities_ranking_for_public():
-    #     # --- Step 1: Latest snapshot per page (instead of separate latest_history_subq + ph join) ---
-    #     latest_page_data = (
-    #         select(
-    #             PageHistory.page_id,
-    #             PageHistory.recorded_at,
-    #             case(
-    #                 (Page.platform == "youtube", PageHistory.data["subscribers"]),
-    #                 else_=PageHistory.data["followers"]
-    #             ).cast(db.Integer).label("followers"),
-    #             case(
-    #                 (Page.platform == "youtube", PageHistory.data["profile_image"]),
-    #                 (Page.platform == "x", PageHistory.data["profile_image_link"]),
-    #                 (Page.platform == "tiktok", PageHistory.data["profile_pic_url"]),
-    #                 (Page.platform == "linkedin", PageHistory.data["logo"]),
-    #                 (Page.platform == "instagram", PageHistory.data["profile_image_link"]),
-    #             ).label("profile_url")
-    #         )
-    #         .join(Page, Page.uuid == PageHistory.page_id)
-    #         .where(
-    #             PageHistory.recorded_at
-    #             == select(db.func.max(PageHistory.recorded_at))
-    #             .where(PageHistory.page_id == Page.uuid)
-    #             .correlate(Page)
-    #             .scalar_subquery()
-    #         )
-    #         .subquery()
-    #     )
-
-    #     # --- Step 2: Aggregate per entity ---
-
-    #     entity_totals = (
-    #         select(
-    #             Entity.id.label("entity_id"),
-    #             RootCategory.name.label("root_category_name"),
-    #             db.func.sum(latest_page_data.c.followers).label("total_followers"),
-    #             db.func.rank()
-    #             .over(order_by=db.func.sum(latest_page_data.c.followers).desc())
-    #             .label("entity_rank"),
-    #         )
-    #         .join(Page, Page.entity_id == Entity.id)
-    #         .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
-    #         .join(EntityCategory, EntityCategory.entity_id == Entity.id)
-    #         .join(Category, Category.id == EntityCategory.category_id)
-    #         .join(
-    #             RootCategory,
-    #             case(
-    #                 (Category.parent_id == None, Category.id),  # if no parent, use itself
-    #                 else_=Category.parent_id
-    #             ) == RootCategory.id   # <-- compare result to RootCategory.id
-    #         )
-    #         .group_by(Entity.id, RootCategory.name)
-    #         .subquery()
-    #     )
-
-    #     # --- Step 3: Final query (no second join to PageHistory needed) ---
-    #     stmt = (
-    #         select(
-    #             Entity.id.label("entity_id"),
-    #             Entity.name.label("entity_name"),
-    #             entity_totals.c.total_followers,
-    #             entity_totals.c.entity_rank,
-    #             entity_totals.c.root_category_name,
-    #             Page.platform,
-    #             Page.uuid.label("page_id"),
-    #             Page.link.label("page_url"),
-    #             latest_page_data.c.profile_url,
-    #             latest_page_data.c.followers,
-    #         )
-    #         .join(Page, Page.entity_id == Entity.id)
-    #         .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
-    #         .join(entity_totals, entity_totals.c.entity_id == Entity.id)
-    #         .order_by(entity_totals.c.entity_rank)
-    #     )
-
-    #     rows = db.session.execute(stmt).all()
-    #     if len(rows) < 1:
-    #         return []
-        
-    #     # --- Step 4: Build result dict ---
-    #     result = {}
-    #     for row in rows:
-    #         if row.entity_id not in result:
-    #             result[row.entity_id] = {
-    #                 "entity_id": row.entity_id,
-    #                 "entity_name": row.entity_name,
-    #                 "total_followers": row.total_followers,
-    #                 "rank": row.entity_rank,
-    #                 "category": row.root_category_name,
-    #                 "platforms": {}
-    #             }
-
-    #         result[row.entity_id]["platforms"][row.platform] = {
-    #             "page_id": row.page_id,
-    #             "followers": row.followers,
-    #             "profile_url": row.profile_url,
-    #             "page_url": row.page_url,
-    #         }
-
-    #     # return list sorted by rank
-    #     return sorted(result.values(), key=lambda x: x["rank"])
-    
-    
 
     @staticmethod
     def get_page_data_today(page_id) -> list["PageHistory"]:
@@ -566,6 +456,7 @@ class PageHistoryRepository:
         )
         return db.session.scalars(stmt).all()
     
+    @staticmethod
     def get_platform_history(self, platform: str):
         stmt =( select(PageHistory)
             .join(Page, PageHistory.page_id == Page.uuid)
@@ -575,17 +466,7 @@ class PageHistoryRepository:
         return db.session.scalars(stmt).all()
 
     @staticmethod
-    def create(page_id: int, data: dict) -> PageHistory:
-        history = PageHistory(page_id=page_id, data=data)
-        db.session.add(history)
-        db.session.commit()
-        return history
-
-    @staticmethod
-    def delete(history_id: int) -> bool:
-        history = PageHistory.query.get(history_id)
-        if not history:
-            return False
-        db.session.delete(history)
-        db.session.commit()
-        return True
+    def get_entity_interactions(self, entity_id: int):
+        stmt = (
+            
+        )

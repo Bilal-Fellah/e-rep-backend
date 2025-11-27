@@ -241,4 +241,92 @@ def get_entities_ranking():
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
 
+@data_bp.route("/get_interaction_stats", methods=["GET"])
+def get_interaction_stats():
+    try:
+        entity_id = request.args.get("entity_id", type=int)
+        data = PageHistoryRepository.get_entity_posts(entity_id=entity_id)
 
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response(f"No data found for entity {entity_id}.", 404)
+
+        platform_metrics = {
+            "instagram": {
+                "id_key": "id",
+                "weight": 1/4,
+                "metrics": [
+                    {"name": "comments", "score": 0.7},
+                    {"name": "likes", "score": 0.3},
+                ]
+            },
+            "linkedin": {
+                "id_key": "post_id",
+                "weight": 1/4,
+                "metrics": [
+                    {"name": "comments_count", "score": 0.6},
+                    {"name": "likes_count", "score": 0.4},
+                ]
+            },
+            "x": {
+                "id_key": "post_id",
+                "weight": 1/4,
+                "metrics": [
+                    {"name": "reposts", "score": 0.5},
+                    {"name": "likes", "score": 0.25},
+                    {"name": "replies", "score": 0.25},
+                ]
+            },
+            "tiktok": {
+                "id_key": "video_id",
+                "weight": 1/4,
+                "metrics": [
+                    {"name": "commentcount", "score": 0.4},
+                    {"name": "share_count", "score": 0.3},
+                    {"name": "favorites_count", "score": 0.2},
+                    {"name": "playcount", "score": 0.1},
+                ]
+            }
+        }
+
+        post_scores = []
+
+        for row in data:
+            # row: [page_id, page_name, platform, recorded_at, posts_list]
+            platform = row[2]
+
+            if platform not in platform_metrics:
+                continue
+
+            posts = row[4]
+            if isinstance(posts, list) and len(posts) > 0:
+                posts = posts[0]  # your format: [[{post1}, {post2}, ...]]
+            else:
+                continue
+
+            id_key = platform_metrics[platform]["id_key"]
+            metrics = platform_metrics[platform]["metrics"]
+
+            for post in posts:
+                post_sc = 0
+
+                # calculate score
+                for m in metrics:
+                    metric_name = m["name"]
+                    metric_score = m["score"]
+
+                    value = post.get(metric_name, 0)
+                    post_sc += value * metric_score
+
+                post_scores.append(
+                    {
+                        "post_id": post.get(id_key),
+                        **{m["name"]: post.get(m["name"], 0) for m in metrics},
+                        "score": post_sc,
+                        "platform": platform,
+                    }
+                )
+
+        return success_response(post_scores, 200)
+
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", 500)
