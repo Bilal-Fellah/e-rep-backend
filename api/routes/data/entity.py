@@ -399,7 +399,9 @@ def get_entity_posts_timeline():
                 continue
             # print(type(posts))
             for post in posts:
-                raw_date = post[sorting_map[platform]] if sorting_map[platform] else None
+
+                if sorting_map[platform] in post:
+                    raw_date = post[sorting_map[platform]] if sorting_map[platform] else None
                 if not raw_date:
                     continue
 
@@ -418,7 +420,7 @@ def get_entity_posts_timeline():
 
                 else:
                     all_posts.append(post)
-
+        print("lolaaaaaaaaaa")
         # Sort descending by date
         all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
 
