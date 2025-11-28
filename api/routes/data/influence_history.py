@@ -283,7 +283,7 @@ def get_entity_interaction_stats():
                 post_sc = 0
 
                 post_date = post.get(platform_metrics[platform]['date'])
-                if start_date > ensure_datetime(post_date):
+                if start_date and start_date > ensure_datetime(post_date):
                     continue # skip older posts
 
                 # calculate score
