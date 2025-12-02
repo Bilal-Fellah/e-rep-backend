@@ -106,3 +106,64 @@ Example response:
 }
 
 ---
+
+GET /api/data/get_entity_interaction_stats
+Retrieve the progress of interaction statistics for a specific entity.
+
+Parameters:
+entity_id (required): Identifier of the entity.
+start_date (optional, ISO8601): Filter posts created on or after this date.
+
+
+Response:
+A list of days, in which day there are posts with total interactions 
+and the gained interactions on that day.
+
+Example request body:
+/api/data/get_entity_interaction_stats?entity_id=94
+
+
+Example response:
+
+---
+{
+  "data": [
+    {
+      "day": "2025-08-22",
+      "posts": []
+    },
+    {
+      "day": "2025-08-23",
+      "posts": [
+        {
+          "comments_count": 6,
+          "create_time": "2025-08-22T19:59:05.796Z",
+          "gained_comments_count": 5,
+          "gained_likes_count": 9,
+          "likes_count": 26,
+          "platform": "linkedin",
+          "post_id": "7364704661401935873"
+        },
+        {
+          "comments_count": 2,
+          "create_time": "2025-08-21T19:59:05.799Z",
+          "gained_comments_count": 1,
+          "gained_likes_count": 5,
+          "likes_count": 27,
+          "platform": "linkedin",
+          "post_id": "7364340544061227008"
+        },
+        {
+          "comments_count": 9,
+          "create_time": "2025-08-18T19:59:05.801Z",
+          "gained_comments_count": 0,
+          "gained_likes_count": 1,
+          "likes_count": 29,
+          "platform": "linkedin",
+          "post_id": "7363253349141340161"
+        }
+      ]
+    }
+  ],
+  "success": true
+}
