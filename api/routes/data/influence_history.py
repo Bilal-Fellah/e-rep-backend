@@ -11,7 +11,7 @@ from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
 from api.utils.data_keys import platform_metrics
 import traceback
-
+from typing import Any
 
 SECRET = os.environ.get("SECRET_KEY")
 
@@ -252,62 +252,131 @@ def get_entity_interaction_stats():
         start_date = request.args.get("start_date")
         if start_date:
             start_date = ensure_datetime(start_date)
-        else:
-            start_date = None
 
         data = PageHistoryRepository.get_entity_posts(entity_id=entity_id)
 
-        if not data or (isinstance(data, list) and len(data) < 1):
+        if not data:
             return error_response(f"No data found for entity {entity_id}.", 404)
 
-
-        post_scores = []
+        # --- STEP 1: Structure raw rows by day ---
+        # days = { "2024-12-01": { post_id: post_dict, ... } }
+        daily_posts = {}
 
         for row in data:
-            # row: [page_id, page_name, platform, recorded_at, posts_list]
-            platform = row[2]
+            platform = row.platform if hasattr(row, "platform") else row[2]
+            posts = row.posts if hasattr(row, "posts") else row[4]
+            recorded_at = row.recorded_at if hasattr(row, "recorded_at") else row[3]
 
             if platform not in platform_metrics:
                 continue
 
-            posts = row[4]
-            if isinstance(posts, list) and len(posts) > 0:
-                posts = posts[0]  # your format: [[{post1}, {post2}, ...]]
-            else:
+            # Normalize posts
+            if not posts:
                 continue
+            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
+                posts = sum(posts, [])
+            if not isinstance(posts, list):
+                continue    
+
+            day_key = recorded_at.date().isoformat()
+            if day_key not in daily_posts:
+                daily_posts[day_key] = {}
 
             id_key = platform_metrics[platform]["id_key"]
             metrics = platform_metrics[platform]["metrics"]
+            date_key = platform_metrics[platform]['date']
 
             for post in posts:
-                post_sc = 0
+                if not isinstance(post, dict):
+                    continue
 
-                post_date = post.get(platform_metrics[platform]['date'])
-                if start_date and start_date > ensure_datetime(post_date):
-                    continue # skip older posts
+                post_id = post.get(id_key)
+                if not post_id:
+                    continue
 
-                # calculate score
-                for m in metrics:
-                    metric_name = m["name"]
-                    metric_score = m["score"]
+                post_date = post.get(date_key)
+                if start_date and post_date and ensure_datetime(post_date) < start_date:
+                    continue
 
-                    value = post.get(metric_name, 0)
-                    post_sc += value * metric_score
+                # Build compact metrics dict
+                daily_posts[day_key][post_id] = {
+                    "post_id": post_id,
+                    "platform": platform,
+                    "create_time": post_date,
+                    **{m["name"]: post.get(m["name"], 0) for m in metrics}
+                }
 
-                post_scores.append(
-                    {
-                        "post_id": post.get(id_key),
-                        **{m["name"]: post.get(m["name"], 0) for m in metrics},
-                        "score": post_sc,
-                        "platform": platform,
-                        "create_time": post.get(platform_metrics[platform]['date'])
-                    }
-                )
+        # --- STEP 2: Compute gained metrics against previous available day ---
 
-        return success_response(post_scores, 200)
+        def _to_number(x: Any) -> int:
+            """Try to coerce metric values to int safely, fallback to 0."""
+            try:
+                return int(x)
+            except Exception:
+                try:
+                    return int(float(x))
+                except Exception:
+                    return 0
+
+        sorted_days = sorted(daily_posts.keys())
+        final_output = []
+
+        for i, day in enumerate(sorted_days):
+            current_day_posts = daily_posts[day] or {}  # ensure dict
+            # find nearest previous day that actually has posts (not empty)
+            previous_day_posts = {}
+            j = i - 1
+            while j >= 0:
+                candidate = daily_posts.get(sorted_days[j], {})
+                if candidate and candidate != {}:  # found a day with data
+                    previous_day_posts = candidate
+                    break
+                j -= 1
+
+            # print(len(previous_day_posts))
+            day_output = {
+                "day": day,
+                "posts": []
+            }
+
+            for post_id, post_data in current_day_posts.items():
+                platform = post_data.get("platform")
+                metrics = platform_metrics.get(platform, {}).get("metrics", [])
+
+
+                previous_post = previous_day_posts.get(post_id, {})
+
+                # Calculate gains safely, coercing to numbers and defaulting to 0
+                gains = {}
+                if previous_post and previous_post != {}:
+                    for m in metrics:
+                        name = m["name"]
+                        cur_val = _to_number(post_data.get(name, 0))
+                        prev_val = _to_number(previous_post.get(name, 0))
+
+                        gains[f"gained_{name}"] = cur_val - prev_val
+                        # else:
+                            # gains[f"gained_{name}"] = None
+                        # if post_data.get("platform") == 'instagram':
+                        #     if prev_val==0:
+                        #         print(previous_post)
+                        #     print(f'{name}==> current: {cur_val}', f'prev: {prev_val}')
+
+
+                    day_output["posts"].append({
+                        **post_data,
+                        **gains
+                    })
+
+            final_output.append(day_output)
+            # print(len(final_output))
+            # final_output = [r for r in final_output if any(k.startswith("gained_") for k in list(r.keys())) ]
+            # print(final_output[0].keys())
+        return success_response(final_output, 200)
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", 500)
+
 
 @data_bp.route("/get_competitors_interaction_stats", methods=["POST"])
 def get_copetitors_interaction_stats():
@@ -320,7 +389,7 @@ def get_copetitors_interaction_stats():
             return error_response(f"wrong value for entity_ids")
         
         start_date = inputs.get("start_date", None)
-        print(start_date)
+        # print(start_date)
 
         if start_date:
             start_date = ensure_datetime(start_date)

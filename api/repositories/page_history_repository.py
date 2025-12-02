@@ -61,15 +61,27 @@ class PageHistoryRepository:
     
     @staticmethod
     def get_entity_posts(entity_id: int):
-        latest = (
+
+        empty_json_array = cast(text("'[]'"), JSONB)
+
+        subq = (
             select(
+                PageHistory.id.label("hist_id"),
                 PageHistory.page_id,
-                PageHistory.recorded_at
+                PageHistory.recorded_at,
+                db.func.date(PageHistory.recorded_at).label("day")
             )
             .join(Page, PageHistory.page_id == Page.uuid)
             .where(Page.entity_id == entity_id)
-            .distinct(PageHistory.page_id)                    # one row per page
-            .order_by(PageHistory.page_id, PageHistory.recorded_at.desc())
+            .order_by(
+                PageHistory.page_id,
+                db.func.date(PageHistory.recorded_at),
+                PageHistory.recorded_at.desc()
+            )
+            .distinct(
+                PageHistory.page_id,
+                db.func.date(PageHistory.recorded_at)
+            )
             .subquery()
         )
 
@@ -81,34 +93,41 @@ class PageHistoryRepository:
                 PageHistory.recorded_at,
                 case(
                     (Page.platform == "instagram",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                                cast(text("'[]'"), JSONB))),
+                    db.func.coalesce(
+                        db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
+                        empty_json_array
+                    )),
                     (Page.platform == "linkedin",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
-                                cast(text("'[]'"), JSONB))),
+                    db.func.coalesce(
+                        db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
+                        empty_json_array
+                    )),
                     (Page.platform == "tiktok",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                                cast(text("'[]'"), JSONB))),
+                    db.func.coalesce(
+                        db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
+                        empty_json_array
+                    )),
                     (Page.platform == "youtube",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                                cast(text("'[]'"), JSONB))),
+                    db.func.coalesce(
+                        db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
+                        empty_json_array
+                    )),
                     (Page.platform == "x",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                                cast(text("'[]'"), JSONB))),
-                    else_=None
+                    db.func.coalesce(
+                        db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
+                        empty_json_array
+                    )),
+                    else_=empty_json_array
                 ).label("posts"),
                 Page.entity_id.label("entity_id")
-
             )
+            .join(subq, subq.c.hist_id == PageHistory.id)
             .join(Page, PageHistory.page_id == Page.uuid)
-            .join(latest,
-                (latest.c.page_id == PageHistory.page_id) &
-                (latest.c.recorded_at == PageHistory.recorded_at))
-            .where(Page.entity_id == entity_id)
+            .order_by(PageHistory.recorded_at.desc())
         )
 
         return db.session.execute(stmt).all()
-    
+
     
     @staticmethod
     def get_page_posts(page_id: int):
