@@ -39,3 +39,45 @@ platform_metrics = {
         ]
     }
 }
+
+def compute_score(post, metrics):
+    score = 0
+    for m in metrics:
+        name = m["name"]
+        weight = m.get("weight", 1.0)
+        score += weight * float(post.get(name, 0))
+    return score
+
+
+def summarize_days(data, platform_metrics):
+    summary = []
+
+    for day_block in data:
+        day = day_block["day"]
+        posts = day_block["posts"]
+
+        day_total_score = 0
+        platform_scores = {}
+
+        for post in posts:
+            platform = post.get("platform")
+            metrics = platform_metrics.get(platform, {}).get("metrics", [])
+
+            # Compute score of this post
+            post_score = compute_score(post, metrics)
+
+            # Add to total
+            day_total_score += post_score
+
+            # Add to platform-specific total
+            if platform not in platform_scores:
+                platform_scores[platform] = 0
+            platform_scores[platform] += post_score
+
+        summary.append({
+            "date": day,
+            "total_score": day_total_score,
+            "platform_scores": platform_scores
+        })
+
+    return summary

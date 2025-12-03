@@ -9,7 +9,7 @@ from api.routes.main import error_response, success_response
 from api.utils.posts_utils import ensure_datetime
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
-from api.utils.data_keys import platform_metrics
+from api.utils.data_keys import platform_metrics, summarize_days
 import traceback
 from typing import Any
 
@@ -355,24 +355,16 @@ def get_entity_interaction_stats():
                         prev_val = _to_number(previous_post.get(name, 0))
 
                         gains[f"gained_{name}"] = cur_val - prev_val
-                        # else:
-                            # gains[f"gained_{name}"] = None
-                        # if post_data.get("platform") == 'instagram':
-                        #     if prev_val==0:
-                        #         print(previous_post)
-                        #     print(f'{name}==> current: {cur_val}', f'prev: {prev_val}')
-
-
+     
                     day_output["posts"].append({
                         **post_data,
                         **gains
                     })
 
             final_output.append(day_output)
-            # print(len(final_output))
-            # final_output = [r for r in final_output if any(k.startswith("gained_") for k in list(r.keys())) ]
-            # print(final_output[0].keys())
-        return success_response(final_output, 200)
+            summary = summarize_days(final_output, platform_metrics)
+
+        return success_response(summary, 200)
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", 500)
