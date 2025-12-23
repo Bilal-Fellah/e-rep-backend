@@ -192,7 +192,6 @@ def get_entity_history():
         return error_response(f"Unexpected error: {str(e)}", 500)
     
 
-
 @data_bp.route("/get_entities_ranking", methods=["GET"])
 def get_entities_ranking():
     allowed_roles = ["admin", "subscribed", "registered", "public"]
@@ -243,65 +242,86 @@ def get_entities_ranking():
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
-@data_bp.route("/new_ranking", methods=['GET'])
-def new_ranking():
-    structured_posts_metrics = defaultdict(list)
+@data_bp.route("/new_entities_ranking", methods=['GET'])
+def new_entities_ranking():
     # get only last week interactions
     start_date = datetime.now() - timedelta(days=7)
 
     # get all entities posts
     data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
 
-    for row in data:
-        structured_posts_metrics[row.entity_id].append({
-            'metrics':row.posts_metrics,
-            'page_id':row.page_id,
-            'page_name':row.page_name,
-            'platform':row.platform,
-            'recorded_at':row.recorded_at,  
-            'entity_id':row.entity_id,
-            'entity_name':row.entity_name,
-        })
-        
-    # now for each entity we compute its score using posts metrics dictionay from utils
-    entity_scores = defaultdict(dict)
+    print("data is ready")
+    
+    structured_entities = defaultdict(lambda: {
+        "platforms": {},
+        "posts": []
+    })
 
-    for entity_id, posts in structured_posts_metrics.items():
-        total_entity_score = 0
-        for post_data in posts:
-            platform = post_data['platform']
-            posts_metrics = post_data['metrics']
-            
-            if not posts_metrics or len(posts_metrics) < 1:
-                continue
+    for row in data:
+        entity = structured_entities[row.entity_id]
+
+        # static entity-level fields
+        entity["entity_id"] = row.entity_id
+        entity["entity_name"] = row.entity_name
+        entity["category"] = row.category
+
+        # platform-level aggregation
+        entity["platforms"][row.platform] = {
+            "followers": row.raw_followers or 0,
+            "page_id": row.page_id,
+            "page_name": row.page_name,
+            "profile_url": row.page_url,
+            "profile_image_url": row.profile_url,
+        }
+
+        # keep posts metrics for scoring
+        if row.posts_metrics:
+            entity["posts"].append({
+                "platform": row.platform,
+                "metrics": row.posts_metrics
+            })
+
+    
+    entity_scores = []
+
+    for entity_id, entity_data in structured_entities.items():
+        total_score = 0
+        total_posts = 0
+
+        for post_block in entity_data["posts"]:
+            platform = post_block["platform"]
+            posts_metrics = post_block["metrics"]
 
             if platform not in platform_metrics:
                 continue
 
-            metrics = platform_metrics[platform]['metrics']
-            post_scores = []
-            
-            for post_met in posts_metrics:
-                for m in metrics:
-                    metric_name = m['name']
-                    metric_score = m['score']
-                    value = post_met[metric_name]
-                    if value:
-                        post_scores.append(value * metric_score)
-                    else:
-                        post_scores.append(0)
-            total_entity_score += sum(post_scores)
-        entity_scores[entity_id] = {
-            'total_score': total_entity_score,
-            'posts_count': len(posts),
-            'average_score': total_entity_score / len(posts) if len(posts) > 0 else 0
-        }
-    
-    # sort by total score descending and add rank for each entity
+            metrics_def = platform_metrics[platform]["metrics"]
 
-    entity_scores = sorted(entity_scores.items(), key=lambda item: item[1]['total_score'], reverse=True)
-    
-    
+            for post in posts_metrics:
+                for m in metrics_def:
+                    value = post.get(m["name"], 0) or 0
+                    total_score += value * m["score"]
+                total_posts += 1
+
+        total_followers = sum(
+            p["followers"] for p in entity_data["platforms"].values()
+        )
+
+        entity_scores.append({
+            "entity_id": entity_id,
+            "entity_name": entity_data["entity_name"],
+            "category": entity_data["category"],
+            "platforms": entity_data["platforms"],
+            "total_score": total_score,
+            "average_score": total_score / total_posts if total_posts else 0,
+            "total_followers": total_followers
+        })
+
+    entity_scores.sort(key=lambda x: x["total_score"], reverse=True)
+
+    for idx, entity in enumerate(entity_scores, start=1):
+        entity["rank"] = idx
+
 
     return success_response(entity_scores, 200)
 
