@@ -120,7 +120,7 @@ A list of days, in which day there are posts with total interactions
 and the gained interactions on that day.
 
 Example request body:
-/api/data/get_entity_interaction_stats?entity_id=94
+  /api/data/get_entity_interaction_stats?entity_id=94
 
 
 Example response:

@@ -1,17 +1,16 @@
-from collections import defaultdict
-from datetime import datetime, date
+from collections import defaultdict, OrderedDict
+from datetime import datetime, date, timedelta
 import os
 import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request
-from api.repositories.user_repository import UserRepository
 from api.routes.main import error_response, success_response
-from api.utils.posts_utils import ensure_datetime
+from api.utils.posts_utils import _to_number, ensure_datetime
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
 from api.utils.data_keys import platform_metrics, summarize_days
 import traceback
-from typing import Any
+
 
 SECRET = os.environ.get("SECRET_KEY")
 
@@ -244,6 +243,67 @@ def get_entities_ranking():
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
+@data_bp.route("/new_ranking", methods=['GET'])
+def new_ranking():
+    structured_posts_metrics = defaultdict(list)
+    # get only last week interactions
+    start_date = datetime.now() - timedelta(days=7)
+
+    # get all entities posts
+    data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
+
+    for row in data:
+        structured_posts_metrics[row.entity_id].append({
+            'metrics':row.posts_metrics,
+            'page_id':row.page_id,
+            'page_name':row.page_name,
+            'platform':row.platform,
+            'recorded_at':row.recorded_at,  
+            'entity_id':row.entity_id,
+            'entity_name':row.entity_name,
+        })
+        
+    # now for each entity we compute its score using posts metrics dictionay from utils
+    entity_scores = defaultdict(dict)
+
+    for entity_id, posts in structured_posts_metrics.items():
+        total_entity_score = 0
+        for post_data in posts:
+            platform = post_data['platform']
+            posts_metrics = post_data['metrics']
+            
+            if not posts_metrics or len(posts_metrics) < 1:
+                continue
+
+            if platform not in platform_metrics:
+                continue
+
+            metrics = platform_metrics[platform]['metrics']
+            post_scores = []
+            
+            for post_met in posts_metrics:
+                for m in metrics:
+                    metric_name = m['name']
+                    metric_score = m['score']
+                    value = post_met[metric_name]
+                    if value:
+                        post_scores.append(value * metric_score)
+                    else:
+                        post_scores.append(0)
+            total_entity_score += sum(post_scores)
+        entity_scores[entity_id] = {
+            'total_score': total_entity_score,
+            'posts_count': len(posts),
+            'average_score': total_entity_score / len(posts) if len(posts) > 0 else 0
+        }
+    
+    # sort by total score descending and add rank for each entity
+
+    entity_scores = sorted(entity_scores.items(), key=lambda item: item[1]['total_score'], reverse=True)
+    
+    
+
+    return success_response(entity_scores, 200)
 
 @data_bp.route("/get_entity_interaction_stats", methods=["GET"])
 def get_entity_interaction_stats():
@@ -307,17 +367,6 @@ def get_entity_interaction_stats():
                 }
 
         # --- STEP 2: Compute gained metrics against previous available day ---
-
-        def _to_number(x: Any) -> int:
-            """Try to coerce metric values to int safely, fallback to 0."""
-            try:
-                return int(x)
-            except Exception:
-                try:
-                    return int(float(x))
-                except Exception:
-                    return 0
-
         sorted_days = sorted(daily_posts.keys())
         final_output = []
 
@@ -371,7 +420,7 @@ def get_entity_interaction_stats():
 
 
 @data_bp.route("/get_competitors_interaction_stats", methods=["POST"])
-def get_copetitors_interaction_stats():
+def get_competitors_interaction_stats():
 
     try:
         inputs = request.get_json()
@@ -408,7 +457,7 @@ def get_copetitors_interaction_stats():
             if platform not in platform_metrics:
                 continue
 
-            posts = row[4]
+            posts = row.posts
             if isinstance(posts, list) and len(posts) > 0:
                 posts = posts[0]  
             else:

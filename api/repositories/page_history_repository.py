@@ -1,13 +1,16 @@
+from requests import Session
 from api import db
 from api.models import PageHistory
 from api.models.category_model import Category
 from api.models.entity_category_model import EntityCategory
 from api.models.entity_model import Entity
 from api.models.page_model import Page
-from sqlalchemy import case, select, and_, cast, text
-from sqlalchemy.orm import aliased
+from sqlalchemy import case, literal_column, select, and_, cast, text, func, column
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import aliased
 from datetime import date, datetime, time
+from api.utils.data_keys import platform_metrics
+from api.utils.posts_utils import jsonb_projection, jsonb_projection_from_alias
 
 RootCategory = aliased(Category, name="root_category")
 
@@ -128,7 +131,18 @@ class PageHistoryRepository:
 
         return db.session.execute(stmt).all()
 
-    
+    @staticmethod
+    def get_all_entities_posts(date_limit):
+        query = text("""
+            SELECT * from page_posts_metrics_mv
+            where platform in ('instagram','linkedin','tiktok','youtube','x')
+            and date(recorded_at) >= :date_limit
+                    """)
+        results = db.session.execute(query, {'date_limit': date_limit}).all()
+        return results
+
+
+
     @staticmethod
     def get_page_posts(page_id: int):
         latest = (
@@ -403,7 +417,7 @@ class PageHistoryRepository:
                 == (
                     select(db.func.max(PageHistory.recorded_at))
                     .where(PageHistory.page_id == Page.uuid)
-                    .where(raw_followers.isnot(None))        # ⭐ USE RAW JSON HERE
+                    .where(raw_followers.isnot(None))
                     .correlate(Page)
                     .scalar_subquery()
                 )
