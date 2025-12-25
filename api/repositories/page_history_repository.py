@@ -137,6 +137,7 @@ class PageHistoryRepository:
             SELECT * from page_posts_metrics_mv
             where platform in ('instagram','linkedin','tiktok','youtube','x')
             and date(recorded_at) >= :date_limit
+            and to_scrape
                     """)
         results = db.session.execute(query, {'date_limit': date_limit}).all()
         return results

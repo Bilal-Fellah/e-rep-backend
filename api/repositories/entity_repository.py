@@ -26,15 +26,14 @@ class EntityRepository:
             .distinct()
             .all()
         )
-
-    # @staticmethod
-    # def get_allowed_entites_in_ranking(role):
-    #     if role == 'admin' or role=='registered':
-    #         return (Entity.query.all())
-    #     if role == 'public':
-    #         return some_ids
-    #     else:
-    #         return []
+    @staticmethod
+    def change_to_scrape(entity_id: int, to_scrape: bool) -> Entity | None:
+        entity = Entity.query.get(entity_id)
+        if not entity:
+            return None
+        entity.to_scrape = to_scrape
+        db.session.commit()
+        return entity
 
     @staticmethod
     def create(name: str, type_: str) -> Entity:
@@ -61,3 +60,4 @@ class EntityRepository:
         db.session.delete(entity)
         db.session.commit()
         return True
+

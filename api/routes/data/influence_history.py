@@ -242,8 +242,8 @@ def get_entities_ranking():
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
-@data_bp.route("/new_entities_ranking", methods=['GET'])
-def new_entities_ranking():
+@data_bp.route("/entities_ranking", methods=['GET'])
+def entities_ranking():
     # get only last week interactions
     start_date = datetime.now() - timedelta(days=7)
 

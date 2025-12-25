@@ -2,6 +2,7 @@
 CREATE MATERIALIZED VIEW page_posts_metrics_mv AS
 SELECT 
     ph.page_id      AS page_id,
+    ph.id           AS history_id,
     ph.recorded_at  AS recorded_at,
     p.platform      AS platform,
     e.id            AS entity_id,
@@ -9,6 +10,7 @@ SELECT
     e.name          AS entity_name,
     p.name          AS page_name,
     p.link          AS page_url,
+    e.to_scrape     AS to_scrape,
 
     --  Profile image URL
     CASE

@@ -440,3 +440,33 @@ def get_entity_posts_timeline():
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)
     
+
+
+
+@data_bp.route("/mark_entity_to_scrape", methods=["GET"])
+def mark_entity_to_scrape():
+        
+        try:
+            # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+            # if not payload:
+            #     return error_response("No valid token has been sent", 401)
+            # role = payload['role']
+            # if role not in allowed_roles:
+            #     return error_response("Access denied", 403)
+            
+            entity_id = request.args.get("entity_id", type=int)
+            
+            if not entity_id:
+                return error_response("Missing required query param: 'entity_id'.", 400)
+            
+            res = EntityRepository.change_to_scrape(entity_id, True)
+            
+            return success_response({"message": f"{res}", "entity_id": entity_id}, 200)
+        
+        except jwt.ExpiredSignatureError:
+            return error_response("Token has expired", 401)
+        except jwt.InvalidTokenError:
+            return error_response("Invalid token", 401)
+        except Exception as e:
+            return error_response(f"Internal server error: {str(e)}", 500)

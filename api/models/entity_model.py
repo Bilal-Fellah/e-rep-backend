@@ -8,6 +8,7 @@ class Entity(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text, unique=True, nullable=False)
     type = db.Column(db.String(20), nullable=False)
+    to_scrape = db.Column(db.Boolean, default=False, nullable=False)
 
     __table_args__ = (
         CheckConstraint(type.in_(["company", "influencer", "small-business"])),
