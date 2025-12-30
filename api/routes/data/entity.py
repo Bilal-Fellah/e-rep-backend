@@ -212,8 +212,20 @@ def get_entity_followers_history():
         history = PageHistoryRepository().get_followers_history_by_entity(entity_id)
         if not history or (type(history) == list and len(history)<1):
             return error_response("No history found for this entity.", 404)
-
-        data = [{'page_id': h.page_id, 'followers': h.followers, 'date': h.recorded_at, "platform": h.platform} for h in history]
+        
+        # Handle missing or zero followers by interpolation
+        data = []
+        for idx, row in enumerate(history):
+            followers = row.followers
+            if followers is None:
+                last_val = next((r.followers for r in history[:idx] if r.followers and r.followers>0), None)
+                next_val = next((r.followers for r in history[idx+1:] if r.followers and r.followers>0), None)
+                if last_val and next_val:
+                    followers = int((last_val + next_val) / 2)
+                else: 
+                    followers = last_val or next_val or 0
+            
+            data.append({'page_id': row.page_id, 'followers': followers, 'date': row.recorded_at, "platform": row.platform})
         return success_response(data, 200)
 
     except jwt.ExpiredSignatureError:
