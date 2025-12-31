@@ -431,3 +431,89 @@ Fetch recent posts of an entity with optional filters.
 }
 ```
 
+---
+
+## **GET /get_entity_top_posts**
+
+Get top-performing posts for an entity on a specific date. Posts are ranked based on metric gains (compared to the previous available day) using platform-specific weights.
+
+### Request
+
+```
+/get_entity_top_posts?entity_id=1&top_posts=5&date=2025-12-31
+```
+
+### Query Parameters
+
+- **entity_id** (required, int): The ID of the entity
+- **top_posts** (optional, int, default=5): Number of top posts to return (top K)
+- **date** (optional, string): Target date for analysis (defaults to today). Posts are filtered to those created within 10 days before this date.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "day": "2025-12-31",
+    "posts": [
+      {
+        "post_id": "12345",
+        "platform": "instagram",
+        "create_time": "2025-12-30T14:30:00",
+        "likes": 5000,
+        "comments": 300,
+        "shares": 150,
+        "gained_likes": 2500,
+        "gained_comments": 150,
+        "gained_shares": 80,
+        "total_score": 15750.0,
+        "rank": 1
+      },
+      {
+        "post_id": "67890",
+        "platform": "twitter",
+        "create_time": "2025-12-31T10:15:00",
+        "retweets": 800,
+        "likes": 3000,
+        "gained_retweets": 500,
+        "gained_likes": 1800,
+        "total_score": 12300.0,
+        "rank": 2
+      }
+    ]
+  }
+}
+```
+
+### Response Fields
+
+- **day**: The date for which top posts are calculated 
+- **posts**: Array of top-performing posts, each containing:
+  - **post_id**: Unique identifier for the post
+  - **platform**: Social media platform (instagram, twitter, tiktok, youtube, linkedin)
+  - **create_time**: When the post was created
+  - **[metric_name]**: Current metric values (likes, comments, shares, etc.)
+  - **gained_[metric_name]**: Metric increase since previous day
+  - **total_score**: Weighted score based on platform-specific metric weights
+  - **rank**: Position in the top K ranking (1 = best performing)
+
+### Error Response (400/500)
+
+```json
+{
+  "error": "Missing required query param: 'entity_id'."
+}
+```
+
+```json
+{
+  "error": "Internal server error: details here"
+}
+```
+
+### Notes
+
+- Posts are only included if they have data from a previous day for comparison
+- Posts older than 10 days before the specified date are filtered out
+- If no posts are found for the specified date, returns `null`

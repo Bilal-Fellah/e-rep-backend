@@ -2,6 +2,7 @@ from api import db
 from api.models import Entity
 from api.models.page_history_model import PageHistory
 from api.models.page_model import Page
+from sqlalchemy import text
 
 class EntityRepository:
     @staticmethod
@@ -26,6 +27,7 @@ class EntityRepository:
             .distinct()
             .all()
         )
+    
     @staticmethod
     def change_to_scrape(entity_id: int, to_scrape: bool) -> Entity | None:
         entity = Entity.query.get(entity_id)
@@ -61,3 +63,13 @@ class EntityRepository:
         db.session.commit()
         return True
 
+    @staticmethod
+    def get_entity_posts_metrics(entity_id: int, date_limit: str):
+        query = text("""
+            SELECT * from page_posts_metrics_mv
+            where platform in ('instagram','linkedin','tiktok','youtube','x')
+            and entity_id = :entity_id
+            and to_scrape
+                    """)
+        results = db.session.execute(query, {'entity_id': entity_id}).all()
+        return results

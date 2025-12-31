@@ -1,8 +1,8 @@
 import ast
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import os
-
+from api.utils.data_keys import platform_metrics
 import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request, jsonify
@@ -11,7 +11,7 @@ from api.repositories.entity_repository import EntityRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from sqlalchemy.exc import SQLAlchemyError
 
-from api.utils.posts_utils import ensure_datetime, parse_relative_time
+from api.utils.posts_utils import _to_number, ensure_datetime, parse_relative_time
 
 from . import data_bp
 
@@ -482,3 +482,153 @@ def mark_entity_to_scrape():
             return error_response("Invalid token", 401)
         except Exception as e:
             return error_response(f"Internal server error: {str(e)}", 500)
+        
+# a route that returns top k performing posts for an entity
+@data_bp.route("/get_entity_top_posts", methods=["GET"])
+def get_entity_top_posts():
+    try:    
+        entity_id = request.args.get("entity_id", type=int)
+        k = request.args.get("top_posts", type=int, default=5)
+        date = request.args.get("date") 
+        date = ensure_datetime(date).date() if date else datetime.now(timezone.utc).date()
+        date_limit = date - timedelta(days=10)
+
+
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+        
+        data = EntityRepository.get_entity_posts_metrics(entity_id, date)
+        
+        lola = [{'followers':post.raw_followers, 'metrics': post.posts_metrics} for post in data]
+
+        # now we compute their score and sort them
+        # Build compact metrics dict
+        skipped = 0
+        posts_num = 0
+
+        daily_posts = {}
+        for post in data:
+            platform = post.platform if hasattr(post, "platform") else post[2]
+            posts = post.posts_metrics if hasattr(post, "posts_metrics") else post[4]
+            recorded_at = post.recorded_at if hasattr(post, "recorded_at") else post[3]
+            
+            if platform not in platform_metrics:
+                continue
+            # Normalize posts
+            if not posts:
+                continue
+
+            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
+                posts = sum(posts, [])
+            if not isinstance(posts, list):
+                continue    
+
+            day_key = recorded_at.date().isoformat()
+            if day_key not in daily_posts:
+                daily_posts[day_key] = {}
+
+            id_key = platform_metrics[platform]["id_key"]
+            metrics = platform_metrics[platform]["metrics"]
+            date_key = platform_metrics[platform]['date']
+
+            for post in posts:
+                posts_num += 1
+                if not isinstance(post, dict):
+                    continue
+
+                post_id = post.get(id_key)
+                if not post_id:
+                    continue
+
+                post_date = post.get(date_key)
+                if date_limit and post_date and ensure_datetime(post_date).date() < date_limit:
+                    skipped+=1
+                    continue
+
+                # Build compact metrics dict
+                daily_posts[day_key][post_id] = {
+                    "post_id": post_id,
+                    "platform": platform,
+                    "create_time": post_date,
+                    **{m["name"]: post.get(m["name"], 0) for m in metrics}
+                }
+                
+                daily_posts[day_key][post_id] = {
+                    "post_id": post_id,
+                    "platform": platform,
+                    "create_time": post_date,
+                    **{m["name"]: post.get(m["name"], 0) for m in metrics}
+                }
+        # --- STEP 2: Compute gained metrics against previous available day ---
+        sorted_days = sorted(daily_posts.keys())
+        final_output = []
+
+        for i, day in enumerate(sorted_days):
+            current_day_posts = daily_posts[day] or {}  # ensure dict
+            # find nearest previous day that actually has posts (not empty)
+            previous_day_posts = {}
+            j = i - 1
+            while j >= 0:
+                candidate = daily_posts.get(sorted_days[j], {})
+                if candidate and candidate != {}:  # found a day with data
+                    previous_day_posts = candidate
+                    break
+                j -= 1
+
+            # print(len(previous_day_posts))
+            day_output = {
+                "day": day,
+                "posts": []
+            }
+
+            for post_id, post_data in current_day_posts.items():
+                platform = post_data.get("platform")
+                metrics = platform_metrics.get(platform, {}).get("metrics", [])
+
+
+                previous_post = previous_day_posts.get(post_id, {})
+
+                # Calculate gains safely, coercing to numbers and defaulting to 0
+                gains = {}
+                if previous_post and previous_post != {}:
+                    for m in metrics:
+                        name = m["name"]
+                        cur_val = _to_number(post_data.get(name, 0))
+                        prev_val = _to_number(previous_post.get(name, 0))
+
+                        gains[f"gained_{name}"] = cur_val - prev_val
+     
+                    day_output["posts"].append({
+                        **post_data,
+                        **gains
+                    })
+
+            final_output.append(day_output)   
+        
+        
+        print(f"date is {date}, of type {type(date)}")
+        
+        day_gains = next((item for item in final_output if item["day"] == str(date)), None)
+        # sort the posts for this day by total gained metrics, using platform metrics weights
+        if day_gains:
+            # Calculate scores and add them to each post
+            for post in day_gains["posts"]:
+                score = sum(
+                    post.get(f"gained_{m['name']}", 0) * m.get("weight", 1)
+                    for m in platform_metrics.get(post.get("platform"), {}).get("metrics", [])
+                )
+                post["total_score"] = score
+            
+            # Sort by score
+            day_gains["posts"].sort(key=lambda x: x["total_score"], reverse=True)
+            
+            # Add rank to each post
+            for rank, post in enumerate(day_gains["posts"], start=1):
+                post["rank"] = rank
+            
+            # Keep only top k
+            day_gains["posts"] = day_gains["posts"][:k]
+        
+        return success_response(day_gains, 200)
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", 500)

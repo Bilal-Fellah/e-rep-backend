@@ -63,7 +63,7 @@ class PageHistoryRepository:
         return db.session.execute(stmt).all()
     
     @staticmethod
-    def get_entity_posts(entity_id: int):
+    def get_entity_posts__old(entity_id: int):
 
         empty_json_array = cast(text("'[]'"), JSONB)
 
@@ -130,7 +130,7 @@ class PageHistoryRepository:
         )
 
         return db.session.execute(stmt).all()
-
+    
     @staticmethod
     def get_all_entities_posts(date_limit):
         query = text("""
