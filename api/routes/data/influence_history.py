@@ -251,7 +251,6 @@ def entities_ranking():
     # get all entities posts
     data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
 
-    print("data is ready")
     
     structured_entities = defaultdict(lambda: {
         "platforms": {},

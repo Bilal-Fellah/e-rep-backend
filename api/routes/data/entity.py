@@ -2,6 +2,7 @@ import ast
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 import os
+from api.repositories.page_repository import PageRepository
 from api.utils.data_keys import platform_metrics
 import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
@@ -369,7 +370,7 @@ def get_entity_posts_timeline():
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
 
-        history = PageHistoryRepository().get_entity_posts(entity_id)
+        history = PageHistoryRepository().get_entity_posts__old(entity_id)
         if not history or (type(history) == list and len(history) < 1):
             return error_response("No history found for this entity.", 404)
 
@@ -411,7 +412,7 @@ def get_entity_posts_timeline():
                 continue
             # print(type(posts))
             for post in posts:
-
+                raw_date = None
                 if sorting_map[platform] in post:
                     raw_date = post[sorting_map[platform]] if sorting_map[platform] else None
                 if not raw_date:
@@ -432,7 +433,6 @@ def get_entity_posts_timeline():
 
                 else:
                     all_posts.append(post)
-        print("lolaaaaaaaaaa")
         # Sort descending by date
         all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
 

@@ -64,7 +64,7 @@ class EntityRepository:
         return True
 
     @staticmethod
-    def get_entity_posts_metrics(entity_id: int, date_limit: str):
+    def get_entity_posts_metrics(entity_id: int, date_limit: str=None):
         query = text("""
             SELECT * from page_posts_metrics_mv
             where platform in ('instagram','linkedin','tiktok','youtube','x')

@@ -547,8 +547,3 @@ class PageHistoryRepository:
             
         return db.session.scalars(stmt).all()
 
-    @staticmethod
-    def get_entity_interactions(self, entity_id: int):
-        stmt = (
-            
-        )
