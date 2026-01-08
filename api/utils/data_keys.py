@@ -35,7 +35,7 @@ platform_metrics = {
             {"name": "commentcount", "score": 0.4},
             {"name": "share_count", "score": 0.3},
             {"name": "favorites_count", "score": 0.2},
-            {"name": "playcount", "score": 0.1},
+            # {"name": "playcount", "score": 0.1},
         ]
     }
 }
@@ -45,7 +45,8 @@ def compute_score(post, metrics):
     for m in metrics:
         name = m["name"]
         weight = m.get("weight", 1.0)
-        score += weight * float(post.get(name, 0))
+        value = post.get(name)
+        score += weight * float(value if value is not None else 0)
     return score
 
 

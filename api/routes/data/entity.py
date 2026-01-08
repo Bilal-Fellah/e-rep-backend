@@ -16,6 +16,8 @@ from api.utils.posts_utils import _to_number, ensure_datetime, parse_relative_ti
 
 from . import data_bp
 
+import json
+
 SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_entity", methods=["POST"])
@@ -453,8 +455,6 @@ def get_entity_posts_timeline():
         return error_response(f"Unexpected error: {str(e)}", 500)
     
 
-
-
 @data_bp.route("/mark_entity_to_scrape", methods=["GET"])
 def mark_entity_to_scrape():
         
@@ -497,10 +497,11 @@ def get_entity_top_posts():
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
         
-        data = EntityRepository.get_entity_posts_metrics(entity_id, date)
+        data = EntityRepository.get_entity_posts_metrics(entity_id, date_limit)
         
-        lola = [{'followers':post.raw_followers, 'metrics': post.posts_metrics} for post in data]
-
+        with open('debug_entity_posts.json', 'w') as f:
+            json.dump(data, f, default=str)
+        
         # now we compute their score and sort them
         # Build compact metrics dict
         skipped = 0
@@ -531,16 +532,18 @@ def get_entity_top_posts():
             metrics = platform_metrics[platform]["metrics"]
             date_key = platform_metrics[platform]['date']
 
-            for post in posts:
+            for p in posts:
                 posts_num += 1
-                if not isinstance(post, dict):
+                if not isinstance(p, dict):
+                    skipped+=1
                     continue
 
-                post_id = post.get(id_key)
+                post_id = p.get(id_key)
                 if not post_id:
+                    skipped+=1
                     continue
 
-                post_date = post.get(date_key)
+                post_date = p.get(date_key)
                 if date_limit and post_date and ensure_datetime(post_date).date() < date_limit:
                     skipped+=1
                     continue
@@ -550,14 +553,14 @@ def get_entity_top_posts():
                     "post_id": post_id,
                     "platform": platform,
                     "create_time": post_date,
-                    **{m["name"]: post.get(m["name"], 0) for m in metrics}
+                    **{m["name"]: p.get(m["name"], 0) for m in metrics}
                 }
                 
                 daily_posts[day_key][post_id] = {
                     "post_id": post_id,
                     "platform": platform,
                     "create_time": post_date,
-                    **{m["name"]: post.get(m["name"], 0) for m in metrics}
+                    **{m["name"]: p.get(m["name"], 0) for m in metrics}
                 }
         # --- STEP 2: Compute gained metrics against previous available day ---
         sorted_days = sorted(daily_posts.keys())
@@ -605,10 +608,9 @@ def get_entity_top_posts():
 
             final_output.append(day_output)   
         
-        
-        print(f"date is {date}, of type {type(date)}")
-        
+                
         day_gains = next((item for item in final_output if item["day"] == str(date)), None)
+        print(day_gains)
         # sort the posts for this day by total gained metrics, using platform metrics weights
         if day_gains:
             # Calculate scores and add them to each post
@@ -629,6 +631,7 @@ def get_entity_top_posts():
             # Keep only top k
             day_gains["posts"] = day_gains["posts"][:k]
         
+        print(f"Processed {posts_num} posts, skipped {skipped} invalid entries.")
         return success_response(day_gains, 200)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", 500)

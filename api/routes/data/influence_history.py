@@ -429,10 +429,11 @@ def get_entity_interaction_stats():
                         **post_data,
                         **gains
                     })
-
             final_output.append(day_output)
         
+        
         summary = summarize_days(final_output, platform_metrics)
+        print("WE ARE HERE")
         summary = fill_missing_scores(summary)
 
 
