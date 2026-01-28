@@ -499,9 +499,6 @@ def get_entity_top_posts():
         
         data = EntityRepository.get_entity_posts_metrics(entity_id, date_limit)
         
-        with open('debug_entity_posts.json', 'w') as f:
-            json.dump(data, f, default=str)
-        
         # now we compute their score and sort them
         # Build compact metrics dict
         skipped = 0
@@ -553,15 +550,11 @@ def get_entity_top_posts():
                     "post_id": post_id,
                     "platform": platform,
                     "create_time": post_date,
-                    **{m["name"]: p.get(m["name"], 0) for m in metrics}
+                    **{m["name"]: p.get(m["name"], 0) for m in metrics},
+                    **p
                 }
                 
-                daily_posts[day_key][post_id] = {
-                    "post_id": post_id,
-                    "platform": platform,
-                    "create_time": post_date,
-                    **{m["name"]: p.get(m["name"], 0) for m in metrics}
-                }
+                
         # --- STEP 2: Compute gained metrics against previous available day ---
         sorted_days = sorted(daily_posts.keys())
         final_output = []
@@ -610,7 +603,6 @@ def get_entity_top_posts():
         
                 
         day_gains = next((item for item in final_output if item["day"] == str(date)), None)
-        print(day_gains)
         # sort the posts for this day by total gained metrics, using platform metrics weights
         if day_gains:
             # Calculate scores and add them to each post

@@ -37,10 +37,16 @@ SELECT
             (
                 SELECT jsonb_agg(
                     jsonb_build_object(
-                        'id',       post->>'id',
-                        'datetime', post->>'datetime',
-                        'comments', post->'comments',
-                        'likes',    post->'likes'
+                        'id',            post->>'id',
+                        'datetime',      post->>'datetime',
+                        'comments',      post->'comments',
+                        'likes',         post->'likes',
+                        'caption',       post->'caption',
+                        'content_type',  post->'content_type',
+                        'image_url',     post->'image_url',
+                        'video_url',     post->'video_url',
+                        'url',           post->'url',
+                        'is_pinned',     post->'is_pinned'
                     )
                 )
                 FROM jsonb_array_elements(COALESCE(ph.data->'posts', '[]'::jsonb)) AS post
@@ -52,10 +58,15 @@ SELECT
             (
                 SELECT jsonb_agg(
                     jsonb_build_object(
-                        'post_id',        post->>'post_id',
-                        'date',           post->>'date',
-                        'comments_count', post->'comments_count',
-                        'likes_count',    post->'likes_count'
+                        'post_id',             post->>'post_id',
+                        'date',                post->>'date',
+                        'comments_count',      post->'comments_count',
+                        'likes_count',         post->'likes_count',
+                        'post_url',            post->'post_url',
+                        'repost',              post->'repost',
+                        'tagged_companies',    post->'tagged_companies',
+                        'tagged_people',       post->'tagged_people',
+                        'text',                post->'text'
                     )
                 )
                 FROM jsonb_array_elements(COALESCE(ph.data->'updates', '[]'::jsonb)) AS post
@@ -72,7 +83,9 @@ SELECT
                         'commentcount',    post->'commentcount',
                         'share_count',     post->'share_count',
                         'favorites_count', post->'favorites_count',
-                        'playcount',       post->'playcount'
+                        'playcount',       post->'playcount',
+                        'video_url',       post->>'video_url',
+                        'cover_image',     post->>'cover_image'
                     )
                 )
                 FROM jsonb_array_elements(COALESCE(ph.data->'top_videos', '[]'::jsonb)) AS post
