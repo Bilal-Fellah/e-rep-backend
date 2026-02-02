@@ -204,10 +204,12 @@ def get_entities_ranking():
 
     # except Exception:
     #     pass
-
     
     try:
+
         data = PageHistoryRepository.get_all_entities_ranking()
+
+
         if not data or (type(data) == list and len(data)<1):
             return error_response("No data found for entities.", 404)
         
@@ -317,11 +319,10 @@ def entities_ranking():
             "total_followers": total_followers
         })
 
-    entity_scores.sort(key=lambda x: x["total_score"], reverse=True)
+    entity_scores.sort(key=lambda x: x["total_followers"], reverse=True)
 
     for idx, entity in enumerate(entity_scores, start=1):
         entity["rank"] = idx
-
 
     return success_response(entity_scores, 200)
 
