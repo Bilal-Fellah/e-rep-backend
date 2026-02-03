@@ -65,7 +65,6 @@ def add_entity():
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
 
-
 @data_bp.route("/get_all_entities", methods=["GET"])
 def get_all_entities():
     allowed_roles = ["admin", "subscribed", "registered"]
@@ -94,7 +93,6 @@ def get_all_entities():
         return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
-
 
 @data_bp.route("/get_data_existing_entities", methods=["GET"])
 def get_data_existing_entities():
@@ -125,7 +123,6 @@ def get_data_existing_entities():
         return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
-
 
 @data_bp.route("/delete_entity", methods=["POST"])
 def delete_entity():
@@ -161,7 +158,6 @@ def delete_entity():
 
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", status_code=500)
-
 
 @data_bp.route("/get_entity_profile_card", methods=["GET"])
 def get_entity_profile_card():
@@ -239,7 +235,6 @@ def get_entity_followers_history():
         return error_response(f"Database error: {str(e)}", 500)
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)
-    
    
 @data_bp.route("/get_entity_followers_comparison", methods=["GET"])
 def get_entity_followers_comparison():
@@ -351,7 +346,6 @@ def compare_entities_followers():
     except Exception as e:
         return error_response(f"Unexpected error: {str(e)}", 500)  
 
-
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
     allowed_roles = ["admin", "subscribed", "registered"]
@@ -371,15 +365,16 @@ def get_entity_posts_timeline():
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
+        
+        history = PageHistoryRepository().get_entity_posts_new(entity_id)
 
-        history = PageHistoryRepository().get_entity_posts__old(entity_id)
         if not history or (type(history) == list and len(history) < 1):
             return error_response("No history found for this entity.", 404)
 
         sorting_map = {
             "instagram": "datetime",
             "linkedin": "date",
-            "tiktok": "create_time",
+            "tiktok": "create_date",
             "youtube": "posted_time",
             "x": None
         }
@@ -402,18 +397,13 @@ def get_entity_posts_timeline():
             platform = row.platform
             page_id = row.page_id
             page_name = row.page_name
-            posts = row.posts
+            posts_metrics = row.posts_metrics
 
-            if len(posts) > 0 and isinstance(posts[0], list):
-                posts = posts[0]
-            else:
-                print("didnt change here to posts[0]")
+            # posts_metrics is already a JSONB array, no need to unwrap
+            if not posts_metrics or len(posts_metrics) == 0:
                 continue
 
-            if not posts or len(posts)==0:
-                continue
-            # print(type(posts))
-            for post in posts:
+            for post in posts_metrics:
                 raw_date = None
                 if sorting_map[platform] in post:
                     raw_date = post[sorting_map[platform]] if sorting_map[platform] else None

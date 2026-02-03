@@ -101,6 +101,11 @@ JOIN entity_category ec ON ec.entity_id = e.id
 JOIN categories c ON c.id   = ec.category_id;
 
 
+
+
+
+
+
 -- check the list of materialized views
 SELECT matviewname FROM pg_matviews WHERE matviewname = 'page_posts_metrics_mv';
 
