@@ -370,7 +370,7 @@ def get_entity_posts_timeline():
             date = ensure_datetime(datetime.now(timezone.utc)).date() - timedelta(days=30) # default to last 30 days
 
         if max_posts is None or max_posts <= 0:
-            max_posts = math.inf  # No limit
+            max_posts = 10000  # No limit
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
