@@ -363,10 +363,15 @@ def get_entity_posts_timeline():
         date_str = request.args.get("date")
         max_posts = request.args.get("max_posts", type=int)
 
+        if date_str:
+            date = ensure_datetime(date_str).date()
+        else:
+            date = ensure_datetime(datetime.now(timezone.utc)).date() - timedelta(days=30) # default to last 30 days
+
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
         
-        history = PageHistoryRepository().get_entity_posts_new(entity_id)
+        history = PageHistoryRepository().get_entity_posts_new(entity_id, date_limit=date)
 
         if not history or (type(history) == list and len(history) < 1):
             return error_response("No history found for this entity.", 404)

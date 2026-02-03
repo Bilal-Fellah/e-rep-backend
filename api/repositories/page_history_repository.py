@@ -133,16 +133,17 @@ class PageHistoryRepository:
     
 
     @staticmethod
-    def get_entity_posts_new(entity_id: int):
+    def get_entity_posts_new(entity_id: int, date_limit: date = None):
         query = text("""
             SELECT *
             FROM page_posts_metrics_mv
             WHERE entity_id = :entity_id
             AND platform IN ('instagram','linkedin','tiktok','youtube','x')
+            AND  date(recorded_at) >= :date_limit
             AND to_scrape
             ORDER BY recorded_at DESC
                 """)
-        results = db.session.execute(query, {'entity_id': entity_id}).all()
+        results = db.session.execute(query, {'entity_id': entity_id, 'date_limit': date_limit}).all()
         return results
 
 
