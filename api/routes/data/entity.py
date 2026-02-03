@@ -1,6 +1,7 @@
 import ast
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
+import math
 import os
 from api.repositories.page_repository import PageRepository
 from api.utils.data_keys import platform_metrics
@@ -368,10 +369,13 @@ def get_entity_posts_timeline():
         else:
             date = ensure_datetime(datetime.now(timezone.utc)).date() - timedelta(days=30) # default to last 30 days
 
+        if max_posts is None or max_posts <= 0:
+            max_posts = math.inf  # No limit
+
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
         
-        history = PageHistoryRepository().get_entity_posts_new(entity_id, date_limit=date)
+        history = PageHistoryRepository().get_entity_posts_new(entity_id, date_limit=date, max_posts=max_posts)
 
         if not history or (type(history) == list and len(history) < 1):
             return error_response("No history found for this entity.", 404)

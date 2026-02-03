@@ -133,7 +133,7 @@ class PageHistoryRepository:
     
 
     @staticmethod
-    def get_entity_posts_new(entity_id: int, date_limit: date = None):
+    def get_entity_posts_new(entity_id: int, date_limit: date = None, max_posts: int = None):
         query = text("""
             SELECT *
             FROM page_posts_metrics_mv
@@ -142,8 +142,10 @@ class PageHistoryRepository:
             AND  date(recorded_at) >= :date_limit
             AND to_scrape
             ORDER BY recorded_at DESC
+            LIMIT :max_posts
                 """)
-        results = db.session.execute(query, {'entity_id': entity_id, 'date_limit': date_limit}).all()
+
+        results = db.session.execute(query, {'entity_id': entity_id, 'date_limit': date_limit, 'max_posts': max_posts}).all()
         return results
 
 
