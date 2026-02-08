@@ -17,6 +17,8 @@ class User(db.Model):
     refresh_token = db.Column(db.Text)
     refresh_token_exp = db.Column(db.DateTime)
 
+    phone_number = db.Column(db.String(20), unique=True, nullable=True)
+
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

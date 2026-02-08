@@ -50,7 +50,7 @@ def register_mail():
 def register_user():
     try:
         data = request.json
-        required_keys = ['first_name','last_name','email','password']
+        required_keys = ['first_name','last_name','email', 'password', 'phone_number']
         for key in required_keys:
             if key not in data:
                 return error_response(f"missing required key: {key}", 400)
@@ -67,6 +67,7 @@ def register_user():
             last_name=data["last_name"],
             email=data["email"],
             password=data["password"],
+            phone_number=data["phone_number"],
             role= data.get('role', 'registered')
         )
 
@@ -108,7 +109,7 @@ def register_user():
 
 @auth_bp.route("/register_entity", methods=["POST"])
 def register_entity():
-    allowed_roles = ["admin"]
+    allowed_roles = ["admin", "registered","subscribed", "public"]
 
     try:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()

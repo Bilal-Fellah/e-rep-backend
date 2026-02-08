@@ -7,9 +7,9 @@ oauth_bp = Blueprint("oauth", __name__)
 # 🔑 From Google Console
 GOOGLE_CLIENT_ID =  os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:5000")
 # Must match Google Console redirect URI
-REDIRECT_URI = "http://localhost:5000/api/oauth/google/callback"
+REDIRECT_URI = f"{BACKEND_URL}/api/oauth/google/callback"
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
