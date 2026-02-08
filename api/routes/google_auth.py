@@ -1,6 +1,11 @@
+import json
 from flask import Flask, redirect, request, jsonify, Blueprint
 import requests
 import os
+
+import urllib
+from api.utils.auth import OAUTH_USERS_FILE
+from api.repositories.user_repository import UserRepository
 
 oauth_bp = Blueprint("oauth", __name__)
 
@@ -63,6 +68,20 @@ def google_callback():
         headers={"Authorization": f"Bearer {access_token}"}
     )
 
-    return jsonify(userinfo_res.json())
+    userinfo = userinfo_res.json()
+    
+    with open(OAUTH_USERS_FILE, "r+") as f:
+        users = json.load(f)
+
+        users.append(userinfo)
+        f.seek(0)
+        json.dump(users, f, indent=4)
+
+    frontend_url = (
+        "https://brendex.net"
+        )
+    return redirect(frontend_url)
+
+
 
 

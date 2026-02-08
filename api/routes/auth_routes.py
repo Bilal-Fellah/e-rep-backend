@@ -48,14 +48,14 @@ def register_mail():
 
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
+    allowed_roles = ["public","registered","anonymous","subscribed","admin"]
     try:
         data = request.json
-        required_keys = ['first_name','last_name','email', 'password', 'phone_number']
+        required_keys = ['full_name','email', 'password', 'phone_number']
         for key in required_keys:
             if key not in data:
                 return error_response(f"missing required key: {key}", 400)
 
-        allowed_roles = ["public","registered","anonymous","subscribed","admin"]
         if data.get('role', 'registered') not in allowed_roles:
             return error_response(f"role must be in {allowed_roles}")
         
@@ -63,8 +63,8 @@ def register_user():
             return jsonify({"error": "Email already exists"}), 400
         
         user = UserRepository.create_user(
-            first_name=data["first_name"],
-            last_name=data["last_name"],
+            first_name=data["full_name"].split()[0],
+            last_name=" ".join(data["full_name"].split()[1:]) if len(data["full_name"].split()) > 1 else "",
             email=data["email"],
             password=data["password"],
             phone_number=data["phone_number"],
