@@ -3,9 +3,11 @@
 from .data import  data_bp
 from .health import health_bp
 from .auth_routes import auth_bp
+from .google_auth import oauth_bp
 
 def register_routes(app):
     # app.register_blueprint(main_bp, url_prefix="/api")
     app.register_blueprint(data_bp, url_prefix="/api/data")
     app.register_blueprint(health_bp, url_prefix ="/health")
     app.register_blueprint(auth_bp, url_prefix ="/api/auth")
+    app.register_blueprint(oauth_bp, url_prefix ="/api/oauth")

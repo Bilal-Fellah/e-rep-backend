@@ -46,8 +46,6 @@ def register_mail():
     except Exception as e:
         return error_response(str(e), 500)
 
-
-
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
     try:
@@ -327,3 +325,8 @@ def validate_user_role():
         return jsonify({"error": "Invalid token"}), 401
     except Exception as e:
         return error_response(str(e), 500)
+
+
+@auth_bp.route("/test_oauth", methods=["POST"])
+def test_oauth():
+    return success_response(data={"message": "OAuth redirected here!"})

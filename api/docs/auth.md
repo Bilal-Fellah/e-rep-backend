@@ -1,44 +1,4 @@
 
-````
-# Auth Routes Documentation
-
-## **POST /signup**
-Create a new user account.
-
-### Request
-```json
-{
-  "first_name": "John",
-  "last_name": "Doe",
-  "email": "john@example.com",
-  "password": "secret123",
-  "role": "public"
-}
-````
-
-### Success Response (201)
-
-```json
-{
-  "data": {
-    "user_id": 9,
-    "user_role": "public"
-  },
-  "success": true
-}
-
-```
-
-### Error Response (400)
-
-```json
-{
-  "error": "Email already exists"
-}
-```
-
----
-
 ## **POST /register\_entity**
 
 Register a new entity under a category.
@@ -328,3 +288,96 @@ Authorization: Bearer <access_token>
 }
 ```
 
+## **POST /register_mail**
+Register an email for temporary access without creating a full user account.
+
+### Request
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+### Success Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Email user@example.com registered for temporary access"
+  }
+}
+```
+
+### Error Responses
+
+**Invalid email (400)**
+```json
+{
+  "error": "Invalid email"
+}
+```
+
+**Email already exists (400)**
+```json
+{
+  "error": "Email already exists"
+}
+```
+
+---
+
+## **POST /register_user**
+Create a new user account and return authentication tokens. No need to login separately after registration.
+
+### Request
+```json
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john@example.com",
+  "password": "secret123",
+  "role": "registered"
+}
+```
+
+**Note:** `role` is optional and defaults to `"registered"`. Allowed roles: `"public"`, `"registered"`, `"anonymous"`, `"subscribed"`, `"admin"`
+
+### Success Response (200)
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "jwt_access_token_here",
+    "refresh_token": "jwt_refresh_token_here",
+    "user_role": "registered",
+    "user_id": 1
+  }
+}
+```
+
+**Token Details:**
+- Access token: Valid for 1 day
+- Refresh token: Valid for 30 days
+
+### Error Responses
+
+**Missing required key (400)**
+```json
+{
+  "error": "missing required key: first_name"
+}
+```
+
+**Invalid role (400)**
+```json
+{
+  "error": "role must be in ['public', 'registered', 'anonymous', 'subscribed', 'admin']"
+}
+```
+
+**Email already exists (400)**
+```json
+{
+  "error": "Email already exists"
+}
+```
