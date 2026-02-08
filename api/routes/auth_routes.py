@@ -1,6 +1,7 @@
 # routes/auth_routes.py
 import json
 import json
+from api.services.auth_service import AuthService
 from api.utils.auth import validate_email
 from flask import Blueprint, request, jsonify
 from api.repositories.category_repository import CategoryRepository
@@ -59,11 +60,8 @@ def register_user():
         if data.get('role', 'registered') not in allowed_roles:
             return error_response(f"role must be in {allowed_roles}")
         
-        if UserRepository.find_by_email(data["email"]):
-            return jsonify({"error": "Email already exists"}), 400
-        
-        user = UserRepository.create_user(
-            first_name=data["full_name"].split()[0],
+        user = AuthService.signup(
+                        first_name=data["full_name"].split()[0],
             last_name=" ".join(data["full_name"].split()[1:]) if len(data["full_name"].split()) > 1 else "",
             email=data["email"],
             password=data["password"],
@@ -190,8 +188,6 @@ def register_entity():
         return error_response("Invalid token", 401)
     except Exception as e:
         return error_response(str(e), 500)
-
-
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -327,7 +323,3 @@ def validate_user_role():
     except Exception as e:
         return error_response(str(e), 500)
 
-
-@auth_bp.route("/test_oauth", methods=["POST"])
-def test_oauth():
-    return success_response(data={"message": "OAuth redirected here!"})
