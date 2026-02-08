@@ -1,7 +1,7 @@
 import re
     
-MAILS_FILE = 'api\\database\\tem_mail_registeration.json'
-OAUTH_USERS_FILE = 'api\\database\\oauth_users.json'
+MAILS_FILE = 'api/database/tem_mail_registeration.json'
+OAUTH_USERS_FILE = 'api/database/oauth_users.json'
 # function that validates email format
 def validate_email(email: str) -> bool:
     if not email:
