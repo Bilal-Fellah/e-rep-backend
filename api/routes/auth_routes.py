@@ -1,4 +1,7 @@
 # routes/auth_routes.py
+import json
+import json
+from api.utils.auth import validate_email
 from flask import Blueprint, request, jsonify
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
@@ -6,18 +9,47 @@ from api.repositories.entity_repository import EntityRepository
 from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import uuid
-
+from api.utils.auth import MAILS_FILE
 
 from api.routes.main import error_response, success_response
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
 auth_bp = Blueprint("auth", __name__)
 
-@auth_bp.route("/signup", methods=["POST"])
-def signup():
+@auth_bp.route("/register_mail", methods=["POST"])
+def register_mail():
+    try:
+        email = request.json.get("email")
+        if not email or not validate_email(email):
+            return error_response("Invalid email", 400)
+        
+        if UserRepository.find_by_email(email):
+            return error_response("Email already exists", 400)
+        
+        init_status = "unverified"
+        email_object = {
+            "email": email,
+            "status": init_status,
+            "registered_at": datetime.now(timezone.utc).isoformat()
+        }
+        with open(MAILS_FILE, "r+") as f:
+            mails = json.load(f)
+
+            mails.append(email_object)
+            f.seek(0)
+            json.dump(mails, f, indent=4)
+            
+        return success_response(data={"message": f"Email {email} registered for temporary access"})
+    except Exception as e:
+        return error_response(str(e), 500)
+
+
+
+@auth_bp.route("/register_user", methods=["POST"])
+def register_user():
     try:
         data = request.json
         required_keys = ['first_name','last_name','email','password']
@@ -26,7 +58,7 @@ def signup():
                 return error_response(f"missing required key: {key}", 400)
 
         allowed_roles = ["public","registered","anonymous","subscribed","admin"]
-        if data['role'] not in allowed_roles:
+        if data.get('role', 'registered') not in allowed_roles:
             return error_response(f"role must be in {allowed_roles}")
         
         if UserRepository.find_by_email(data["email"]):
@@ -37,13 +69,40 @@ def signup():
             last_name=data["last_name"],
             email=data["email"],
             password=data["password"],
-            role= 'registered'
+            role= data.get('role', 'registered')
+        )
+
+        # Access token (1 day)
+        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
+        access_payload = {
+            "user_id": user.id,
+            "role": user.role,
+            "exp": access_token_exp
+        }
+        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
+        
+        # Refresh token (30 days)
+        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
+        refresh_payload = {
+            "user_id": user.id,
+            "exp": refresh_token_exp
+        }
+        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
+
+        # Save refresh token & expiry in DB
+        UserRepository.update_refresh_token(
+            user.id,
+            token=refresh_token,
+            exp=refresh_token_exp
         )
 
         response = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "user_role": user.role,
             "user_id": user.id
         }
+
         return success_response(data=response )
     except Exception as e:
         return error_response(str(e), 500)
@@ -143,19 +202,21 @@ def login():
         user = UserRepository.find_by_email(data["email"])
         if not user or not user.check_password(data["password"]):
             return error_response("Invalid credentials", status_code=401)
-
+        
+        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
         # Access token (2 hours)
         access_payload = {
             "user_id": user.id,
             "role": user.role,
-            "exp": datetime.utcnow() + timedelta(hours=2)
+            "exp": access_token_exp
         }
         access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
-
-        # Refresh token (7 days)
+        
+        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
+        # Refresh token (30 days)
         refresh_payload = {
             "user_id": user.id,
-            "exp": datetime.utcnow() + timedelta(days=7)
+            "exp": refresh_token_exp
         }
         refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
 
@@ -163,7 +224,7 @@ def login():
         UserRepository.update_refresh_token(
             user.id,
             token=refresh_token,
-            exp=datetime.utcnow() + timedelta(days=7)
+            exp=refresh_token_exp
         )
 
         response = {
@@ -216,14 +277,14 @@ def refresh():
 
         if not user or user.refresh_token != token:
             return jsonify({"error": "Invalid refresh token"}), 401
-        if user.refresh_token_exp < datetime.utcnow():
+        if user.refresh_token_exp < datetime.now(timezone.utc):
             return jsonify({"error": "Refresh token expired"}), 401
 
         # New 2-hour access token
         new_access = jwt.encode({
             "user_id": user.id,
             "role": user.role,
-            "exp": datetime.utcnow() + timedelta(hours=2)
+            "exp": datetime.now(timezone.utc) + timedelta(hours=2)
         }, SECRET, algorithm="HS256")
         response = {
             "access_token": new_access
@@ -231,7 +292,6 @@ def refresh():
         return success_response(response)
     except jwt.InvalidTokenError:
         return error_response("Invalid refresh token", status_code=401)
-
 
 
 @auth_bp.route("/validate_user_role", methods=["POST"])
