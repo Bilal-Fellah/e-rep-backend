@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
-import json
-from flask import Flask, redirect, request, jsonify, Blueprint, make_response
-from gotrue import datetime
+from flask import redirect, request, jsonify, Blueprint, make_response
+from datetime import datetime
 import jwt
 import requests
 import os
