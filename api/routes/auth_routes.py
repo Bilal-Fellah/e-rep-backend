@@ -61,7 +61,7 @@ def register_user():
             return error_response(f"role must be in {allowed_roles}")
         
         user = AuthService.signup(
-                        first_name=data["full_name"].split()[0],
+            first_name=data["full_name"].split()[0],
             last_name=" ".join(data["full_name"].split()[1:]) if len(data["full_name"].split()) > 1 else "",
             email=data["email"],
             password=data["password"],

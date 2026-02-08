@@ -1,12 +1,13 @@
 # services/auth_service.py
+import os
 import jwt
 from datetime import datetime, timedelta, timezone
+from api.models.user_model import User
 from api.repositories.user_repository import UserRepository
-from api import app
 from werkzeug.security import generate_password_hash
 
 
-SECRET_KEY = app.config["SECRET_KEY"]
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 class AuthService:
     @staticmethod
@@ -14,9 +15,18 @@ class AuthService:
         if UserRepository.find_by_email(email):
             raise ValueError("Email already exists")
         
-        hashed_password = generate_password_hash(password)
+        user = User(
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            role=role,
+            phone_number=phone_number
+        )
 
-        return UserRepository.create_user(first_name, last_name, email, hashed_password, role)
+        user.set_password(password)  
+        UserRepository.save(user)
+
+        return user
 
     @staticmethod
     def login(email, password):

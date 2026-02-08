@@ -1,12 +1,14 @@
+from datetime import datetime, timedelta, timezone
 import json
-from flask import Flask, redirect, request, jsonify, Blueprint
+from flask import Flask, redirect, request, jsonify, Blueprint, make_response
+from gotrue import datetime
+import jwt
 import requests
 import os
-
-import urllib
 from api.utils.auth import OAUTH_USERS_FILE
 from api.repositories.user_repository import UserRepository
 
+SECRET = os.environ.get("SECRET_KEY")
 oauth_bp = Blueprint("oauth", __name__)
 
 # 🔑 From Google Console
@@ -70,17 +72,80 @@ def google_callback():
 
     userinfo = userinfo_res.json()
     
-    with open(OAUTH_USERS_FILE, "r+") as f:
-        users = json.load(f)
-
-        users.append(userinfo)
-        f.seek(0)
-        json.dump(users, f, indent=4)
-
-    frontend_url = (
-        "https://brendex.net"
+    user =  UserRepository.find_by_email(userinfo["email"])
+    if not user:
+        user = UserRepository.create_user(
+            first_name=userinfo.get("given_name", ""),
+            last_name=userinfo.get("family_name", ""),
+            email=userinfo["email"],
+            password="",  # No password since it's OAuth
+            role="registered"
         )
-    return redirect(frontend_url)
+
+    # Access token (1 day)
+    access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
+    access_payload = {
+        "user_id": user.id,
+        "role": user.role,
+        "exp": access_token_exp
+    }
+    access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
+    
+    # Refresh token (30 days)
+    refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
+    refresh_payload = {
+        "user_id": user.id,
+        "exp": refresh_token_exp
+    }
+    refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
+
+    # Save refresh token & expiry in DB
+    UserRepository.update_refresh_token(
+        user.id,
+        token=refresh_token,
+        exp=refresh_token_exp
+    )
+
+    frontend_url = 'https://brendex.net'
+
+    response = make_response(redirect(frontend_url))
+
+    # Access token (short-lived)
+    response.set_cookie(
+        "access_token",
+        access_token,
+        httponly=True,
+        secure=True,
+        samesite="None",   # REQUIRED since frontend is another domain
+        max_age= 24*60 * 60   # 1 day
+    )
+
+    # Refresh token (long-lived)
+    response.set_cookie(
+        "refresh_token",
+        refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="None",
+        max_age=30 * 24 * 60 * 60  # 30 days
+    )
+
+    # Optional: non-sensitive info (can be readable by JS)
+    response.set_cookie(
+        "user_role",
+        user.role,
+        secure=True,
+        samesite="None"
+    )
+
+    response.set_cookie(
+        "user_id",
+        str(user.id),
+        secure=True,
+        samesite="None"
+    )
+
+    return response
 
 
 

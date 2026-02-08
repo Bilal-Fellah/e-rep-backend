@@ -1,5 +1,5 @@
 # models/user.py
-from datetime import datetime
+from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from api import db
 
@@ -13,7 +13,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.Enum("public","registered","subscribed","admin", name="user_roles"), default="public")
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     refresh_token = db.Column(db.Text)
     refresh_token_exp = db.Column(db.DateTime)
 
