@@ -38,7 +38,7 @@ def create_app():
         # Production: Only allow requests from your Vercel app
         CORS(app, 
              resources={r"/api/*": {
-                 "origins": "https://erep.vercel.app",  # Only allow this specific origin
+                 "origins": "*",  # Only allow this specific origin
                  "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                  "allow_headers": ["Content-Type", "Authorization", "Accept"],
                  "supports_credentials": False
