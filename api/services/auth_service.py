@@ -24,7 +24,7 @@ class AuthService:
         )
 
         user.set_password(password)  
-        UserRepository.save(user)
+        UserRepository.save_user(user)
 
         return user
 

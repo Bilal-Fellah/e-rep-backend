@@ -22,6 +22,13 @@ class UserRepository:
         return user
     
     @staticmethod
+    def save_user(user: User):
+        
+        db.session.add(user)
+        db.session.commit()
+        return user
+    
+    @staticmethod
     def update_refresh_token(user_id: int, token: str, exp: datetime) -> None:
        
         user = db.session.get(User, user_id)
