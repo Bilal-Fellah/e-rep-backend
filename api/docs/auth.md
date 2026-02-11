@@ -1,15 +1,223 @@
+## **POST /google/login**
 
-## **POST /register\_entity**
+Redirects the user to Google's OAuth 2.0 authorization endpoint.
 
-Register a new entity under a category.
+### Request
+
+No request body is required.
+
+### Success Response (302)
+
+Redirects to the Google OAuth 2.0 authorization URL.
+
+---
+
+## **GET /google/callback**
+
+Handles the callback from Google after user authorization.
+
+### Query Parameters
+
+- `code`: Authorization code from Google.
+- `state`: State parameter to prevent CSRF attacks.
+
+### Success Response (302)
+
+Redirects to the `return_to` URL with a temporary login code.
+
+### Error Responses
+
+```json
+{
+  "error": "Missing code or state"
+}
+```
+
+```json
+{
+  "error": "Invalid or expired state"
+}
+```
+
+---
+
+## **POST /google/finalize**
+
+Finalizes the Google login process and issues JWT tokens.
 
 ### Request
 
 ```json
 {
-  "entity_name": "MyCompany",
+  "code": "temporary_login_code"
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "Invalid or expired code"
+}
+```
+
+---
+
+## **POST /register_mail**
+
+Registers an email for temporary access.
+
+### Request
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Email user@example.com registered for temporary access"
+  }
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "Invalid email"
+}
+```
+
+```json
+{
+  "error": "Email already exists"
+}
+```
+
+---
+
+## **POST /register_user**
+
+Creates a new user account and returns authentication tokens.
+
+### Request
+
+```json
+{
+  "full_name": "John Doe",
+  "email": "john@example.com",
+  "password": "secret123",
+  "phone_number": "1234567890",
+  "role": "registered"
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "jwt_access_token_here",
+    "refresh_token": "jwt_refresh_token_here",
+    "user_role": "registered",
+    "user_id": 1
+  }
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "missing required key: full_name"
+}
+```
+
+```json
+{
+  "error": "role must be in ['public', 'registered', 'anonymous', 'subscribed', 'admin']"
+}
+```
+
+```json
+{
+  "error": "Email already exists"
+}
+```
+
+---
+
+## **POST /register_entity_name**
+
+Registers an entity name for temporary access.
+
+### Request
+
+```json
+{
+  "entity_name": "MyEntity"
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Entity MyEntity registered for temporary access"
+  }
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "entity name MyEntity already exists"
+}
+```
+
+---
+
+## **POST /register_entity**
+
+Registers a new entity with optional pages.
+
+### Headers
+
+```
+Authorization: Bearer <access_token>
+```
+
+### Request
+
+```json
+{
+  "entity_name": "MyEntity",
   "type": "business",
-  "category_id": 2
+  "category_id": 2,
+  "pages": [
+    {
+      "platform": "instagram",
+      "link": "https://instagram.com/myentity"
+    }
+  ]
 }
 ```
 
@@ -20,18 +228,25 @@ Register a new entity under a category.
   "success": true,
   "data": {
     "id": 5,
-    "name": "MyCompany",
+    "name": "MyEntity",
     "type": "business",
-    "category_id": 2
+    "category_id": 2,
+    "pages": [
+      {
+        "page_id": "71b5dd66-6cc9-5dfc-88ae-bff8d2c9d483",
+        "page_link": "https://instagram.com/myentity",
+        "platform": "instagram"
+      }
+    ]
   }
 }
 ```
 
-### Error Response (400/500)
+### Error Responses
 
 ```json
 {
-  "error": "missing required keys"
+  "error": "Missing required parameters"
 }
 ```
 
@@ -43,13 +258,7 @@ Register a new entity under a category.
 
 ```json
 {
-  "error": "entity name MyCompany already exists"
-}
-```
-
-```json
-{
-  "error": "failed to insert entity data"
+  "error": "entity name MyEntity already exists"
 }
 ```
 
@@ -57,7 +266,7 @@ Register a new entity under a category.
 
 ## **POST /login**
 
-Authenticate user and return tokens.
+Authenticates a user and returns JWT tokens.
 
 ### Request
 
@@ -82,7 +291,7 @@ Authenticate user and return tokens.
 }
 ```
 
-### Error Response (401)
+### Error Responses
 
 ```json
 {
@@ -92,9 +301,9 @@ Authenticate user and return tokens.
 
 ---
 
-## **POST /get\_user\_data**
+## **POST /get_user_data**
 
-Fetch user details from JWT access token.
+Fetches user details from the JWT access token.
 
 ### Headers
 
@@ -140,9 +349,9 @@ Authorization: Bearer <access_token>
 
 ---
 
-## **POST /refresh\_token**
+## **POST /refresh_token**
 
-Generate a new access token using a refresh token.
+Generates a new access token using a refresh token.
 
 ### Headers
 
@@ -181,15 +390,11 @@ Authorization: Bearer <refresh_token>
 }
 ```
 
-
 ---
 
+## **POST /validate_user_role**
 
-## **POST /register\_entity**
-
-Add a new entity with all related data in the database
-
-####   allowed_roles = ["admin"]
+Updates the role of a user.
 
 ### Headers
 
@@ -197,187 +402,37 @@ Add a new entity with all related data in the database
 Authorization: Bearer <access_token>
 ```
 
-### Success Response (200)
-
-```json
-{
-  "data": {
-    "category_id": 3,
-    "id": 166,
-    "name": "chopit2",
-    "pages": [
-      {
-        "page_id": "71b5dd66-6cc9-5dfc-88ae-bff8d2c9d483",
-        "page_link": "chopa.com",
-        "platform": "instagram"
-      }
-    ],
-    "type": "company"
-  },
-  "success": true
-}
-```
-
-### Error Responses
-
-```json
-{
-  "error": "Missing access token"
-}
-```
-
-```json
-{
-  "error": "Invalid access token"
-}
-```
-
-```json
-{
-  "error": "wrong category_id"
-}
-```
-
-```json
-{
-  "error": "Missing required parameters"
-}
-```
-
-## **POST /validate\_user\_role**
-
-Update the role of a user
-
-####   allowed_roles = ["admin"]
-
-### Headers
-
-```
-Authorization: Bearer <access_token>
-```
-
-### Success Response (200)
-
-```json
-{
-  "data": {
-    "role": "admin",
-    "user_id": 9
-  },
-  "success": true
-}
-```
-
-### Error Responses
-
-```json
-{
-  "error": "Missing access token"
-}
-```
-
-```json
-{
-  "error": "Invalid access token"
-}
-```
-
-```json
-{
-  "error": "Missing required parameters"
-}
-```
-
-## **POST /register_mail**
-Register an email for temporary access without creating a full user account.
-
 ### Request
+
 ```json
 {
-  "email": "user@example.com"
+  "user_id": 9,
+  "role": "admin"
 }
 ```
 
 ### Success Response (200)
+
 ```json
 {
   "success": true,
   "data": {
-    "message": "Email user@example.com registered for temporary access"
+    "user_id": 9,
+    "role": "admin"
   }
 }
 ```
 
 ### Error Responses
 
-**Invalid email (400)**
 ```json
 {
-  "error": "Invalid email"
+  "error": "Missing required key user_id"
 }
 ```
 
-**Email already exists (400)**
 ```json
 {
-  "error": "Email already exists"
-}
-```
-
----
-
-## **POST /register_user**
-Create a new user account and return authentication tokens. No need to login separately after registration.
-
-### Request
-```json
-{
-  "first_name": "John",
-  "last_name": "Doe",
-  "email": "john@example.com",
-  "password": "secret123",
-  "role": "registered"
-}
-```
-
-**Note:** `role` is optional and defaults to `"registered"`. Allowed roles: `"public"`, `"registered"`, `"anonymous"`, `"subscribed"`, `"admin"`
-
-### Success Response (200)
-```json
-{
-  "success": true,
-  "data": {
-    "access_token": "jwt_access_token_here",
-    "refresh_token": "jwt_refresh_token_here",
-    "user_role": "registered",
-    "user_id": 1
-  }
-}
-```
-
-**Token Details:**
-- Access token: Valid for 1 day
-- Refresh token: Valid for 30 days
-
-### Error Responses
-
-**Missing required key (400)**
-```json
-{
-  "error": "missing required key: first_name"
-}
-```
-
-**Invalid role (400)**
-```json
-{
-  "error": "role must be in ['public', 'registered', 'anonymous', 'subscribed', 'admin']"
-}
-```
-
-**Email already exists (400)**
-```json
-{
-  "error": "Email already exists"
+  "error": "Access denied"
 }
 ```

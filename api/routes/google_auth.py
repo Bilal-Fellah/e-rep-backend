@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from urllib import response
 from flask import redirect, request, jsonify, Blueprint, make_response
 from datetime import datetime
 import jwt
@@ -6,6 +7,13 @@ import requests
 import os
 from api.utils.auth import OAUTH_USERS_FILE
 from api.repositories.user_repository import UserRepository
+import secrets
+from urllib.parse import urlencode
+
+from time import time
+
+_OAUTH_STATE_STORE = {}
+_LOGIN_CODE_STORE = {}
 
 SECRET = os.environ.get("SECRET_KEY")
 oauth_bp = Blueprint("oauth", __name__)
@@ -21,10 +29,26 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-
-# 1️⃣ Start login (open this in browser)
 @oauth_bp.route("/google/login")
 def login_google():
+    return_to = request.args.get("return_to")
+
+    # ALLOWED_RETURN_URLS = {
+    #     "https://www.brendex.net",
+    #     "https://brendex.net",
+    # }
+
+    # if return_to not in ALLOWED_RETURN_URLS:
+    #     return jsonify({"error": "Invalid return_to"}), 400
+
+    state = secrets.token_urlsafe(32)
+
+    # store state → return_to (redis/db)
+    _OAUTH_STATE_STORE[state] = {
+        "return_to": return_to,
+        "exp": time() + 600
+    }
+
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
@@ -32,21 +56,27 @@ def login_google():
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "consent",
+        "state": state,
     }
 
     url = requests.Request("GET", GOOGLE_AUTH_URL, params=params).prepare().url
     return redirect(url)
 
-
-# 2️⃣ Google redirects here
 @oauth_bp.route("/google/callback")
 def google_callback():
     code = request.args.get("code")
+    state = request.args.get("state")
 
-    if not code:
-        return jsonify({"error": "No code returned"}), 400
+    if not code or not state:
+        return jsonify({"error": "Missing code or state"}), 400
 
-    # 3 Exchange code for token
+    state_data = _OAUTH_STATE_STORE.pop(state, None)
+    if not state_data or state_data["exp"] < time():
+        return jsonify({"error": "Invalid or expired state"}), 400
+
+    return_to = state_data["return_to"]
+
+    # --- everything below stays the same ---
     token_data = {
         "code": code,
         "client_id": GOOGLE_CLIENT_ID,
@@ -63,25 +93,46 @@ def google_callback():
 
     access_token = token_json["access_token"]
 
-    # 4️⃣ Fetch user info
     userinfo_res = requests.get(
         GOOGLE_USERINFO_URL,
         headers={"Authorization": f"Bearer {access_token}"}
     )
 
     userinfo = userinfo_res.json()
-    
-    user =  UserRepository.find_by_email(userinfo["email"])
+
+    user = UserRepository.find_by_email(userinfo["email"])
     if not user:
         user = UserRepository.create_user(
             first_name=userinfo.get("given_name", ""),
             last_name=userinfo.get("family_name", ""),
             email=userinfo["email"],
-            password="",  # No password since it's OAuth
+            password="",
             role="registered"
         )
 
-    # Access token (1 day)
+    # 🔑 generate temporary login code
+    login_code = secrets.token_urlsafe(32)
+    _LOGIN_CODE_STORE[login_code] = {
+        "user_id": user.id,
+        "exp": time() + 300
+    }
+
+    return redirect(f"{return_to}/auth/complete?code={login_code}")
+
+@oauth_bp.route("/google/finalize", methods=["POST"])
+def finalize_google_login():
+    code = request.json.get("code")
+
+    code_data = _LOGIN_CODE_STORE.pop(code, None)
+    if not code_data or code_data["exp"] < time():
+        return jsonify({"error": "Invalid or expired code"}), 400
+
+    user_id = code_data["user_id"]
+
+
+    user = UserRepository.find_by_id(int(user_id))
+
+    # --- unchanged JWT logic ---
     access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
     access_payload = {
         "user_id": user.id,
@@ -89,8 +140,7 @@ def google_callback():
         "exp": access_token_exp
     }
     access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
-    
-    # Refresh token (30 days)
+
     refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
     refresh_payload = {
         "user_id": user.id,
@@ -98,54 +148,32 @@ def google_callback():
     }
     refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
 
-    # Save refresh token & expiry in DB
     UserRepository.update_refresh_token(
         user.id,
         token=refresh_token,
         exp=refresh_token_exp
     )
 
-    frontend_url = 'https://brendex.net'
+    response = jsonify({"success": True})
 
-    response = make_response(redirect(frontend_url))
-
-    # Access token (short-lived)
     response.set_cookie(
         "access_token",
         access_token,
         httponly=True,
         secure=True,
-        samesite="None",   # REQUIRED since frontend is another domain
-        max_age= 24*60 * 60   # 1 day
+        samesite="None",
+        domain=".brendex.net",
+        max_age=86400
     )
 
-    # Refresh token (long-lived)
     response.set_cookie(
         "refresh_token",
         refresh_token,
         httponly=True,
         secure=True,
         samesite="None",
-        max_age=30 * 24 * 60 * 60  # 30 days
-    )
-
-    # Optional: non-sensitive info (can be readable by JS)
-    response.set_cookie(
-        "user_role",
-        user.role,
-        secure=True,
-        samesite="None"
-    )
-
-    response.set_cookie(
-        "user_id",
-        str(user.id),
-        secure=True,
-        samesite="None"
+        domain=".brendex.net",
+        max_age=30 * 86400
     )
 
     return response
-
-
-
-
