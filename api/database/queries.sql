@@ -11,6 +11,7 @@ SELECT
     p.name          AS page_name,
     p.link          AS page_url,
     e.to_scrape     AS to_scrape,
+    c2.name         AS root_category,
 
     --  Profile image URL
     CASE
@@ -25,8 +26,8 @@ SELECT
     --  Followers / Subscribers
     CASE
         WHEN p.platform = 'youtube'
-            THEN (ph.data->>'subscribers')::BIGINT
-        ELSE (ph.data->>'followers')::BIGINT
+            THEN NULLIF(ph.data->>'followers', '')::BIGINT
+        ELSE NULLIF(ph.data->>'followers', '')::BIGINT
     END AS raw_followers,
 
     --  Posts metrics
@@ -98,9 +99,8 @@ FROM pages_history ph
 JOIN pages p    ON p.uuid = ph.page_id
 JOIN entities e ON e.id   = p.entity_id
 JOIN entity_category ec ON ec.entity_id = e.id
-JOIN categories c ON c.id   = ec.category_id;
-
-
+JOIN categories c ON c.id   = ec.category_id
+LEFT JOIN categories c2 ON c2.id = c.parent_id;
 
 
 
@@ -120,7 +120,6 @@ ON page_posts_metrics_mv (page_id, recorded_at DESC);
 
 
 -- refresh mv
-CREATE UNIQUE INDEX idx_ppmm_unique
-ON page_posts_metrics_mv (history_id);
+CREATE UNIQUE INDEX idx_ppmm_unique ON page_posts_metrics_mv (history_id);
 --\
 REFRESH MATERIALIZED VIEW CONCURRENTLY page_posts_metrics_mv;

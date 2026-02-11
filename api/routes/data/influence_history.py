@@ -266,6 +266,7 @@ def entities_ranking():
         entity["entity_id"] = row.entity_id
         entity["entity_name"] = row.entity_name
         entity["category"] = row.category
+        entity["root_category"] = row.root_category
 
         # platform-level aggregation
         entity["platforms"][row.platform] = {
@@ -313,6 +314,7 @@ def entities_ranking():
             "entity_id": entity_id,
             "entity_name": entity_data["entity_name"],
             "category": entity_data["category"],
+            "root_category": entity_data["root_category"],
             "platforms": entity_data["platforms"],
             "total_score": total_score,
             "average_score": total_score / total_posts if total_posts else 0,
