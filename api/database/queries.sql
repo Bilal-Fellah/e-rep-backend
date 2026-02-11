@@ -115,8 +115,7 @@ CREATE INDEX idx_ppmm_page_id ON page_posts_metrics_mv (page_id);
 CREATE INDEX idx_ppmm_platform ON page_posts_metrics_mv (platform);
 CREATE INDEX idx_ppmm_recorded_at ON page_posts_metrics_mv (recorded_at);
 -- and 
-CREATE INDEX idx_ppmm_page_time 
-ON page_posts_metrics_mv (page_id, recorded_at DESC);
+CREATE INDEX idx_ppmm_page_time ON page_posts_metrics_mv (page_id, recorded_at DESC);
 
 
 -- refresh mv

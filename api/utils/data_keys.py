@@ -4,8 +4,8 @@ platform_metrics = {
         "date": "datetime",
         "weight": 1/4,
         "metrics": [
-            {"name": "comments", "score": 0.7},
-            {"name": "likes", "score": 0.3},
+            {"name": "comments", "score": 0.6},
+            {"name": "likes", "score": 0.4},
         ]
     },
     "linkedin": {
@@ -34,7 +34,7 @@ platform_metrics = {
         "metrics": [
             {"name": "commentcount", "score": 0.4},
             {"name": "share_count", "score": 0.3},
-            {"name": "favorites_count", "score": 0.2},
+            {"name": "favorites_count", "score": 0.3},
             # {"name": "playcount", "score": 0.1},
         ]
     }
@@ -42,16 +42,20 @@ platform_metrics = {
 
 def compute_score(post, metrics):
     score = 0
+    post_gains={}
+
     for m in metrics:
         name = m["name"]
         weight = m.get("weight", 1.0)
         value = post.get(name)
         score += weight * float(value if value is not None else 0)
-    return score
+        post_gains[name] = value
+    return score, post_gains
 
 
 def summarize_days(data, platform_metrics):
     summary = []
+
 
     for day_block in data:
         day = day_block["day"]
@@ -59,13 +63,14 @@ def summarize_days(data, platform_metrics):
 
         day_total_score = 0
         platform_scores = {}
+        day_gains = {}
 
         for post in posts:
             platform = post.get("platform")
             metrics = platform_metrics.get(platform, {}).get("metrics", [])
 
             # Compute score of this post
-            post_score = compute_score(post, metrics)
+            post_score, post_gains = compute_score(post, metrics)
 
             # Add to total
             day_total_score += post_score
@@ -75,10 +80,18 @@ def summarize_days(data, platform_metrics):
                 platform_scores[platform] = 0
             platform_scores[platform] += post_score
 
+            for metric, value in post_gains.items():
+                if platform not in day_gains:
+                    day_gains[platform] = {}
+                if metric not in day_gains[platform]:
+                    day_gains[platform][metric] = 0
+                day_gains[platform][metric] += value if value else 0
+
         summary.append({
             "date": day,
             "total_score": day_total_score,
-            "platform_scores": platform_scores
+            "platform_scores": platform_scores,
+            "day_gains": day_gains
         })
 
     return summary

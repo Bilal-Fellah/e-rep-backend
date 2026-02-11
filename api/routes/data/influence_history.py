@@ -436,7 +436,6 @@ def get_entity_interaction_stats():
         
         
         summary = summarize_days(final_output, platform_metrics)
-        print("WE ARE HERE")
         summary = fill_missing_scores(summary)
 
 
