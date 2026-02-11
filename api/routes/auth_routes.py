@@ -1,4 +1,5 @@
 # routes/auth_routes.py
+import email
 import json
 import json
 from api.services.auth_service import AuthService
@@ -13,7 +14,7 @@ import jwt
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
-from api.utils.auth import MAILS_FILE
+from api.utils.auth import MAILS_FILE, ENTITIES_FILE
 
 from api.routes.main import error_response, success_response
 # from app import app
@@ -104,6 +105,36 @@ def register_user():
         return success_response(data=response )
     except Exception as e:
         return error_response(str(e), 500)
+
+
+@auth_bp.route("/register_entity_name", methods=["POST"])
+def register_entity_name():
+    allowed_roles = ["admin", "registered","subscribed", "public"]
+    try:
+        entity_name = request.json.get("entity_name")
+
+        if EntityRepository.get_by_name(entity_name= entity_name):
+            return error_response(f"entity name {entity_name} already exists")
+        
+        
+        init_status = "unverified"
+        entity_object = {
+            "entity_name": entity_name,
+            "status": init_status,
+            "registered_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        with open(ENTITIES_FILE, "r+") as f:
+            entities = json.load(f)
+
+            entities.append(entity_object)
+            f.seek(0)
+            json.dump(entities, f, indent=4)
+            
+        return success_response(data={"message": f"Entity {entity_name} registered for temporary access"})
+    except Exception as e:
+        return error_response(str(e), 500)
+
 
 
 @auth_bp.route("/register_entity", methods=["POST"])
