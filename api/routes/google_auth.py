@@ -1,19 +1,14 @@
 from datetime import datetime, timedelta, timezone
-from urllib import response
-from flask import redirect, request, jsonify, Blueprint, make_response
+from flask import redirect, request, jsonify, Blueprint,  session
 from datetime import datetime
 import jwt
 import requests
 import os
-from api.utils.auth import OAUTH_USERS_FILE
 from api.repositories.user_repository import UserRepository
 import secrets
-from urllib.parse import urlencode
+from api.utils.login_codes_utils import store_login_code, consume_login_code
 
-from time import time
 
-_OAUTH_STATE_STORE = {}
-_LOGIN_CODE_STORE = {}
 
 SECRET = os.environ.get("SECRET_KEY")
 oauth_bp = Blueprint("oauth", __name__)
@@ -29,6 +24,7 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
+
 @oauth_bp.route("/google/login")
 def login_google():
     return_to = request.args.get("return_to")
@@ -43,11 +39,13 @@ def login_google():
 
     state = secrets.token_urlsafe(32)
 
-    # store state → return_to (redis/db)
-    _OAUTH_STATE_STORE[state] = {
-        "return_to": return_to,
-        "exp": time() + 600
-    }
+    # login
+    session["oauth_state"] = state
+    session["return_to"] = return_to
+
+    print("SET STATE:", state)
+    print("SESSION:", dict(session))
+
 
     params = {
         "client_id": GOOGLE_CLIENT_ID,
@@ -62,6 +60,7 @@ def login_google():
     url = requests.Request("GET", GOOGLE_AUTH_URL, params=params).prepare().url
     return redirect(url)
 
+
 @oauth_bp.route("/google/callback")
 def google_callback():
     code = request.args.get("code")
@@ -70,12 +69,16 @@ def google_callback():
     if not code or not state:
         return jsonify({"error": "Missing code or state"}), 400
 
-    state_data = _OAUTH_STATE_STORE.pop(state, None)
-    if not state_data or state_data["exp"] < time():
+    # callback
+    if state != session.get("oauth_state"):
         return jsonify({"error": "Invalid or expired state"}), 400
 
-    return_to = state_data["return_to"]
+    return_to = session.pop("return_to")
+    session.pop("oauth_state")
 
+    print("CALLBACK STATE:", state)
+    print("SESSION:", dict(session))
+   
     # --- everything below stays the same ---
     token_data = {
         "code": code,
@@ -112,19 +115,18 @@ def google_callback():
 
     # 🔑 generate temporary login code
     login_code = secrets.token_urlsafe(32)
-    _LOGIN_CODE_STORE[login_code] = {
-        "user_id": user.id,
-        "exp": time() + 300
-    }
+    store_login_code(login_code, user.id)
+
 
     return redirect(f"{return_to}/auth/complete?code={login_code}")
+
 
 @oauth_bp.route("/google/finalize", methods=["POST"])
 def finalize_google_login():
     code = request.json.get("code")
 
-    code_data = _LOGIN_CODE_STORE.pop(code, None)
-    if not code_data or code_data["exp"] < time():
+    code_data = consume_login_code(code)
+    if not code_data:
         return jsonify({"error": "Invalid or expired code"}), 400
 
     user_id = code_data["user_id"]

@@ -23,6 +23,17 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{DB_USER}:{DB_PWD}@{VPS_ADDRESS}:{VPS_DB_PORT}/{DB_NAME}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    app.secret_key = os.getenv("SECRET_KEY")
+
+    app.config.update(
+        SESSION_COOKIE_NAME="brendex_session",
+        SESSION_COOKIE_HTTPONLY=False,
+        SESSION_COOKIE_SAMESITE="None",  # REQUIRED for Google redirect
+        SESSION_COOKIE_SECURE=True,      # REQUIRED for SameSite=None
+    )
+
+
+
     db.init_app(app)
     migrate.init_app(app, db)
 
