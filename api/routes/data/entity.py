@@ -1,9 +1,9 @@
-import ast
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-import math
 import os
-from api.repositories.page_repository import PageRepository
+
+from requests import post
+from api.repositories.post_repository import PostRepository
 from api.utils.data_keys import platform_metrics
 import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
@@ -12,12 +12,9 @@ from api.routes.main import error_response, success_response
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from sqlalchemy.exc import SQLAlchemyError
-
 from api.utils.posts_utils import _to_number, ensure_datetime, parse_relative_time
-
 from . import data_bp
 
-import json
 
 SECRET = os.environ.get("SECRET_KEY")
 
@@ -626,3 +623,5 @@ def get_entity_top_posts():
         return success_response(day_gains, 200)
     except Exception as e:
         return error_response(f"Internal server error: {str(e)}", 500)
+
+
