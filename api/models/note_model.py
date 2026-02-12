@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
-from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import JSON
-
-db = SQLAlchemy()
+from api import db
 
 class Note(db.Model):
     __tablename__ = "notes"
@@ -39,3 +38,7 @@ class Note(db.Model):
     )
 
     author = db.relationship("User", backref="notes")
+
+    def to_dict(self):
+        """Convert model instance to dictionary"""
+        return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}

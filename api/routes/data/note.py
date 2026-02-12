@@ -1,23 +1,11 @@
-from collections import defaultdict
-from datetime import datetime, timezone, timedelta
-import math
-import os
 from api.repositories.note_repository import NoteRepository
-from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
-from api.utils.data_keys import platform_metrics
-import jwt
-from api.repositories.page_history_repository import PageHistoryRepository
 from flask import Blueprint, request, jsonify
 from api.routes.main import error_response, success_response
-from api.repositories.entity_repository import EntityRepository
-from api.repositories.entity_category_repository import EntityCategoryRepository
-from sqlalchemy.exc import SQLAlchemyError
+from . import data_bp
 
 
-notes_bp = Blueprint("notes", __name__)
-
-@notes_bp.route("/create_note", methods=["POST"])
+@data_bp.route("/create_note", methods=["POST"])
 def create_note():
     data = request.get_json() or {}
 
@@ -41,12 +29,12 @@ def create_note():
         context_data=data.get("context_data"),
         visibility=data.get("visibility", "private"),
     )
+    data = note.to_dict()
+    return success_response(data=data, status_code=201)
 
-    return success_response(data=note, status_code=201)
 
 
-
-@notes_bp.route("/get_notes_for_target", methods=["GET"])
+@data_bp.route("/get_notes_for_target", methods=["GET"])
 def get_notes_for_target():
     """ Get notes about a specific post, or a specific entity (graph) """
 

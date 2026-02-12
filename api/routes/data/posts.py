@@ -19,6 +19,7 @@ def get_post_by_id():
     data = post.to_dict()
     
     return success_response(data=data)
+
 @data_bp.route("/get_post_by_platform", methods=["GET"])
 def get_post_by_platform():
     platform = request.args.get("platform")
