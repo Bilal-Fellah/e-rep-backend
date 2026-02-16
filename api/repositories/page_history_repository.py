@@ -532,7 +532,7 @@ class PageHistoryRepository:
         return db.session.scalars(stmt).all()
     
     @staticmethod
-    def get_platform_history(self, platform: str):
+    def get_platform_history(platform: str):
         stmt =( select(PageHistory)
             .join(Page, PageHistory.page_id == Page.uuid)
             .filter(Page.platform == platform)

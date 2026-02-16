@@ -1,3 +1,4 @@
+import app
 from flask import Flask
 from flask_cors import CORS
 import os
@@ -44,25 +45,43 @@ def create_app():
     # Get environment
     environment = os.environ.get('FLASK_ENV', 'development')
     
-    # Configure CORS based on environment
-    if environment == 'production':
-        # Production: Only allow requests from your Vercel app
-        CORS(app, 
-             resources={r"/api/*": {
-                 "origins": "*",  # Only allow this specific origin
-                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                 "allow_headers": ["Content-Type", "Authorization", "Accept"],
-                 "supports_credentials": False
-             }})
-    else:
-        # Development: Allow all origins
-        CORS(app, 
-             resources={r"/api/*": {
-                 "origins": "*",
-                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                 "allow_headers": ["Content-Type", "Authorization", "Accept"],
-                 "supports_credentials": False
-             }})
+    from flask_cors import CORS
+
+    ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "https://www.brendex.net",
+        "https://brendex.net",
+    ]
+
+    CORS(app,
+        resources={r"/api/*": {
+            "origins": ALLOWED_ORIGINS,
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization", "Accept"],
+            "supports_credentials": True
+        }}
+    )
+
+    # # Configure CORS based on environment
+    # if environment == 'production':
+    #     # Production: Only allow requests from your Vercel app
+    #     CORS(app, 
+    #          resources={r"/api/*": {
+    #              "origins": "*",  # Only allow this specific origin
+    #              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    #              "allow_headers": ["Content-Type", "Authorization", "Accept"],
+    #              "supports_credentials": True
+    #          }})
+    # else:
+    #     # Development: Allow all origins
+    #     CORS(app, 
+    #          resources={r"/api/*": {
+    #              "origins": "*",
+    #              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    #              "allow_headers": ["Content-Type", "Authorization", "Accept"],
+    #              "supports_credentials": True
+    #          }})
 
     from .routes import register_routes
     register_routes(app)
