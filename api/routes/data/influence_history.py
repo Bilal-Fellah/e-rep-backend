@@ -124,7 +124,7 @@ def get_platform_history():
             return error_response("No history found", 404)
 
         data = [
-            {"id": h.id, "page_id": h.page_id, "data": h.data}
+            {"id": h.id, "page_id": h.page_id, "data": h.data, "recorded_at": h.recorded_at}
             for h in history_list
         ]
         return success_response(data, 200)

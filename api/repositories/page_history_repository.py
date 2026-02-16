@@ -49,10 +49,16 @@ class PageHistoryRepository:
     
     @staticmethod
     def get_followers_history_by_entity(entity_id: int):
+        followers_case = case(
+            (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
+            (Page.platform == "facebook", PageHistory.data["page_followers"].astext),
+            else_=PageHistory.data["followers"].astext
+        ).cast(db.Integer).label("followers")
+
         stmt = (
             select(
                 PageHistory.recorded_at,
-                PageHistory.data['followers'].astext.cast(db.Integer).label("followers"),
+                followers_case,
                 PageHistory.page_id,
                 Page.platform
             )
@@ -60,6 +66,7 @@ class PageHistoryRepository:
             .where(Page.entity_id == entity_id)
             .order_by(PageHistory.recorded_at)
         )
+
         return db.session.execute(stmt).all()
     
     @staticmethod

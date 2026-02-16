@@ -6,6 +6,7 @@ import requests
 import os
 from api.repositories.user_repository import UserRepository
 import secrets
+from api.routes.main import success_response
 from api.utils.login_codes_utils import store_login_code, consume_login_code
 
 
@@ -156,26 +157,20 @@ def finalize_google_login():
         exp=refresh_token_exp
     )
 
-    response = jsonify({"success": True})
+    
 
-    response.set_cookie(
-        "access_token",
-        access_token,
-        httponly=True,
-        secure=True,
-        samesite="None",
-        domain=".brendex.net",
-        max_age=86400
-    )
+    response = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user_role": user.role,
+            "user": {
+                "id": user.id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
+                "role": user.role,
+                "created_at": user.created_at.isoformat()
+            }
+    }
 
-    response.set_cookie(
-        "refresh_token",
-        refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="None",
-        domain=".brendex.net",
-        max_age=30 * 86400
-    )
-
-    return response
+    return success_response(response, status_code=200)
