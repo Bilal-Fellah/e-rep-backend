@@ -132,7 +132,7 @@ def finalize_google_login():
     user_id = code_data["user_id"]
 
 
-    user = UserRepository.find_by_id(int(user_id))
+    user = UserRepository.get_by_id(int(user_id))
 
     # --- unchanged JWT logic ---
     access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
