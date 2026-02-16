@@ -119,7 +119,7 @@ def get_platform_history():
         if not platform:
             return error_response("Missing platform parameter", 400)
         print(platform)
-        history_list = PageHistoryRepository().get_platform_history(platform=platform)
+        history_list = PageHistoryRepository().get_platform_history(platform)
         if not history_list:
             return error_response("No history found", 404)
 

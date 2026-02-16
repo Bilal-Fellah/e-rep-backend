@@ -1,4 +1,3 @@
-import app
 from flask import Flask
 from flask_cors import CORS
 import os
@@ -45,7 +44,6 @@ def create_app():
     # Get environment
     environment = os.environ.get('FLASK_ENV', 'development')
     
-    from flask_cors import CORS
 
     ALLOWED_ORIGINS = [
         "http://localhost:3000",
