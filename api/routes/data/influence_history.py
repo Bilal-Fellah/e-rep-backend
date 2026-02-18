@@ -248,7 +248,7 @@ def get_entities_ranking():
 @data_bp.route("/entities_ranking", methods=['GET'])
 def entities_ranking():
     # get only last week interactions
-    start_date = datetime.now() - timedelta(days=7)
+    start_date = datetime.now() - timedelta(days=15)
 
     # get all entities posts
     data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
