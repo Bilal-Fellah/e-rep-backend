@@ -20,13 +20,14 @@ SELECT
         WHEN p.platform = 'tiktok'    THEN ph.data->>'profile_pic_url'
         WHEN p.platform = 'linkedin'  THEN ph.data->>'logo'
         WHEN p.platform = 'instagram' THEN ph.data->>'profile_image_link'
+        WHEN p.platform = 'facebook'  THEN ph.data->>'page_logo'
         ELSE NULL
     END AS profile_url,
 
     --  Followers / Subscribers
     CASE
-        WHEN p.platform = 'youtube'
-            THEN NULLIF(ph.data->>'followers', '')::BIGINT
+        WHEN p.platform = 'youtube'  THEN NULLIF(ph.data->>'subscribers', '')::BIGINT
+        WHEN p.platform = 'facebook' THEN NULLIF(ph.data->>'page_followers', '')::BIGINT
         ELSE NULLIF(ph.data->>'followers', '')::BIGINT
     END AS raw_followers,
 
@@ -91,6 +92,29 @@ SELECT
                 )
                 FROM jsonb_array_elements(COALESCE(ph.data->'top_videos', '[]'::jsonb)) AS post
             )
+        -- Facebook: each pages_history row IS one post (flat, no array)
+        WHEN p.platform = 'facebook' AND ph.data->>'post_id' IS NOT NULL
+        THEN
+            jsonb_build_array(
+                jsonb_build_object(
+                    'post_id',              ph.data->>'post_id',
+                    'date_posted',          ph.data->>'date_posted',
+                    'content',              ph.data->>'content',
+                    'url',                  ph.data->>'url',
+                    'post_type',            ph.data->>'post_type',
+                    'likes',                ph.data->'likes',
+                    'num_comments',         ph.data->'num_comments',
+                    'num_shares',           ph.data->'num_shares',
+                    'video_view_count',     ph.data->'video_view_count',
+                    'play_count',           ph.data->'play_count',
+                    'post_image',           ph.data->>'post_image',
+                    'count_reactions_type', ph.data->'count_reactions_type',
+                    'attachments',          ph.data->'attachments',
+                    'hashtags',             ph.data->'hashtags',
+                    'is_sponsored',         ph.data->'is_sponsored',
+                    'delegate_page_id',     ph.data->>'delegate_page_id'
+                )
+            )
 
         ELSE '[]'::jsonb
     END AS posts_metrics
@@ -101,8 +125,6 @@ JOIN entities e ON e.id   = p.entity_id
 JOIN entity_category ec ON ec.entity_id = e.id
 JOIN categories c ON c.id   = ec.category_id
 LEFT JOIN categories c2 ON c2.id = c.parent_id;
-
-
 
 
 

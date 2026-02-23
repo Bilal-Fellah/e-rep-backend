@@ -247,16 +247,27 @@ def get_entities_ranking():
 
 @data_bp.route("/entities_ranking", methods=['GET'])
 def entities_ranking():
-    # get only last week interactions
-    start_date = datetime.now() - timedelta(days=15)
+    # get only last 30 days interactions
+    start_date = datetime.now() - timedelta(days=30)
 
-    # get all entities posts
+    # get all entities posts (for scoring) and followers snapshot (current + prev)
     data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
+    followers_snapshot = PageHistoryRepository.get_entities_followers_snapshot(date_limit=start_date)
 
-    
+    # build lookup: page_id -> {current_followers, prev_followers}
+    followers_by_page = {
+        row.page_id: {
+            "current": row.current_followers or 0,
+            "prev": row.prev_followers or 0,
+        }
+        for row in followers_snapshot
+    }
+
     structured_entities = defaultdict(lambda: {
         "platforms": {},
-        "posts": []
+        "posts": [],
+        # track latest recorded_at per platform to ensure we only keep the freshest metadata
+        "_platform_ts": {}
     })
 
     for row in data:
@@ -268,14 +279,19 @@ def entities_ranking():
         entity["category"] = row.category
         entity["root_category"] = row.root_category
 
-        # platform-level aggregation
-        entity["platforms"][row.platform] = {
-            "followers": row.raw_followers or 0,
-            "page_id": row.page_id,
-            "page_name": row.page_name,
-            "profile_url": row.page_url,
-            "profile_image_url": row.profile_url,
-        }
+        # keep platform metadata only from the latest recording
+        prev_ts = entity["_platform_ts"].get(row.platform)
+        if prev_ts is None or row.recorded_at > prev_ts:
+            entity["_platform_ts"][row.platform] = row.recorded_at
+            snap = followers_by_page.get(row.page_id, {"current": 0, "prev": 0})
+            entity["platforms"][row.platform] = {
+                "followers": snap["current"],
+                "prev_followers": snap["prev"],
+                "page_id": row.page_id,
+                "page_name": row.page_name,
+                "profile_url": row.page_url,
+                "profile_image_url": row.profile_url,
+            }
 
         # keep posts metrics for scoring
         if row.posts_metrics:
@@ -284,7 +300,6 @@ def entities_ranking():
                 "metrics": row.posts_metrics
             })
 
-    
     entity_scores = []
 
     for entity_id, entity_data in structured_entities.items():
@@ -309,6 +324,9 @@ def entities_ranking():
         total_followers = sum(
             p["followers"] for p in entity_data["platforms"].values()
         )
+        total_prev_followers = sum(
+            p["prev_followers"] for p in entity_data["platforms"].values()
+        )
 
         entity_scores.append({
             "entity_id": entity_id,
@@ -318,7 +336,8 @@ def entities_ranking():
             "platforms": entity_data["platforms"],
             "total_score": total_score,
             "average_score": total_score / total_posts if total_posts else 0,
-            "total_followers": total_followers
+            "total_followers": total_followers,
+            "total_prev_followers": total_prev_followers,
         })
 
     entity_scores.sort(key=lambda x: x["total_followers"], reverse=True)

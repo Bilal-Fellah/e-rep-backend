@@ -167,6 +167,44 @@ class PageHistoryRepository:
         results = db.session.execute(query, {'date_limit': date_limit}).all()
         return results
 
+    @staticmethod
+    def get_entities_followers_snapshot(date_limit):
+        """
+        Returns per page:
+          - current_followers : from the most recent recording ever
+          - prev_followers    : from the oldest recording within the last-30-day window
+                                (i.e. the snapshot closest to `date_limit`)
+        """
+        query = text("""
+            WITH latest AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    raw_followers AS current_followers
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x')
+                  AND to_scrape
+                ORDER BY page_id, recorded_at DESC
+            ),
+            prev AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    raw_followers AS prev_followers
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x')
+                  AND to_scrape
+                  AND date(recorded_at) >= :date_limit
+                ORDER BY page_id, recorded_at ASC
+            )
+            SELECT
+                l.page_id,
+                l.current_followers,
+                p.prev_followers
+            FROM latest l
+            LEFT JOIN prev p ON p.page_id = l.page_id
+        """)
+        results = db.session.execute(query, {'date_limit': date_limit}).all()
+        return results
+
 
 
     @staticmethod
