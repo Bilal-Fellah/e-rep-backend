@@ -14,7 +14,7 @@ class Note(db.Model):
     content = db.Column(db.Text, nullable=False)
 
     target_type = db.Column(db.String(50), nullable=False)
-    target_id = db.Column(db.Integer, nullable=False)
+    target_id = db.Column(db.String(50), nullable=False)
 
     context_data = db.Column(JSON, nullable=True)
 
