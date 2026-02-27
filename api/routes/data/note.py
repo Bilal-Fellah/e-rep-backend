@@ -26,38 +26,40 @@ def _note_dict(n):
 
 @data_bp.route("/create_note", methods=["POST"])
 def create_note():
-    data = request.get_json() or {}
+    try:
+        data = request.get_json() or {}
 
-    required_fields = ["content", "target_type", "target_id", "user_id"]
-    for field in required_fields:
-        if field not in data:
-            return error_response(f"{field} is required", 400)
+        required_fields = ["content", "target_type", "target_id", "user_id"]
+        for field in required_fields:
+            if field not in data:
+                return error_response(f"{field} is required", 400)
 
-    user_id = int(data["user_id"])
+        user_id = int(data["user_id"])
 
-    if data["target_type"] not in ["post", "interactions_graph", "followers_graph"]:
-        return error_response("Invalid target_type, must be 'post', 'interactions_graph', or 'followers_graph'", 400)
-    
-    if data['target_type'] == 'post' and not PostRepository.get_by_id(data["target_id"]):
-        return error_response("Target post not found", 404)
-    
-    elif data["target_type"] in ["interactions_graph", "followers_graph"] and not EntityRepository.get_by_id(data["target_id"]):
-        return error_response("Target entity not found", 404)
-    
-    if not UserRepository.get_by_id(user_id):
-        return error_response("User doesn't exist, can't create note", 404)
-    
-    note = NoteRepository.create(
-        author_id=user_id,
-        title=data.get("title"),
-        content=data["content"],
-        target_type=data["target_type"],   # "post" | "interactions_graph"
-        target_id=data["target_id"],       # post.id or entity.id
-        context_data=data.get("context_data"),
-        visibility=data.get("visibility", "private"),
-    )
-    return success_response(data=_note_dict(note), status_code=201)
-
+        if data["target_type"] not in ["post", "interactions_graph", "followers_graph"]:
+            return error_response("Invalid target_type, must be 'post', 'interactions_graph', or 'followers_graph'", 400)
+        
+        if data['target_type'] == 'post' and not PostRepository.get_by_id(data["target_id"]):
+            return error_response("Target post not found", 404)
+        
+        elif data["target_type"] in ["interactions_graph", "followers_graph"] and not EntityRepository.get_by_id(data["target_id"]):
+            return error_response("Target entity not found", 404)
+        
+        if not UserRepository.get_by_id(user_id):
+            return error_response("User doesn't exist, can't create note", 404)
+        
+        note = NoteRepository.create(
+            author_id=user_id,
+            title=data.get("title"),
+            content=data["content"],
+            target_type=data["target_type"],   # "post" | "interactions_graph" | "followers_graph"
+            target_id=str(data["target_id"]),       # post.id:str or entity.id:int stored as string for uniformity
+            context_data=data.get("context_data"),
+            visibility=data.get("visibility", "private"),
+        )
+        return success_response(data=_note_dict(note), status_code=201)
+    except Exception as e:
+        return error_response(f"Error creating note: {str(e)}", 500)
 
 @data_bp.route("/get_note/<int:note_id>", methods=["GET"])
 def get_note(note_id):
@@ -78,7 +80,7 @@ def get_note(note_id):
 def get_notes_for_target():
     """Get notes about a specific post or entity (graph)."""
     target_type = request.args.get("target_type")
-    target_id = request.args.get("target_id", type=int)
+    target_id = request.args.get("target_id", type=str)
     user_id = request.args.get("user_id", type=int)
     include_archived = request.args.get("include_archived", "false").lower() == "true"
 
@@ -97,11 +99,11 @@ def get_notes_for_target():
 @data_bp.route("/get_notes_by_author", methods=["GET"])
 def get_notes_by_author():
     """Get all notes written by a specific user."""
-    author_id = request.args.get("author_id", type=int)
+    author_id = request.args.get("user_id", type=int)
     include_archived = request.args.get("include_archived", "false").lower() == "true"
 
     if not author_id:
-        return error_response("author_id is required", 400)
+        return error_response("user_id is required", 400)
 
     notes = NoteRepository.get_by_author(
         author_id=author_id,

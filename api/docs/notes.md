@@ -23,7 +23,7 @@ Create a new note.
   "user_id": 1,
   "content": "Engagement dropped after Feb 10.",
   "target_type": "interactions_graph",
-  "target_id": 3,
+  "target_id": "3",
   "title": "Q1 observation",
   "visibility": "private",
   "context_data": { "date_range": "2026-02-01/2026-02-20" }

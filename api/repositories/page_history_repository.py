@@ -369,6 +369,7 @@ class PageHistoryRepository:
                     db.func.coalesce(
                         case(
                             (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
+                            (Page.platform == "facebook", PageHistory.data["page_followers"].astext),
                             else_=PageHistory.data["followers"].astext
                         ),
                         "0"  # default if null
