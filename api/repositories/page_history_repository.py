@@ -13,10 +13,18 @@ from api.utils.data_keys import platform_metrics
 from api.utils.posts_utils import jsonb_projection, jsonb_projection_from_alias
 import json
 import os
+from uuid import UUID
 
 RootCategory = aliased(Category, name="root_category")
 
 RANKING_CACHE_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'ranking_cache.json')
+
+
+class _UUIDEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, UUID):
+            return str(obj)
+        return super().default(obj)
 
 
 class PageHistoryRepository:
@@ -600,13 +608,16 @@ class PageHistoryRepository:
 
         # Try reading from cache file
         if os.path.exists(RANKING_CACHE_FILE):
-            with open(RANKING_CACHE_FILE, 'r') as f:
-                cache = json.load(f)
-            if cache.get("month") == current_month and cache.get("data"):
-                return cache["data"]
+            try:
+                with open(RANKING_CACHE_FILE, 'r') as f:
+                    cache = json.load(f)
+                if cache.get("month") == current_month and cache.get("data"):
+                    return cache["data"]
+            except (json.JSONDecodeError, KeyError):
+                pass
 
         # Recompute and save
         data = PageHistoryRepository.get_all_entities_ranking()
         with open(RANKING_CACHE_FILE, 'w') as f:
-            json.dump({"month": current_month, "data": data}, f)
+            json.dump({"month": current_month, "data": data}, f, cls=_UUIDEncoder)
         return data
