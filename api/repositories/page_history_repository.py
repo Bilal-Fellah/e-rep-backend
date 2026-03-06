@@ -11,8 +11,12 @@ from sqlalchemy.orm import aliased
 from datetime import date, datetime, time
 from api.utils.data_keys import platform_metrics
 from api.utils.posts_utils import jsonb_projection, jsonb_projection_from_alias
+import json
+import os
 
 RootCategory = aliased(Category, name="root_category")
+
+RANKING_CACHE_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'ranking_cache.json')
 
 
 class PageHistoryRepository:
@@ -586,3 +590,23 @@ class PageHistoryRepository:
             
         return db.session.scalars(stmt).all()
 
+    @staticmethod
+    def get_public_ranking():
+        """
+        Returns the cached monthly ranking from file. Recomputes only when the month changes.
+        """
+        now = datetime.now()
+        current_month = f"{now.year}-{now.month:02d}"
+
+        # Try reading from cache file
+        if os.path.exists(RANKING_CACHE_FILE):
+            with open(RANKING_CACHE_FILE, 'r') as f:
+                cache = json.load(f)
+            if cache.get("month") == current_month and cache.get("data"):
+                return cache["data"]
+
+        # Recompute and save
+        data = PageHistoryRepository.get_all_entities_ranking()
+        with open(RANKING_CACHE_FILE, 'w') as f:
+            json.dump({"month": current_month, "data": data}, f)
+        return data

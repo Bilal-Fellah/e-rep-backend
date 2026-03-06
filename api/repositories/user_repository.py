@@ -13,7 +13,7 @@ class UserRepository:
         return User.query.filter_by(email=email).first()
     
     @staticmethod
-    def create_user(first_name, last_name, email, password, role="public"):
+    def create_user(first_name, last_name, email, password, role="registered"):
         user = User(first_name=first_name, last_name=last_name, email=email, role=role)
         user.set_password(password)
         
@@ -58,6 +58,19 @@ class UserRepository:
             raise ValueError("User not found")
 
         user.profession = profession
+        db.session.commit()
+        return user
+
+    @staticmethod
+    def update_profile(user_id: int, **fields) -> User:
+        user = db.session.get(User, user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        for key, value in fields.items():
+            if hasattr(user, key):
+                setattr(user, key, value)
+
         db.session.commit()
         return user
 

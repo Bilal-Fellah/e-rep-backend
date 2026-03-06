@@ -195,7 +195,7 @@ def get_entity_history():
 
 @data_bp.route("/get_entities_ranking", methods=["GET"])
 def get_entities_ranking():
-    allowed_roles = ["admin", "subscribed", "registered", "public"]
+    allowed_roles = ["admin", "subscribed", "registered"]
     token = None
     payload = None
     # try:

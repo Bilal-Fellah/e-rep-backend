@@ -15,6 +15,11 @@ from datetime import datetime, timedelta, timezone
 import os
 import uuid
 from api.utils.auth import MAILS_FILE, ENTITIES_FILE
+from api.utils.validators import (
+    validate_required_keys, validate_enum, sanitize_string,
+    validate_email as v_email, validate_phone, validate_password,
+    ALLOWED_ROLES, ALLOWED_PROFESSIONS
+)
 
 from api.routes.main import error_response, success_response
 # from app import app
@@ -50,29 +55,42 @@ def register_mail():
 
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
-    allowed_roles = ["public","registered","anonymous","subscribed","admin"]
-    allowed_professions = ["community_manager","marketing","ceo","journalist","influencer","student","sales","other"]
     try:
         data = request.json
         required_keys = ['full_name','email', 'password', 'phone_number', 'profession']
-        for key in required_keys:
-            if key not in data:
-                return error_response(f"missing required key: {key}", 400)
+        missing = validate_required_keys(data, required_keys)
+        if missing:
+            return error_response(f"missing required key: {missing}", 400)
 
-        if data.get('role', 'registered') not in allowed_roles:
-            return error_response(f"role must be in {allowed_roles}")
+        if not v_email(data['email']):
+            return error_response("Invalid email format", 400)
+
+        if not validate_password(data['password']):
+            return error_response("Password must be at least 8 characters", 400)
         
-        if data['profession'] not in allowed_professions:
-            return error_response(f"profession must be in {allowed_professions}")
+        if not validate_phone(data['phone_number']):
+            return error_response("Invalid phone number format", 400)
+
+        role = data.get('role', 'registered')
+        err = validate_enum(role, ALLOWED_ROLES, 'role')
+        if err:
+            return error_response(err, 400)
         
-        print("we didnt save the user")
+        err = validate_enum(data['profession'], ALLOWED_PROFESSIONS, 'profession')
+        if err:
+            return error_response(err, 400)
+
+        full_name = sanitize_string(data['full_name'], 100)
+        if not full_name:
+            return error_response("Invalid full_name", 400)
+        
         user = AuthService.signup(
-            first_name=data["full_name"].split()[0],
-            last_name=" ".join(data["full_name"].split()[1:]) if len(data["full_name"].split()) > 1 else "",
-            email=data["email"],
+            first_name=full_name.split()[0],
+            last_name=" ".join(full_name.split()[1:]) if len(full_name.split()) > 1 else "",
+            email=data["email"].strip().lower(),
             password=data["password"],
-            phone_number=data["phone_number"],
-            role= data.get('role', 'registered'),
+            phone_number=data["phone_number"].strip(),
+            role=role,
             profession=data['profession']
         )
 
@@ -114,7 +132,7 @@ def register_user():
 
 @auth_bp.route("/register_entity_name", methods=["POST"])
 def register_entity_name():
-    allowed_roles = ["admin", "registered","subscribed", "public"]
+    allowed_roles = ["admin", "registered", "subscribed"]
     try:
         entity_name = request.json.get("entity_name")
 
@@ -144,7 +162,7 @@ def register_entity_name():
 
 @auth_bp.route("/register_entity", methods=["POST"])
 def register_entity():
-    allowed_roles = ["admin", "registered","subscribed", "public"]
+    allowed_roles = ["admin", "registered", "subscribed"]
 
     try:
         token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -231,7 +249,14 @@ def register_entity():
 def login():
     try:
         data = request.json
-        user = UserRepository.find_by_email(data["email"])
+        missing = validate_required_keys(data, ['email', 'password'])
+        if missing:
+            return error_response(f"missing required key: {missing}", 400)
+
+        if not v_email(data['email']):
+            return error_response("Invalid email format", 400)
+
+        user = UserRepository.find_by_email(data["email"].strip().lower())
         if not user or not user.check_password(data["password"]):
             return error_response("Invalid credentials", status_code=401)
         
@@ -361,3 +386,47 @@ def validate_user_role():
     except Exception as e:
         return error_response(str(e), 500)
 
+
+@auth_bp.route("/complete_profile", methods=["POST"])
+def complete_profile():
+    """
+    After Google sign-up, allows the user to add phone_number and profession.
+    Requires a valid access token.
+    """
+    try:
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        user = UserRepository.get_by_id(payload["user_id"])
+        if not user:
+            return error_response("User not found", 404)
+
+        data = request.json
+        missing = validate_required_keys(data, ["phone_number", "profession"])
+        if missing:
+            return error_response(f"missing required key: {missing}", 400)
+
+        if not validate_phone(data["phone_number"]):
+            return error_response("Invalid phone number format", 400)
+
+        err = validate_enum(data["profession"], ALLOWED_PROFESSIONS, "profession")
+        if err:
+            return error_response(err, 400)
+
+        user = UserRepository.update_profile(
+            user_id=user.id,
+            phone_number=data["phone_number"].strip(),
+            profession=data["profession"]
+        )
+
+        return success_response(data={
+            "user_id": user.id,
+            "phone_number": user.phone_number,
+            "profession": user.profession,
+        })
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+    except Exception as e:
+        return error_response(str(e), 500)
