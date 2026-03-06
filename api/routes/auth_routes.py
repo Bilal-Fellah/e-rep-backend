@@ -51,15 +51,19 @@ def register_mail():
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
     allowed_roles = ["public","registered","anonymous","subscribed","admin"]
+    allowed_professions = ["community_manager","marketing","ceo","journalist","influencer","student","sales","other"]
     try:
         data = request.json
-        required_keys = ['full_name','email', 'password', 'phone_number']
+        required_keys = ['full_name','email', 'password', 'phone_number', 'profession']
         for key in required_keys:
             if key not in data:
                 return error_response(f"missing required key: {key}", 400)
 
         if data.get('role', 'registered') not in allowed_roles:
             return error_response(f"role must be in {allowed_roles}")
+        
+        if data['profession'] not in allowed_professions:
+            return error_response(f"profession must be in {allowed_professions}")
         
         print("we didnt save the user")
         user = AuthService.signup(
@@ -68,7 +72,8 @@ def register_user():
             email=data["email"],
             password=data["password"],
             phone_number=data["phone_number"],
-            role= data.get('role', 'registered')
+            role= data.get('role', 'registered'),
+            profession=data['profession']
         )
 
         # Access token (1 day)
@@ -280,6 +285,7 @@ def get_user_data():
             "email": user.email,
             "user_id": user.id,
             "role": user.role,
+            "profession": user.profession,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "created_at": user.created_at,

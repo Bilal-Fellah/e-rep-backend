@@ -12,6 +12,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.Enum("public","registered","subscribed","admin", name="user_roles"), default="public")
+    profession = db.Column(db.Enum("community_manager","marketing","ceo","journalist","influencer","student","sales","other", name="user_professions"), nullable=True, default="other")
     
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     refresh_token = db.Column(db.Text)

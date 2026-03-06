@@ -51,4 +51,14 @@ class UserRepository:
         db.session.commit()
         return user
 
+    @staticmethod
+    def update_profession(user_id: int, profession: str) -> User:
+        user = db.session.get(User, user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        user.profession = profession
+        db.session.commit()
+        return user
+
 

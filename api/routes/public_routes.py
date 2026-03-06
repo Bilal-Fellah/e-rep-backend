@@ -1,0 +1,1 @@
+# this contains routes that are accessible to everyone, this will include a ranking route(that is static, based on the data of last month) and a demo of one company to have an overview of the features in the website.

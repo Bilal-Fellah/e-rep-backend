@@ -169,6 +169,7 @@ def finalize_google_login():
                 "last_name": user.last_name,
                 "email": user.email,
                 "role": user.role,
+                "profession": user.profession,
                 "created_at": user.created_at.isoformat()
             }
     }
