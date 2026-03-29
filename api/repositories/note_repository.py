@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy import or_
-from datetime import datetime
+from datetime import datetime, timezone
 
 from api import db
 from api.models.note_model import Note
@@ -108,7 +108,7 @@ class NoteRepository:
         if status is not None:
             note.status = status
 
-        note.updated_at = datetime.utcnow()
+        note.updated_at = datetime.now(timezone.utc)
 
         db.session.commit()
         return note
@@ -118,7 +118,7 @@ class NoteRepository:
     @staticmethod
     def soft_delete(note: Note) -> None:
         note.status = "deleted"
-        note.updated_at = datetime.utcnow()
+        note.updated_at = datetime.now(timezone.utc)
         db.session.commit()
 
     # ---------- Permissions ----------

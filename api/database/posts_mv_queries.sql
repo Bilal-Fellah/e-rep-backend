@@ -127,9 +127,9 @@ SELECT
 FROM pages_history ph
 JOIN pages p ON p.uuid = ph.page_id AND p.platform = 'youtube'
 CROSS JOIN LATERAL jsonb_array_elements(
-    COALESCE(ph.data->'videos', '[]'::jsonb)
+    COALESCE(ph.data->'top_videos', '[]'::jsonb)
 ) AS post
-WHERE jsonb_typeof(ph.data->'videos') = 'array'
+WHERE jsonb_typeof(ph.data->'top_videos') = 'array'
   AND post->>'video_id' IS NOT NULL
 
 UNION ALL

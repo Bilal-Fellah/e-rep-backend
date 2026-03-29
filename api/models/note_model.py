@@ -31,10 +31,12 @@ class Note(db.Model):
     )
 
     created_at = db.Column(
-        db.DateTime, default=datetime.now(timezone.utc), nullable=False
+        db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
     updated_at = db.Column(
-        db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc)
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     author = db.relationship("User", backref="notes")
