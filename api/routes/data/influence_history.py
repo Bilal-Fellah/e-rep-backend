@@ -8,8 +8,7 @@ from api.routes.main import error_response, success_response
 from api.utils.posts_utils import _to_number, ensure_datetime
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
-from api.utils.data_keys import platform_metrics, summarize_days
-from api.utils.interaction_stats import  fill_missing_scores
+from api.utils.data_keys import platform_metrics
 import traceback
 
 
@@ -408,55 +407,81 @@ def get_entity_interaction_stats():
                     **{m["name"]: post.get(m["name"], 0) for m in metrics}
                 }
 
-        # --- STEP 2: Compute gained metrics against previous available day ---
+        # --- STEP 2: Build dense calendar days ---
         sorted_days = sorted(daily_posts.keys())
-        final_output = []
+        if not sorted_days:
+            return success_response([], 200)
 
-        for i, day in enumerate(sorted_days):
-            current_day_posts = daily_posts[day] or {}  # ensure dict
-            # find nearest previous day that actually has posts (not empty)
-            previous_day_posts = {}
-            j = i - 1
-            while j >= 0:
-                candidate = daily_posts.get(sorted_days[j], {})
-                if candidate and candidate != {}:  # found a day with data
-                    previous_day_posts = candidate
-                    break
-                j -= 1
+        first_day = ensure_datetime(sorted_days[0]).date()
+        last_day = ensure_datetime(sorted_days[-1]).date()
+        all_days = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
 
-            # print(len(previous_day_posts))
-            day_output = {
-                "day": day,
-                "posts": []
-            }
+        # Aggregate distributed gains: day -> platform -> metric -> value
+        distributed_gains = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
 
-            for post_id, post_data in current_day_posts.items():
+        # --- STEP 3: Distribute gains linearly across gap days per post and metric ---
+        post_series = defaultdict(list)
+        for day_key, posts_map in daily_posts.items():
+            day_date = ensure_datetime(day_key).date()
+            for post_id, post_data in (posts_map or {}).items():
                 platform = post_data.get("platform")
-                metrics = platform_metrics.get(platform, {}).get("metrics", [])
+                post_series[(platform, post_id)].append((day_date, post_data))
 
+        for (platform, _post_id), samples in post_series.items():
+            metric_defs = platform_metrics.get(platform, {}).get("metrics", [])
+            if not metric_defs:
+                continue
 
-                previous_post = previous_day_posts.get(post_id, {})
+            samples.sort(key=lambda x: x[0])
 
-                # Calculate gains safely, coercing to numbers and defaulting to 0
-                gains = {}
-                if previous_post and previous_post != {}:
-                    for m in metrics:
-                        name = m["name"]
-                        cur_val = _to_number(post_data.get(name, 0))
-                        prev_val = _to_number(previous_post.get(name, 0))
+            for idx in range(1, len(samples)):
+                prev_day, prev_data = samples[idx - 1]
+                cur_day, cur_data = samples[idx]
 
-                        gains[f"gained_{name}"] = cur_val - prev_val
-     
-                    day_output["posts"].append({
-                        **post_data,
-                        **gains
-                    })
-            final_output.append(day_output)
-        
-        
-        summary = summarize_days(final_output, platform_metrics)
-        summary = fill_missing_scores(summary)
+                span_days = (cur_day - prev_day).days
+                if span_days <= 0:
+                    continue
 
+                for metric in metric_defs:
+                    metric_name = metric["name"]
+                    prev_val = _to_number(prev_data.get(metric_name, 0))
+                    cur_val = _to_number(cur_data.get(metric_name, 0))
+                    step_gain = (cur_val - prev_val) / span_days
+
+                    # Apply equal step to each day between prev and current, including current day.
+                    for step in range(1, span_days + 1):
+                        day = prev_day + timedelta(days=step)
+                        distributed_gains[day][platform][metric_name] += step_gain
+
+        # --- STEP 4: Build response with every day in the range ---
+        summary = []
+        for day in all_days:
+            day_platform_scores = {}
+            day_gains = {}
+            day_total_score = 0.0
+
+            platforms_data = distributed_gains.get(day, {})
+            for platform, metrics_map in platforms_data.items():
+                metric_defs = platform_metrics.get(platform, {}).get("metrics", [])
+                metric_weights = {m["name"]: m.get("score", 1.0) for m in metric_defs}
+
+                platform_score = 0.0
+                day_gains[platform] = {}
+
+                for metric_name, metric_value in metrics_map.items():
+                    value = float(metric_value)
+                    day_gains[platform][metric_name] = value
+                    platform_score += value * metric_weights.get(metric_name, 1.0)
+
+                day_platform_scores[platform] = platform_score
+                day_total_score += platform_score
+
+            summary.append({
+                "date": day.isoformat(),
+                "total_score": day_total_score,
+                "platform_scores": day_platform_scores,
+                "day_gains": day_gains,
+            })
 
         return success_response(summary, 200)
 
