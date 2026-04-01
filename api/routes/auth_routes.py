@@ -24,7 +24,7 @@ from api.utils.validators import (
 from api.routes.main import error_response, success_response
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
-FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
+FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://app.brendex.net")
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
