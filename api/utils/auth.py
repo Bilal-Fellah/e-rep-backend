@@ -1,4 +1,5 @@
 import re
+from flask import request
     
 MAILS_FILE = 'api/database/tem_mail_registeration.json'
 OAUTH_USERS_FILE = 'api/database/oauth_users.json'
@@ -13,3 +14,11 @@ def validate_email(email: str) -> bool:
 
 def is_valid_phone(phone):
     return re.match(r'^\+?[0-9]{8,15}$', phone) is not None
+
+
+def _extract_token(cookie_name="access_token"):
+    auth_header = request.headers.get("Authorization", "")
+    bearer = auth_header.removeprefix("Bearer ").strip()
+    if bearer:
+        return bearer
+    return request.cookies.get(cookie_name, "").strip()

@@ -6,6 +6,7 @@ from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request
 from api.routes.main import error_response, success_response
 from api.utils.posts_utils import _to_number, ensure_datetime
+from api.utils.auth import _extract_token
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
 from api.utils.data_keys import platform_metrics
@@ -156,7 +157,7 @@ def get_entity_history():
         date_str = request.args.get("date")  
 
         allowed_roles = ['admin', 'registered',]
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        token = _extract_token("access_token")
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         role = None
         if payload:

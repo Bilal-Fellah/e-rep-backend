@@ -3,7 +3,7 @@ import email
 import json
 import json
 from api.services.auth_service import AuthService
-from api.utils.auth import validate_email
+from api.utils.auth import validate_email, _extract_token
 from flask import Blueprint, request, jsonify, redirect, make_response
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
@@ -28,14 +28,6 @@ FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.bre
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
-
-
-def _extract_token(cookie_name="access_token"):
-    auth_header = request.headers.get("Authorization", "")
-    bearer = auth_header.removeprefix("Bearer ").strip()
-    if bearer:
-        return bearer
-    return request.cookies.get(cookie_name, "").strip()
 
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
