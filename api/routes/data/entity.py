@@ -18,6 +18,66 @@ from . import data_bp
 
 SECRET = os.environ.get("SECRET_KEY")
 
+
+def _refine_daily_followers(points):
+    """
+    Build a dense daily series from min->max date and fill missing/empty followers.
+    Empty means None or 0.
+    """
+    if not points:
+        return []
+
+    by_day = {}
+    for day, followers in points:
+        by_day[day] = followers
+
+    start_day = min(by_day.keys())
+    end_day = max(by_day.keys())
+    total_days = (end_day - start_day).days + 1
+
+    days = [start_day + timedelta(days=i) for i in range(total_days)]
+    values = [by_day.get(day) for day in days]
+
+    def _is_missing(v):
+        return v is None or v == 0
+
+    i = 0
+    n = len(values)
+    while i < n:
+        if not _is_missing(values[i]):
+            i += 1
+            continue
+
+        run_start = i
+        while i < n and _is_missing(values[i]):
+            i += 1
+        run_end = i - 1
+
+        left_idx = run_start - 1
+        right_idx = i if i < n else None
+
+        left_val = values[left_idx] if left_idx >= 0 and not _is_missing(values[left_idx]) else None
+        right_val = values[right_idx] if right_idx is not None and not _is_missing(values[right_idx]) else None
+
+        if left_val is not None and right_val is not None:
+            # Linear interpolation across the whole missing run.
+            gap = right_idx - left_idx
+            for k in range(run_start, run_end + 1):
+                ratio = (k - left_idx) / gap
+                interpolated = left_val + (right_val - left_val) * ratio
+                values[k] = max(0, int(round(interpolated)))
+        elif left_val is not None:
+            for k in range(run_start, run_end + 1):
+                values[k] = left_val
+        elif right_val is not None:
+            for k in range(run_start, run_end + 1):
+                values[k] = right_val
+        else:
+            for k in range(run_start, run_end + 1):
+                values[k] = 0
+
+    return list(zip(days, values))
+
 @data_bp.route("/add_entity", methods=["POST"])
 def add_entity():
     allowed_roles = ['admin', 'subscribed', 'registered']
@@ -210,19 +270,22 @@ def get_entity_followers_history():
         if not history or (type(history) == list and len(history)<1):
             return error_response("No history found for this entity.", 404)
         
-        # Handle missing or zero followers by interpolation
+        grouped = defaultdict(list)
+        for row in history:
+            grouped[(row.page_id, row.platform)].append((row.recorded_at.date(), row.followers))
+
         data = []
-        for idx, row in enumerate(history):
-            followers = row.followers
-            if followers is None:
-                last_val = next((r.followers for r in history[:idx] if r.followers and r.followers>0), None)
-                next_val = next((r.followers for r in history[idx+1:] if r.followers and r.followers>0), None)
-                if last_val and next_val:
-                    followers = int((last_val + next_val) / 2)
-                else: 
-                    followers = last_val or next_val or 0
-            
-            data.append({'page_id': row.page_id, 'followers': followers, 'date': row.recorded_at, "platform": row.platform})
+        for (page_id, platform), points in grouped.items():
+            refined_points = _refine_daily_followers(points)
+            for day, followers in refined_points:
+                data.append({
+                    'page_id': page_id,
+                    'followers': followers,
+                    'date': day.isoformat(),
+                    'platform': platform
+                })
+
+        data.sort(key=lambda x: (x['date'], x['platform'], str(x['page_id'])))
         return success_response(data, 200)
 
     except jwt.ExpiredSignatureError:
@@ -312,30 +375,25 @@ def compare_entities_followers():
 
 
         data = defaultdict(lambda: {"entity_id": None, "records": []})
+        grouped = defaultdict(list)
 
-        for idx, row in enumerate(raw_results):
+        for row in raw_results:
             if row.entity_name:
                 if data[row.entity_name]["entity_id"] is None:
                     data[row.entity_name]["entity_id"] = row.entity_id
+                grouped[(row.entity_name, row.platform)].append((row.recorded_at.date(), row.followers))
 
-                date = row.recorded_at.date().isoformat()
-                platform = row.platform
-                followers = row.followers
-
-                # Handle missing followers by interpolation, same approach as followers history route.
-                if followers is None:
-                    last_val = next((r.followers for r in raw_results[:idx] if r.followers and r.followers > 0), None)
-                    next_val = next((r.followers for r in raw_results[idx+1:] if r.followers and r.followers > 0), None)
-                    if last_val and next_val:
-                        followers = int((last_val + next_val) / 2)
-                    else:
-                        followers = last_val or next_val or 0
-
-                data[row.entity_name]["records"].append({
-                    'date': date,
+        for (entity_name, platform), points in grouped.items():
+            refined_points = _refine_daily_followers(points)
+            for day, followers in refined_points:
+                data[entity_name]["records"].append({
+                    'date': day.isoformat(),
                     'platform': platform,
                     'followers': followers
                 })
+
+        for entity_name in data:
+            data[entity_name]["records"].sort(key=lambda x: (x['date'], x['platform']))
         return success_response(data, 200)
         # we get the entities or category
     
