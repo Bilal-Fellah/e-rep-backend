@@ -13,8 +13,8 @@ class UserRepository:
         return User.query.filter_by(email=email).first()
     
     @staticmethod
-    def create_user(first_name, last_name, email, password, role="registered"):
-        user = User(first_name=first_name, last_name=last_name, email=email, role=role)
+    def create_user(first_name, last_name, email, password, role="registered", is_verified=False):
+        user = User(first_name=first_name, last_name=last_name, email=email, role=role, is_verified=is_verified)
         user.set_password(password)
         
         db.session.add(user)

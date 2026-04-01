@@ -111,7 +111,8 @@ def google_callback():
             last_name=userinfo.get("family_name", ""),
             email=userinfo["email"],
             password="",
-            role="registered"
+            role=None,
+            is_verified=False
         )
 
     # 🔑 generate temporary login code

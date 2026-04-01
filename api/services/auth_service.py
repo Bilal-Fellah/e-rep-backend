@@ -11,7 +11,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 
 class AuthService:
     @staticmethod
-    def signup(first_name, email, password, role="registered", last_name="", phone_number=None, profession="other"):
+    def signup(first_name, email, password, role="registered", last_name="", phone_number=None, profession="other", is_verified=True):
         if UserRepository.find_by_email(email):
             raise ValueError("Email already exists")
         
@@ -21,7 +21,8 @@ class AuthService:
             email=email,
             role=role,
             phone_number=phone_number,
-            profession=profession
+            profession=profession,
+            is_verified=is_verified
         )
 
         user.set_password(password)  

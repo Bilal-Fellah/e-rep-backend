@@ -14,6 +14,10 @@ config = context.config
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
+def include_object(object, name, type_, reflected, compare_to):
+    if name in ("posts_history_mv","posts_mv", "page_posts_metrics_mv"):  
+        return False
+    return True
 
 def get_engine():
     try:
@@ -65,6 +69,7 @@ def run_migrations_offline():
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
+        include_object=include_object,
         url=url, target_metadata=get_metadata(), literal_binds=True
     )
 
@@ -98,6 +103,7 @@ def run_migrations_online():
 
     with connectable.connect() as connection:
         context.configure(
+            include_object=include_object,
             connection=connection,
             target_metadata=get_metadata(),
             **conf_args

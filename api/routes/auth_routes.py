@@ -4,7 +4,7 @@ import json
 import json
 from api.services.auth_service import AuthService
 from api.utils.auth import validate_email
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, redirect, make_response
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
@@ -24,7 +24,18 @@ from api.utils.validators import (
 from api.routes.main import error_response, success_response
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
+FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
+FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
+
+
+def _extract_token(cookie_name="access_token"):
+    auth_header = request.headers.get("Authorization", "")
+    bearer = auth_header.removeprefix("Bearer ").strip()
+    if bearer:
+        return bearer
+    return request.cookies.get(cookie_name, "").strip()
 
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
@@ -91,7 +102,8 @@ def register_user():
             password=data["password"],
             phone_number=data["phone_number"].strip(),
             role=role,
-            profession=data['profession']
+            profession=data['profession'],
+            is_verified=True
         )
 
         # Access token (1 day)
@@ -165,7 +177,7 @@ def register_entity():
     allowed_roles = ["admin", "registered", "subscribed"]
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        token = _extract_token("access_token")
         payload = jwt.decode(token, SECRET, algorithms=['HS256'])
         if not payload:
             return error_response("No valid token has been sent", 401)
@@ -299,7 +311,7 @@ def login():
 def get_user_data():
     
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        token = _extract_token("access_token")
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         # Example: fetch the user from DB if needed
         user = UserRepository.get_by_id(payload["user_id"])
@@ -327,7 +339,7 @@ def get_user_data():
 def refresh():
 
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        token = _extract_token("refresh_token")
         if not token:
             return jsonify({"error": "Missing refresh token"}), 400
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
@@ -347,17 +359,32 @@ def refresh():
         response = {
             "access_token": new_access
         }
-        return success_response(response)
+        flask_response = make_response(success_response(response))
+        flask_response.set_cookie(
+            "access_token",
+            new_access,
+            expires=datetime.now(timezone.utc) + timedelta(hours=2),
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=FRONTEND_COOKIE_DOMAIN or None,
+            path="/"
+        )
+        return flask_response
     except jwt.InvalidTokenError:
         return error_response("Invalid refresh token", status_code=401)
 
 
 @auth_bp.route("/validate_user_role", methods=["POST"])
 def validate_user_role():
-    allowed_roles = ["admin"]
+
+    """ this route updates the user role, after signing from google auth"""
+
+
+    allowed_roles = ["admin", "registered", "subscribed"]
     required_keys = ["user_id", "role"]
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        token = _extract_token("access_token")
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         # Example: fetch the user from DB if needed
         user = UserRepository.get_by_id(payload["user_id"])
@@ -375,7 +402,7 @@ def validate_user_role():
         user_id = data['user_id']
         role = data['role']
 
-        user = UserRepository.update_role(user_id=user_id, role= role)
+        user = UserRepository.update_role(user_id=user_id, role= role, is_verified=True)
         response = {"user_id": user.id, 'role': user.role}
         return success_response(data=response)
 
@@ -394,7 +421,7 @@ def complete_profile():
     Requires a valid access token.
     """
     try:
-        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        token = _extract_token("access_token")
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         user = UserRepository.get_by_id(payload["user_id"])
         if not user:
@@ -428,5 +455,81 @@ def complete_profile():
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
+    except Exception as e:
+        return error_response(str(e), 500)
+
+@auth_bp.route("/redirect_to_app", methods=["POST"])
+def redirect_to_app():
+
+    """ This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
+        It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens 
+        and redirects the user to the app subdomain after setting those tokens in cookies
+    """
+
+    allowed_roles = ['admin', 'registered', 'subscribed']
+
+    try:
+
+        token = _extract_token("access_token")
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+
+        user_id = payload['user_id']
+        user = UserRepository.get_by_id(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # now we verify if the user has permitted role
+        user_role = payload["role"]
+        if user_role not in allowed_roles:
+            return error_response("User role doesnt has enough privilege", 401)
+        
+        # now we save the cookies into the new website
+        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
+        access_payload = {  
+            "user_id": user.id,
+            "role": user.role,
+            "exp": access_token_exp 
+        }
+        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")    
+        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
+        refresh_payload = {
+            "user_id": user.id,
+            "exp": refresh_token_exp   
+        }       
+        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
+
+        UserRepository.update_refresh_token(
+            user.id,
+            token=refresh_token,
+            exp=refresh_token_exp
+        )
+
+        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
+        response = make_response(redirect(FRONTEND_REDIRECT_URL))
+        response.set_cookie(
+            "access_token",
+            access_token,
+            expires=access_token_exp,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+        response.set_cookie(
+            "refresh_token",
+            refresh_token,
+            expires=refresh_token_exp,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+
+        return response
+
+        
+
     except Exception as e:
         return error_response(str(e), 500)
