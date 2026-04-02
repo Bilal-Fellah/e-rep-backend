@@ -218,16 +218,6 @@ class PageHistoryRepository:
 
     @staticmethod
     def get_page_posts(page_id: int):
-        latest = (
-            select(
-                PageHistory.page_id,
-                PageHistory.recorded_at
-            )
-            .join(Page, PageHistory.page_id == page_id)
-            .distinct(PageHistory.page_id)                  
-            .order_by(PageHistory.page_id, PageHistory.recorded_at.desc())
-            .subquery()
-        )
 
         stmt = (
             select(

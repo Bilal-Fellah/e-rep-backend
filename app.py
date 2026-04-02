@@ -1,7 +1,7 @@
 import argparse
 from api import create_app
 import logging
-from flask import jsonify
+
 logging.basicConfig(level=logging.INFO)
 
 
