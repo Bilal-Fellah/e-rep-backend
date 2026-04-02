@@ -36,34 +36,3 @@ def interpolate_series(values):
                 result[i] = 0
 
     return result
-
-def fill_missing_scores(summary):
-    if not summary:
-        return summary
-
-    # collect all platforms
-    platforms = set()
-    for row in summary:
-        platforms.update(row.get("platform_scores", {}).keys())
-
-    # --- interpolate per platform ---
-    for platform in platforms:
-        values = [
-            row.get("platform_scores", {}).get(platform, 0)
-            for row in summary
-        ]
-
-        filled = interpolate_series(values)
-
-        for i, row in enumerate(summary):
-            row.setdefault("platform_scores", {})
-            row["platform_scores"][platform] = filled[i]
-
-    # --- interpolate total_score ---
-    total_values = [row.get("total_score", 0) for row in summary]
-    filled_totals = interpolate_series(total_values)
-
-    for i, row in enumerate(summary):
-        row["total_score"] = filled_totals[i]
-
-    return summary

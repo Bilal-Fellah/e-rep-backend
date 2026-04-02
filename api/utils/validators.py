@@ -2,8 +2,6 @@ import re
 
 ALLOWED_ROLES = ["registered", "subscribed", "admin"]
 ALLOWED_PROFESSIONS = ["community_manager", "marketing", "ceo", "journalist", "influencer", "student", "sales", "other"]
-ALLOWED_PLATFORMS = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
-ALLOWED_ENTITY_TYPES = ["company", "influencer", "small-business"]
 
 
 def validate_required_keys(data, required_keys):
