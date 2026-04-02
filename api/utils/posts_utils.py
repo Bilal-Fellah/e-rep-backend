@@ -2,7 +2,6 @@ import re
 from datetime import timedelta, datetime, timezone
 from dateutil import parser   # pip install python-dateutil if not already installed
 import pytz
-from sqlalchemy import func, literal
 
 def parse_relative_time(text):
     # Simple pattern matching
@@ -62,5 +61,4 @@ def ensure_datetime(value):
 
 
 
-from sqlalchemy import func, literal
 

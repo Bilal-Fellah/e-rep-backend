@@ -1,5 +1,4 @@
 # routes/public_routes.py
-from collections import defaultdict
 from flask import Blueprint
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.routes.main import error_response, success_response

@@ -3,14 +3,13 @@ from flask import request
 import jwt
 from api.routes.main import error_response, success_response
 from api.repositories.category_repository import CategoryRepository
-from api.repositories.entity_category_repository import EntityCategoryRepository
 from . import data_bp
 
 SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_category", methods=["POST"])
 def add_category():
-    allowed_roles = ['admin']
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -45,7 +44,6 @@ def add_category():
 
 @data_bp.route("/delete_category", methods=["POST"])
 def delete_category():
-    allowed_roles = ['admin']
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=["HS256"])
@@ -76,7 +74,6 @@ def delete_category():
 
 @data_bp.route("/get_all_categories", methods=["GET"])
 def get_all_categories():
-    allowed_roles = ['admin', 'registered', 'subscribed']
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=["HS256"])

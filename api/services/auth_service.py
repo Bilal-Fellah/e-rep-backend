@@ -4,7 +4,6 @@ import jwt
 from datetime import datetime, timedelta, timezone
 from api.models.user_model import User
 from api.repositories.user_repository import UserRepository
-from werkzeug.security import generate_password_hash
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")

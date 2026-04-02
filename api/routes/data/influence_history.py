@@ -1,4 +1,4 @@
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from datetime import datetime, date, timedelta
 import os
 import jwt
@@ -18,7 +18,7 @@ SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/get_after_time", methods=["GET"])
 def get_after_time():
-    allowed_roles = ["admin"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -47,7 +47,7 @@ def get_after_time():
 
 @data_bp.route("/get_today_pages_history", methods=["GET"])
 def get_today_pages_history():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -75,7 +75,7 @@ def get_today_pages_history():
 
 @data_bp.route("/get_page_history_today", methods=["GET"])
 def get_page_history():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -104,7 +104,7 @@ def get_page_history():
 
 @data_bp.route("/get_platform_history", methods=["GET"])
 def get_platform_history():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -142,7 +142,6 @@ def get_entity_history():
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
-    allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -156,12 +155,10 @@ def get_entity_history():
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")  
 
-        allowed_roles = ['admin', 'registered',]
         token = _extract_token("access_token")
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        role = None
         if payload:
-            role = payload['role']
+            payload['role']
     
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
@@ -195,9 +192,7 @@ def get_entity_history():
 
 @data_bp.route("/get_entities_ranking", methods=["GET"])
 def get_entities_ranking():
-    allowed_roles = ["admin", "subscribed", "registered"]
-    token = None
-    payload = None
+    pass
     # try:
     #     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     #     payload = jwt.decode(token, SECRET, algorithms=['HS256'])

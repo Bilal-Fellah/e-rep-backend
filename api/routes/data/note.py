@@ -1,9 +1,8 @@
-from api.models.entity_model import Entity
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.note_repository import NoteRepository
 from api.repositories.post_repository import PostRepository
 from api.repositories.user_repository import UserRepository
-from flask import Blueprint, request, jsonify
+from flask import request
 from api.routes.main import error_response, success_response
 from . import data_bp
 

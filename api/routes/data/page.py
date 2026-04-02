@@ -14,7 +14,7 @@ SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_page", methods=["POST"])
 def add_page():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -63,7 +63,7 @@ def add_page():
 
 @data_bp.route("/delete_page", methods=["POST"])
 def delete_page():
-    allowed_roles = ["admin"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -95,7 +95,7 @@ def delete_page():
 
 @data_bp.route("/get_all_pages", methods=["GET"])
 def get_all_pages():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -132,7 +132,7 @@ def get_all_pages():
 
 @data_bp.route("/get_pages_by_platform", methods=["GET"])
 def get_pages_by_platform():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()

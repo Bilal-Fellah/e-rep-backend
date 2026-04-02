@@ -2,12 +2,10 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 import os
 
-from requests import post
-from api.repositories.post_repository import PostRepository
 from api.utils.data_keys import platform_metrics
 import jwt
 from api.repositories.page_history_repository import PageHistoryRepository
-from flask import request, jsonify
+from flask import request
 from api.routes.main import error_response, success_response
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
@@ -80,7 +78,6 @@ def _refine_daily_followers(points):
 
 @data_bp.route("/add_entity", methods=["POST"])
 def add_entity():
-    allowed_roles = ['admin', 'subscribed', 'registered']
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -125,7 +122,6 @@ def add_entity():
 
 @data_bp.route("/get_all_entities", methods=["GET"])
 def get_all_entities():
-    allowed_roles = ["admin", "subscribed", "registered"]
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -154,7 +150,7 @@ def get_all_entities():
 
 @data_bp.route("/get_data_existing_entities", methods=["GET"])
 def get_data_existing_entities():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -184,7 +180,7 @@ def get_data_existing_entities():
 
 @data_bp.route("/delete_entity", methods=["POST"])
 def delete_entity():
-    allowed_roles = ["admin"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -219,7 +215,6 @@ def delete_entity():
 
 @data_bp.route("/get_entity_profile_card", methods=["GET"])
 def get_entity_profile_card():
-    allowed_roles = ["admin","subscribed", "registered"]
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -251,7 +246,6 @@ def get_entity_followers_history():
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
-    allowed_roles = ["admin", "subscribed", "registered"]
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -353,7 +347,7 @@ def get_entity_followers_history():
 
 @data_bp.route("/compare_entities_followers", methods=['POST'])
 def compare_entities_followers():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -408,7 +402,7 @@ def compare_entities_followers():
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
-    allowed_roles = ["admin", "subscribed", "registered"]
+    pass
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()

@@ -1,7 +1,5 @@
 from api.models.post_model import db, PostMV, PostHistoryMV
 from api.models.page_model import Page
-from api.models.entity_model import Entity
-from sqlalchemy import select
 
 
 class PostRepository:

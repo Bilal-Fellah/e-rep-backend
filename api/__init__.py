@@ -38,11 +38,10 @@ def create_app():
     migrate.init_app(app, db)
 
     # ---- Import models so Alembic sees them ----
-    from .models import category_model, entity_category_model, entity_model, page_model, page_history_model, user_model
 
     
     # Get environment
-    environment = os.environ.get('FLASK_ENV', 'development')
+    os.environ.get('FLASK_ENV', 'development')
     
 
     ALLOWED_ORIGINS = [

@@ -1,16 +1,13 @@
-from requests import Session
 from api import db
 from api.models import PageHistory
 from api.models.category_model import Category
 from api.models.entity_category_model import EntityCategory
 from api.models.entity_model import Entity
 from api.models.page_model import Page
-from sqlalchemy import case, literal_column, select, and_, cast, text, func, column
+from sqlalchemy import case, select, and_, cast, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from datetime import date, datetime, time
-from api.utils.data_keys import platform_metrics
-from api.utils.posts_utils import jsonb_projection, jsonb_projection_from_alias
 import json
 import os
 from uuid import UUID

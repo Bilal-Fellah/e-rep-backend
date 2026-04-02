@@ -1,5 +1,4 @@
 # routes/auth_routes.py
-import email
 import json
 import json
 from api.services.auth_service import AuthService
@@ -136,7 +135,6 @@ def register_user():
 
 @auth_bp.route("/register_entity_name", methods=["POST"])
 def register_entity_name():
-    allowed_roles = ["admin", "registered", "subscribed"]
     try:
         entity_name = request.json.get("entity_name")
 
