@@ -1,80 +1,14 @@
-from collections import defaultdict
-from datetime import datetime, timezone, timedelta
 import os
 
-from api.utils.data_keys import platform_metrics
 import jwt
-from api.repositories.page_history_repository import PageHistoryRepository
 from flask import request
 from api.routes.main import error_response, success_response
-from api.repositories.entity_repository import EntityRepository
-from api.repositories.entity_category_repository import EntityCategoryRepository
+from api.services.entity_service import EntityService
 from sqlalchemy.exc import SQLAlchemyError
-from api.utils.posts_utils import _to_number, ensure_datetime, parse_relative_time
 from . import data_bp
 
 
 SECRET = os.environ.get("SECRET_KEY")
-
-
-def _refine_daily_followers(points):
-    """
-    Build a dense daily series from min->max date and fill missing/empty followers.
-    Empty means None or 0.
-    """
-    if not points:
-        return []
-
-    by_day = {}
-    for day, followers in points:
-        by_day[day] = followers
-
-    start_day = min(by_day.keys())
-    end_day = max(by_day.keys())
-    total_days = (end_day - start_day).days + 1
-
-    days = [start_day + timedelta(days=i) for i in range(total_days)]
-    values = [by_day.get(day) for day in days]
-
-    def _is_missing(v):
-        return v is None or v == 0
-
-    i = 0
-    n = len(values)
-    while i < n:
-        if not _is_missing(values[i]):
-            i += 1
-            continue
-
-        run_start = i
-        while i < n and _is_missing(values[i]):
-            i += 1
-        run_end = i - 1
-
-        left_idx = run_start - 1
-        right_idx = i if i < n else None
-
-        left_val = values[left_idx] if left_idx >= 0 and not _is_missing(values[left_idx]) else None
-        right_val = values[right_idx] if right_idx is not None and not _is_missing(values[right_idx]) else None
-
-        if left_val is not None and right_val is not None:
-            # Linear interpolation across the whole missing run.
-            gap = right_idx - left_idx
-            for k in range(run_start, run_end + 1):
-                ratio = (k - left_idx) / gap
-                interpolated = left_val + (right_val - left_val) * ratio
-                values[k] = max(0, int(round(interpolated)))
-        elif left_val is not None:
-            for k in range(run_start, run_end + 1):
-                values[k] = left_val
-        elif right_val is not None:
-            for k in range(run_start, run_end + 1):
-                values[k] = right_val
-        else:
-            for k in range(run_start, run_end + 1):
-                values[k] = 0
-
-    return list(zip(days, values))
 
 @data_bp.route("/add_entity", methods=["POST"])
 def add_entity():
@@ -95,11 +29,7 @@ def add_entity():
         if not name or not entity_type or not category_id:
             return error_response("Missing required fields: 'name', 'type', or 'category_id'.", status_code=400)
 
-        # Insert entity
-        entity = EntityRepository.create(name=name, type_=entity_type)
-
-        # Link entity to category
-        entity_category = EntityCategoryRepository.add(entity_id=entity.id, category_id=category_id)
+        entity, entity_category = EntityService.create_entity(name, entity_type, category_id)
 
         return success_response({
             "entity": {
@@ -131,7 +61,7 @@ def get_all_entities():
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
         
-        entities = EntityRepository.get_all()
+        entities = EntityService.get_all_entities()
         if not entities:
             return error_response("No entities found.", status_code=404)
 
@@ -150,8 +80,6 @@ def get_all_entities():
 
 @data_bp.route("/get_data_existing_entities", methods=["GET"])
 def get_data_existing_entities():
-    pass
-
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -161,7 +89,7 @@ def get_data_existing_entities():
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
         
-        entities = EntityRepository.get_who_has_history()
+        entities = EntityService.get_existing_entities()
         if not entities:
             return error_response("No entities found.", status_code=404)
 
@@ -180,8 +108,6 @@ def get_data_existing_entities():
 
 @data_bp.route("/delete_entity", methods=["POST"])
 def delete_entity():
-    pass
-
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -195,11 +121,7 @@ def delete_entity():
         if not entity_id:
             return error_response("Missing required field: 'id'.", status_code=400)
 
-        # Delete entity-category relations
-        EntityCategoryRepository.delete_by_entity(entity_id)
-
-        # Delete entity
-        deleted = EntityRepository.delete(entity_id)
+        deleted = EntityService.delete_entity(entity_id)
         if not deleted:
             return error_response(f"No entity found with id {entity_id} or already deleted.", status_code=404)
 
@@ -225,7 +147,7 @@ def get_entity_profile_card():
         #     return error_response("Access denied", 403)
         
         entity_id = request.args.get("entity_id")
-        data = PageHistoryRepository.get_entity_info_from_history(entity_id)
+        data = EntityService.get_entity_profile_card(entity_id)
         if type(data) != dict:
             if type(data) == list and len(data) < 1:
                 message = "no data found for this entity"
@@ -260,26 +182,9 @@ def get_entity_followers_history():
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
 
-        history = PageHistoryRepository().get_followers_history_by_entity(entity_id)
-        if not history or (type(history) == list and len(history)<1):
+        data = EntityService.get_entity_followers_history(entity_id)
+        if not data or (type(data) == list and len(data)<1):
             return error_response("No history found for this entity.", 404)
-        
-        grouped = defaultdict(list)
-        for row in history:
-            grouped[(row.page_id, row.platform)].append((row.recorded_at.date(), row.followers))
-
-        data = []
-        for (page_id, platform), points in grouped.items():
-            refined_points = _refine_daily_followers(points)
-            for day, followers in refined_points:
-                data.append({
-                    'page_id': page_id,
-                    'followers': followers,
-                    'date': day.isoformat(),
-                    'platform': platform
-                })
-
-        data.sort(key=lambda x: (x['date'], x['platform'], str(x['page_id'])))
         return success_response(data, 200)
 
     except jwt.ExpiredSignatureError:
@@ -347,8 +252,6 @@ def get_entity_followers_history():
 
 @data_bp.route("/compare_entities_followers", methods=['POST'])
 def compare_entities_followers():
-    pass
-
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -363,31 +266,9 @@ def compare_entities_followers():
         if not entity_ids:
             return error_response("Missing required key: 'entity_ids'.", 400)
 
-        raw_results = PageHistoryRepository.get_entites_followers_competition(entity_ids)
-        if not raw_results or len(raw_results) < 1:
+        data = EntityService.compare_entities_followers(entity_ids)
+        if not data or len(data) < 1:
             return error_response("No data for this entities", 404)
-
-
-        data = defaultdict(lambda: {"entity_id": None, "records": []})
-        grouped = defaultdict(list)
-
-        for row in raw_results:
-            if row.entity_name:
-                if data[row.entity_name]["entity_id"] is None:
-                    data[row.entity_name]["entity_id"] = row.entity_id
-                grouped[(row.entity_name, row.platform)].append((row.recorded_at.date(), row.followers))
-
-        for (entity_name, platform), points in grouped.items():
-            refined_points = _refine_daily_followers(points)
-            for day, followers in refined_points:
-                data[entity_name]["records"].append({
-                    'date': day.isoformat(),
-                    'platform': platform,
-                    'followers': followers
-                })
-
-        for entity_name in data:
-            data[entity_name]["records"].sort(key=lambda x: (x['date'], x['platform']))
         return success_response(data, 200)
         # we get the entities or category
     
@@ -402,8 +283,6 @@ def compare_entities_followers():
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
-    pass
-
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -417,82 +296,16 @@ def get_entity_posts_timeline():
         date_str = request.args.get("date")
         max_posts = request.args.get("max_posts", type=int)
 
-        if date_str:
-            date = ensure_datetime(date_str).date()
-        else:
-            date = ensure_datetime(datetime.now(timezone.utc)).date() - timedelta(days=30) # default to last 30 days
-
-        if max_posts is None or max_posts <= 0:
-            max_posts = 10000  # No limit
-
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
         
-        history = PageHistoryRepository().get_entity_posts_new(entity_id, date_limit=date, max_posts=max_posts)
+        try:
+            all_posts = EntityService.get_entity_posts_timeline(entity_id, date_str=date_str, max_posts=max_posts)
+        except Exception:
+            return error_response("Invalid date format provided.", 400)
 
-        if not history or (type(history) == list and len(history) < 1):
+        if not all_posts or (type(all_posts) == list and len(all_posts) < 1):
             return error_response("No history found for this entity.", 404)
-
-        sorting_map = {
-            "instagram": "datetime",
-            "linkedin": "date",
-            "tiktok": "create_date",
-            "youtube": "posted_time",
-            "x": None
-        }
-
-        # Convert the input date if provided
-        filter_date = None
-        if date_str:
-            try:
-                filter_date = ensure_datetime(date_str)
-                # Force into UTC-aware datetime
-                if filter_date.tzinfo is None:
-                    filter_date = filter_date.replace(tzinfo=timezone.utc)
-                else:
-                    filter_date = filter_date.astimezone(timezone.utc)
-            except Exception:
-                return error_response("Invalid date format provided.", 400)
-
-        all_posts = []
-        for row in history:
-            platform = row.platform
-            page_id = row.page_id
-            page_name = row.page_name
-            posts_metrics = row.posts_metrics
-
-            # posts_metrics is already a JSONB array, no need to unwrap
-            if not posts_metrics or len(posts_metrics) == 0:
-                continue
-
-            for post in posts_metrics:
-                raw_date = None
-                if sorting_map[platform] in post:
-                    raw_date = post[sorting_map[platform]] if sorting_map[platform] else None
-                if not raw_date:
-                    continue
-
-                if platform == "youtube":
-                    raw_date = parse_relative_time(raw_date)
-
-                post_date = ensure_datetime(raw_date)
-                post["compare_date"] = post_date
-                post["platform"] = platform
-                post["page_id"] = page_id
-                post["page_name"] = page_name
-
-                # Apply date filter
-                if filter_date and post_date < filter_date:
-                    continue
-
-                else:
-                    all_posts.append(post)
-        # Sort descending by date
-        all_posts.sort(key=lambda x: x["compare_date"], reverse=True)
-
-        # Apply max_posts if provided
-        if max_posts and all_posts:
-            all_posts = all_posts[:max_posts]
 
         return success_response(all_posts, 200)
 
@@ -509,31 +322,30 @@ def get_entity_posts_timeline():
 
 @data_bp.route("/mark_entity_to_scrape", methods=["GET"])
 def mark_entity_to_scrape():
-        
-        try:
-            # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-            # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-            # if not payload:
-            #     return error_response("No valid token has been sent", 401)
-            # role = payload['role']
-            # if role not in allowed_roles:
-            #     return error_response("Access denied", 403)
-            
-            entity_id = request.args.get("entity_id", type=int)
-            
-            if not entity_id:
-                return error_response("Missing required query param: 'entity_id'.", 400)
-            
-            res = EntityRepository.change_to_scrape(entity_id, True)
-            
-            return success_response({"message": f"{res}", "entity_id": entity_id}, 200)
-        
-        except jwt.ExpiredSignatureError:
-            return error_response("Token has expired", 401)
-        except jwt.InvalidTokenError:
-            return error_response("Invalid token", 401)
-        except Exception as e:
-            return error_response(f"Internal server error: {str(e)}", 500)
+    try:
+        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+        # if not payload:
+        #     return error_response("No valid token has been sent", 401)
+        # role = payload['role']
+        # if role not in allowed_roles:
+        #     return error_response("Access denied", 403)
+
+        entity_id = request.args.get("entity_id", type=int)
+
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
+        res = EntityService.mark_entity_to_scrape(entity_id)
+
+        return success_response({"message": f"{res}", "entity_id": entity_id}, 200)
+
+    except jwt.ExpiredSignatureError:
+        return error_response("Token has expired", 401)
+    except jwt.InvalidTokenError:
+        return error_response("Invalid token", 401)
+    except Exception as e:
+        return error_response(f"Internal server error: {str(e)}", 500)
         
 # a route that returns top k performing posts for an entity
 @data_bp.route("/get_entity_top_posts", methods=["GET"])
@@ -542,139 +354,13 @@ def get_entity_top_posts():
         entity_id = request.args.get("entity_id", type=int)
         k = request.args.get("top_posts", type=int, default=5)
         date = request.args.get("date") 
-        date = ensure_datetime(date).date() if date else datetime.now(timezone.utc).date()
-        date_limit = date - timedelta(days=10)
 
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
         
-        data = EntityRepository.get_entity_posts_metrics(entity_id, date_limit)
-        
-        # now we compute their score and sort them
-        # Build compact metrics dict
-        skipped = 0
-        posts_num = 0
+        day_gains, posts_num, skipped = EntityService.get_entity_top_posts(entity_id, date, k)
 
-        daily_posts = {}
-        for post in data:
-            platform = post.platform if hasattr(post, "platform") else post[2]
-            posts = post.posts_metrics if hasattr(post, "posts_metrics") else post[4]
-            recorded_at = post.recorded_at if hasattr(post, "recorded_at") else post[3]
-            
-            if platform not in platform_metrics:
-                continue
-            # Normalize posts
-            if not posts:
-                continue
-
-            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
-                posts = sum(posts, [])
-            if not isinstance(posts, list):
-                continue    
-
-            day_key = recorded_at.date().isoformat()
-            if day_key not in daily_posts:
-                daily_posts[day_key] = {}
-
-            id_key = platform_metrics[platform]["id_key"]
-            metrics = platform_metrics[platform]["metrics"]
-            date_key = platform_metrics[platform]['date']
-
-            for p in posts:
-                posts_num += 1
-                if not isinstance(p, dict):
-                    skipped+=1
-                    continue
-
-                post_id = p.get(id_key)
-                if not post_id:
-                    skipped+=1
-                    continue
-
-                post_date = p.get(date_key)
-                if date_limit and post_date and ensure_datetime(post_date).date() < date_limit:
-                    skipped+=1
-                    continue
-
-                # Build compact metrics dict
-                daily_posts[day_key][post_id] = {
-                    "post_id": post_id,
-                    "platform": platform,
-                    "create_time": post_date,
-                    **{m["name"]: p.get(m["name"], 0) for m in metrics},
-                    **p
-                }
-                
-                
-        # --- STEP 2: Compute gained metrics against previous available day ---
-        sorted_days = sorted(daily_posts.keys())
-        final_output = []
-
-        for i, day in enumerate(sorted_days):
-            current_day_posts = daily_posts[day] or {}  # ensure dict
-            # find nearest previous day that actually has posts (not empty)
-            previous_day_posts = {}
-            j = i - 1
-            while j >= 0:
-                candidate = daily_posts.get(sorted_days[j], {})
-                if candidate and candidate != {}:  # found a day with data
-                    previous_day_posts = candidate
-                    break
-                j -= 1
-
-            # print(len(previous_day_posts))
-            day_output = {
-                "day": day,
-                "posts": []
-            }
-
-            for post_id, post_data in current_day_posts.items():
-                platform = post_data.get("platform")
-                metrics = platform_metrics.get(platform, {}).get("metrics", [])
-
-
-                previous_post = previous_day_posts.get(post_id, {})
-
-                # Calculate gains safely, coercing to numbers and defaulting to 0
-                gains = {}
-                if previous_post and previous_post != {}:
-                    for m in metrics:
-                        name = m["name"]
-                        cur_val = _to_number(post_data.get(name, 0))
-                        prev_val = _to_number(previous_post.get(name, 0))
-
-                        gains[f"gained_{name}"] = cur_val - prev_val
-     
-                    day_output["posts"].append({
-                        **post_data,
-                        **gains
-                    })
-
-            final_output.append(day_output)   
-        
-                
-        day_gains = next((item for item in final_output if item["day"] == str(date)), None)
-        # sort the posts for this day by total gained metrics, using platform metrics weights
-        if day_gains:
-            # Calculate scores and add them to each post
-            for post in day_gains["posts"]:
-                score = sum(
-                    post.get(f"gained_{m['name']}", 0) * m.get("weight", 1)
-                    for m in platform_metrics.get(post.get("platform"), {}).get("metrics", [])
-                )
-                post["total_score"] = score
-            
-            # Sort by score
-            day_gains["posts"].sort(key=lambda x: x["total_score"], reverse=True)
-            
-            # Add rank to each post
-            for rank, post in enumerate(day_gains["posts"], start=1):
-                post["rank"] = rank
-            
-            # Keep only top k
-            day_gains["posts"] = day_gains["posts"][:k]
-        
         print(f"Processed {posts_num} posts, skipped {skipped} invalid entries.")
         return success_response(day_gains, 200)
     except Exception as e:

@@ -7,12 +7,10 @@ from flask import Blueprint, request, jsonify, redirect, make_response
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
-from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
 import jwt
 from datetime import datetime, timedelta, timezone
 import os
-import uuid
 from api.utils.auth import MAILS_FILE, ENTITIES_FILE
 from api.utils.validators import (
     validate_required_keys, validate_enum, sanitize_string,
@@ -97,36 +95,18 @@ def register_user():
             is_verified=True
         )
 
-        # Access token (1 day)
-        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
-        access_payload = {
-            "user_id": user.id,
-            "role": user.role,
-            "exp": access_token_exp
-        }
-        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
-        
-        # Refresh token (30 days)
-        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
-        refresh_payload = {
-            "user_id": user.id,
-            "exp": refresh_token_exp
-        }
-        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
-
-        # Save refresh token & expiry in DB
-        UserRepository.update_refresh_token(
+        tokens = AuthService.issue_token_pair(user)
+        AuthService.persist_refresh_token(
             user.id,
-            token=refresh_token,
-            exp=refresh_token_exp
+            token=tokens["refresh_token"],
+            exp=tokens["refresh_token_exp"],
         )
 
-        response = {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "user_role": user.role,
-            "user_id": user.id
-        }
+        response = AuthService.build_auth_response(
+            user,
+            tokens["access_token"],
+            tokens["refresh_token"],
+        )
 
         return success_response(data=response )
     except Exception as e:
@@ -205,30 +185,12 @@ def register_entity():
         if not entity_category:
             return error_response("failed to map entity to category", 500)
 
-        pages_data = None
-        if 'pages' in data:
-            pages_data = data['pages']
-        
-        pages_response = []
-        if isinstance(pages_data, list) and len(pages_data) > 0:
-            # insert pages as well
-            for page in pages_data:
-                if 'platform' not in page or 'link' not in page:
-                    return error_response(f"Invalid page data, platform and link are required for every page")
-                platform = page['platform']
-                link = page['link']
+        pages_data = data.get('pages')
+        try:
+            pages_response = AuthService.create_entity_pages(entity, pages_data)
+        except ValueError as ve:
+            return error_response(str(ve))
 
-                new_uuid = uuid.uuid5(uuid.NAMESPACE_URL, platform + link)
-
-                page = PageRepository.create(
-                    uuid=new_uuid, 
-                    name=entity.name,
-                    platform=platform,
-                    link=link,
-                    entity_id=entity.id
-                )
-                pages_response.append({"page_id": page.uuid, "page_link": page.link, "platform": page.platform})
-        pages_response = pages_response if len(pages_response)>0 else None
         payload = {
                     "id": entity.id,
                     "name": entity.name,
@@ -262,36 +224,18 @@ def login():
         if not user or not user.check_password(data["password"]):
             return error_response("Invalid credentials", status_code=401)
         
-        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
-        # Access token (2 hours)
-        access_payload = {
-            "user_id": user.id,
-            "role": user.role,
-            "exp": access_token_exp
-        }
-        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
-        
-        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
-        # Refresh token (30 days)
-        refresh_payload = {
-            "user_id": user.id,
-            "exp": refresh_token_exp
-        }
-        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
-
-        # Save refresh token & expiry in DB
-        UserRepository.update_refresh_token(
+        tokens = AuthService.issue_token_pair(user)
+        AuthService.persist_refresh_token(
             user.id,
-            token=refresh_token,
-            exp=refresh_token_exp
+            token=tokens["refresh_token"],
+            exp=tokens["refresh_token_exp"],
         )
 
-        response = {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "user_role": user.role,
-            "user_id": user.id
-        }
+        response = AuthService.build_auth_response(
+            user,
+            tokens["access_token"],
+            tokens["refresh_token"],
+        )
 
         return success_response(response,status_code=200)
     except Exception as e:
@@ -340,12 +284,13 @@ def refresh():
         if user.refresh_token_exp < datetime.now(timezone.utc):
             return jsonify({"error": "Refresh token expired"}), 401
 
-        # New 2-hour access token
-        new_access = jwt.encode({
-            "user_id": user.id,
-            "role": user.role,
-            "exp": datetime.now(timezone.utc) + timedelta(hours=2)
-        }, SECRET, algorithm="HS256")
+        tokens = AuthService.issue_token_pair(
+            user,
+            access_delta=timedelta(hours=2),
+        )
+        new_access = tokens["access_token"]
+        access_exp = tokens["access_token_exp"]
+
         response = {
             "access_token": new_access
         }
@@ -353,7 +298,7 @@ def refresh():
         flask_response.set_cookie(
             "access_token",
             new_access,
-            expires=datetime.now(timezone.utc) + timedelta(hours=2),
+            expires=access_exp,
             httponly=True,
             secure=COOKIE_SECURE,
             samesite="None",
@@ -473,33 +418,19 @@ def redirect_to_app():
         if user_role not in allowed_roles:
             return error_response("User role doesnt has enough privilege", 401)
         
-        # now we save the cookies into the new website
-        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
-        access_payload = {  
-            "user_id": user.id,
-            "role": user.role,
-            "exp": access_token_exp 
-        }
-        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")    
-        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
-        refresh_payload = {
-            "user_id": user.id,
-            "exp": refresh_token_exp   
-        }       
-        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
-
-        UserRepository.update_refresh_token(
+        tokens = AuthService.issue_token_pair(user)
+        AuthService.persist_refresh_token(
             user.id,
-            token=refresh_token,
-            exp=refresh_token_exp
+            token=tokens["refresh_token"],
+            exp=tokens["refresh_token_exp"],
         )
 
         cookie_domain = FRONTEND_COOKIE_DOMAIN or None
         response = make_response(redirect(FRONTEND_REDIRECT_URL))
         response.set_cookie(
             "access_token",
-            access_token,
-            expires=access_token_exp,
+            tokens["access_token"],
+            expires=tokens["access_token_exp"],
             httponly=True,
             secure=COOKIE_SECURE,
             samesite="None",
@@ -508,8 +439,8 @@ def redirect_to_app():
         )
         response.set_cookie(
             "refresh_token",
-            refresh_token,
-            expires=refresh_token_exp,
+            tokens["refresh_token"],
+            expires=tokens["refresh_token_exp"],
             httponly=True,
             secure=COOKIE_SECURE,
             samesite="None",

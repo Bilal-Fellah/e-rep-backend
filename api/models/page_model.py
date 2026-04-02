@@ -3,6 +3,7 @@ from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
+from api.utils.page_uuid import create_page_uuid
 
 
 
@@ -26,5 +27,4 @@ class Page(db.Model):
 
     @staticmethod
     def generate_uuid(link, platform=None):
-        base_str = f"{link}{platform or ''}"
-        return uuid.uuid5(uuid.NAMESPACE_DNS, base_str)
+        return create_page_uuid(link)

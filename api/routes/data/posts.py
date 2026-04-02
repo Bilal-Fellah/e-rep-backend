@@ -1,6 +1,6 @@
 from flask import request
 from . import data_bp
-from api.repositories.post_repository import PostRepository
+from api.services.post_service import PostService
 from api.routes.main import success_response, error_response
 
 
@@ -14,7 +14,7 @@ def get_post():
     if not page_id or not platform or not post_id:
         return error_response("page_id, platform, and post_id are required", 400)
 
-    post = PostRepository.get_by_composite_key(page_id, platform, post_id)
+    post = PostService.get_post(page_id, platform, post_id)
     if not post:
         return error_response("Post not found", 404)
 
@@ -28,7 +28,7 @@ def get_posts_by_platform():
     if not platform:
         return error_response("platform is required", 400)
 
-    posts = PostRepository.get_by_platform(platform)
+    posts = PostService.get_posts_by_platform(platform)
     if not posts:
         return error_response("No posts found", 404)
 
@@ -44,7 +44,7 @@ def get_posts_by_page():
     if not page_id:
         return error_response("page_id is required", 400)
 
-    posts = PostRepository.get_by_page(page_id, platform)
+    posts = PostService.get_posts_by_page(page_id, platform)
     if not posts:
         return error_response("No posts found", 404)
 
@@ -60,7 +60,7 @@ def get_posts_by_entity():
     if not entity_id:
         return error_response("entity_id is required", 400)
 
-    posts = PostRepository.get_by_entity(entity_id, platform)
+    posts = PostService.get_posts_by_entity(entity_id, platform)
     if not posts:
         return error_response("No posts found", 404)
 
@@ -77,7 +77,7 @@ def get_post_history():
     if not page_id or not platform or not post_id:
         return error_response("page_id, platform, and post_id are required", 400)
 
-    history = PostRepository.get_post_history(page_id, platform, post_id)
+    history = PostService.get_post_history(page_id, platform, post_id)
     if not history:
         return error_response("No history found for this post", 404)
 

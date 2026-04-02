@@ -3,7 +3,9 @@ import os
 import jwt
 from datetime import datetime, timedelta, timezone
 from api.models.user_model import User
+from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
+from api.utils.page_uuid import create_page_uuid
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
@@ -42,3 +44,74 @@ class AuthService:
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
         return token
+
+    @staticmethod
+    def issue_token_pair(user, access_delta=timedelta(days=1), refresh_delta=timedelta(days=30)):
+        access_token_exp = datetime.now(timezone.utc) + access_delta
+        access_payload = {
+            "user_id": user.id,
+            "role": user.role,
+            "exp": access_token_exp,
+        }
+        access_token = jwt.encode(access_payload, SECRET_KEY, algorithm="HS256")
+
+        refresh_token_exp = datetime.now(timezone.utc) + refresh_delta
+        refresh_payload = {
+            "user_id": user.id,
+            "exp": refresh_token_exp,
+        }
+        refresh_token = jwt.encode(refresh_payload, SECRET_KEY, algorithm="HS256")
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "access_token_exp": access_token_exp,
+            "refresh_token_exp": refresh_token_exp,
+        }
+
+    @staticmethod
+    def persist_refresh_token(user_id, token, exp):
+        UserRepository.update_refresh_token(user_id, token=token, exp=exp)
+
+    @staticmethod
+    def build_auth_response(user, access_token, refresh_token):
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "user_role": user.role,
+            "user_id": user.id,
+        }
+
+    @staticmethod
+    def create_page_uuid(link):
+        return create_page_uuid(link)
+
+    @staticmethod
+    def create_entity_pages(entity, pages_data):
+        pages_response = []
+        if isinstance(pages_data, list) and len(pages_data) > 0:
+            for page in pages_data:
+                if "platform" not in page or "link" not in page:
+                    raise ValueError("Invalid page data, platform and link are required for every page")
+
+                platform = page["platform"]
+                link = page["link"]
+
+                page_uuid = AuthService.create_page_uuid(link)
+                created_page = PageRepository.create(
+                    uuid=page_uuid,
+                    name=entity.name,
+                    platform=platform,
+                    link=link,
+                    entity_id=entity.id,
+                )
+
+                pages_response.append(
+                    {
+                        "page_id": created_page.uuid,
+                        "page_link": created_page.link,
+                        "platform": created_page.platform,
+                    }
+                )
+
+        return pages_response if len(pages_response) > 0 else None

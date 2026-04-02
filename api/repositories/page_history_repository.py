@@ -26,6 +26,57 @@ class _UUIDEncoder(json.JSONEncoder):
 
 class PageHistoryRepository:
     @staticmethod
+    def _followers_case(page_alias=Page, history_alias=PageHistory):
+        return case(
+            (page_alias.platform == "youtube", history_alias.data["subscribers"]),
+            (page_alias.platform == "facebook", history_alias.data["page_followers"]),
+            else_=history_alias.data["followers"],
+        )
+
+    @staticmethod
+    def _profile_url_case(page_alias=Page, history_alias=PageHistory):
+        return case(
+            (page_alias.platform == "youtube", history_alias.data["profile_image"]),
+            (page_alias.platform == "x", history_alias.data["profile_image_link"]),
+            (page_alias.platform == "tiktok", history_alias.data["profile_pic_url"]),
+            (page_alias.platform == "linkedin", history_alias.data["logo"]),
+            (page_alias.platform == "instagram", history_alias.data["profile_image_link"]),
+        )
+
+    @staticmethod
+    def _description_case(page_alias=Page, history_alias=PageHistory):
+        return case(
+            (page_alias.platform == "youtube", history_alias.data["Description"]),
+            (page_alias.platform == "x", history_alias.data["biography"]),
+            (page_alias.platform == "tiktok", history_alias.data["biography"]),
+            (page_alias.platform == "linkedin", history_alias.data["about"]),
+            (page_alias.platform == "instagram", history_alias.data["biography"]),
+        )
+
+    @staticmethod
+    def _posts_case(page_alias=Page, history_alias=PageHistory):
+        empty_json_array = cast(text("'[]'"), JSONB)
+        return case(
+            (page_alias.platform == "instagram", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.posts'), empty_json_array)),
+            (page_alias.platform == "linkedin", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.updates'), empty_json_array)),
+            (page_alias.platform == "tiktok", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.top_videos'), empty_json_array)),
+            (page_alias.platform == "youtube", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.top_videos'), empty_json_array)),
+            (page_alias.platform == "x", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.posts'), empty_json_array)),
+            else_=empty_json_array,
+        )
+
+    @staticmethod
+    def _latest_history_subquery():
+        return (
+            select(
+                PageHistory.page_id,
+                db.func.max(PageHistory.recorded_at).label("latest_recorded_at"),
+            )
+            .group_by(PageHistory.page_id)
+            .subquery()
+        )
+
+    @staticmethod
     def get_by_id(history_id: int) -> PageHistory | None:
         return PageHistory.query.get(history_id)
 
@@ -58,11 +109,7 @@ class PageHistoryRepository:
     
     @staticmethod
     def get_followers_history_by_entity(entity_id: int):
-        followers_case = case(
-            (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
-            (Page.platform == "facebook", PageHistory.data["page_followers"].astext),
-            else_=PageHistory.data["followers"].astext
-        ).cast(db.Integer).label("followers")
+        followers_case = PageHistoryRepository._followers_case().cast(db.Integer).label("followers")
 
         stmt = (
             select(
@@ -80,8 +127,6 @@ class PageHistoryRepository:
     
     @staticmethod
     def get_entity_posts__old(entity_id: int):
-
-        empty_json_array = cast(text("'[]'"), JSONB)
 
         subq = (
             select(
@@ -110,34 +155,7 @@ class PageHistoryRepository:
                 Page.name.label("page_name"),
                 Page.platform,
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "instagram",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "linkedin",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "tiktok",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "youtube",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "x",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                        empty_json_array
-                    )),
-                    else_=empty_json_array
-                ).label("posts"),
+                PageHistoryRepository._posts_case().label("posts"),
                 Page.entity_id.label("entity_id")
             )
             .join(subq, subq.c.hist_id == PageHistory.id)
@@ -225,24 +243,7 @@ class PageHistoryRepository:
                 Page.name.label("page_name"),
                 Page.platform,
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "instagram",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "linkedin",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "tiktok",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "youtube",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "x",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                                cast(text("'[]'"), JSONB))),
-                    else_=None
-                ).label("posts")
+                PageHistoryRepository._posts_case().label("posts")
             )
             .join(Page, PageHistory.page_id == Page.uuid)
             
@@ -253,23 +254,11 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
-        # Step 1: Get latest history per page
-        latest_history_subq = (
-            select(
-                PageHistory.page_id,
-                db.func.max(PageHistory.recorded_at).label("latest_recorded_at")
-            )
-            .group_by(PageHistory.page_id)
-            .subquery()
-        )
+        latest_history_subq = PageHistoryRepository._latest_history_subquery()
 
         ph_alias = aliased(PageHistory)
 
-        # Step 2: Followers per page (handle youtube vs others)
-        page_followers = case(
-            (Page.platform == "youtube", ph_alias.data["subscribers"]),
-            else_=ph_alias.data["followers"]
-        ).cast(db.Integer)
+        page_followers = PageHistoryRepository._followers_case(Page, ph_alias).cast(db.Integer)
 
         # Step 3: Aggregate per entity (total followers)
         entity_totals_subq = (
@@ -305,20 +294,8 @@ class PageHistoryRepository:
                 Entity.id.label("entity_id"),
                 entity_totals_subq.c.total_followers,
                 entity_totals_subq.c.entity_rank,
-                case(
-                    (Page.platform == "youtube", ph_alias.data["profile_image"]),
-                    (Page.platform == "x", ph_alias.data["profile_image_link"]),
-                    (Page.platform == "tiktok", ph_alias.data["profile_pic_url"]),
-                    (Page.platform == "linkedin", ph_alias.data["logo"]),
-                    (Page.platform == "instagram", ph_alias.data["profile_image_link"]),
-                ).label("profile_url"),
-                case(
-                    (Page.platform == "youtube", ph_alias.data["Description"]),
-                    (Page.platform == "x", ph_alias.data["biography"]),
-                    (Page.platform == "tiktok", ph_alias.data["biography"]),
-                    (Page.platform == "linkedin", ph_alias.data["about"]),
-                    (Page.platform == "instagram", ph_alias.data["biography"]),
-                ).label("description"),
+                PageHistoryRepository._profile_url_case(Page, ph_alias).label("profile_url"),
+                PageHistoryRepository._description_case(Page, ph_alias).label("description"),
                 page_followers.label("followers"),
             )
             .join(Page, Page.uuid == ph_alias.page_id)
@@ -364,17 +341,7 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                cast(
-                    db.func.coalesce(
-                        case(
-                            (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
-                            (Page.platform == "facebook", PageHistory.data["page_followers"].astext),
-                            else_=PageHistory.data["followers"].astext
-                        ),
-                        "0"  # default if null
-                    ),
-                    db.Integer
-                ).label("followers"),
+                cast(db.func.coalesce(PageHistoryRepository._followers_case().astext, "0"), db.Integer).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )
@@ -408,10 +375,7 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "youtube", PageHistory.data["subscribers"]),
-                    else_ = PageHistory.data["followers"]
-                ).cast(db.Integer).label("followers"),
+                PageHistoryRepository._followers_case().cast(db.Integer).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )
@@ -425,23 +389,12 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_all_entities_ranking():
-        # Step 1: raw JSON value
-        raw_followers = case(
-            (Page.platform == "youtube", PageHistory.data["subscribers"]),
-            else_=PageHistory.data["followers"]
-        )
+        raw_followers = PageHistoryRepository._followers_case()
 
         # Step 2: Cast AFTER evaluating it's not NULL
         followers_case = db.cast(raw_followers, db.Integer)
 
-        # profile picture case
-        profile_url_case = case(
-            (Page.platform == "youtube", PageHistory.data["profile_image"]),
-            (Page.platform == "x", PageHistory.data["profile_image_link"]),
-            (Page.platform == "tiktok", PageHistory.data["profile_pic_url"]),
-            (Page.platform == "linkedin", PageHistory.data["logo"]),
-            (Page.platform == "instagram", PageHistory.data["profile_image_link"]),
-        )
+        profile_url_case = PageHistoryRepository._profile_url_case()
 
         latest_page_data = (
             select(
