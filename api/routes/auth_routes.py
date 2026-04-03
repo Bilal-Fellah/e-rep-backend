@@ -522,6 +522,33 @@ def redirect_to_app():
         return response
 
         
+        
 
     except Exception as e:
         return error_response(str(e), 500)
+
+
+@auth_bp.route("/logout", methods=["POST"])
+def logout():
+    response = make_response(success_response({"message": "Logged out successfully"}))
+    response.set_cookie(
+        "access_token",
+        "",
+        expires=0,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="None",
+        domain=FRONTEND_COOKIE_DOMAIN or None,
+        path="/"
+    )
+    response.set_cookie(
+        "refresh_token",
+        "",
+        expires=0,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="None",
+        domain=FRONTEND_COOKIE_DOMAIN or None,
+        path="/"
+    )
+    return response
