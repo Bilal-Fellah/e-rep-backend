@@ -37,6 +37,7 @@ def register_blueprint_error_handlers(blueprint, include_token_errors=False):
         return error_response("Invalid request payload", 400)
 
     @blueprint.errorhandler(TypeError)
+    @blueprint.errorhandler(AttributeError)
     @blueprint.errorhandler(KeyError)
     @blueprint.errorhandler(ValueError)
     def handle_invalid_data(error):
