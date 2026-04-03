@@ -5,6 +5,7 @@ from flask import request
 from api.routes.main import error_response, success_response
 from api.services.influence_history_service import InfluenceHistoryService
 from api.utils.auth import _extract_token
+from api.utils.posts_utils import ensure_datetime
 from . import data_bp
 from sqlalchemy.exc import SQLAlchemyError
 import traceback
@@ -13,84 +14,84 @@ import traceback
 SECRET = os.environ.get("SECRET_KEY")
 
 
-@data_bp.route("/get_after_time", methods=["GET"])
-def get_after_time():
-    try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
+# @data_bp.route("/get_after_time", methods=["GET"])
+# def get_after_time():
+#     try:
+#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+#         # if not payload:
+#         #     return error_response("No valid token has been sent", 401)
+#         # role = payload['role']
+#         # if role not in allowed_roles:
+#         #     return error_response("Access denied", 403)
         
-        hour = int(request.args.get("hour"))
+#         hour = int(request.args.get("hour"))
 
-        history = InfluenceHistoryService.get_after_time(hour)
-        if not history:
-            return error_response("No history found", 404)
+#         history = InfluenceHistoryService.get_after_time(hour)
+#         if not history:
+#             return error_response("No history found", 404)
         
-        data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
-        return success_response(data, 200)
+#         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
+#         return success_response(data, 200)
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+#     except jwt.ExpiredSignatureError:
+#         return error_response("Token has expired", 401)
+#     except jwt.InvalidTokenError:
+#         return error_response("Invalid token", 401)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
-@data_bp.route("/get_today_pages_history", methods=["GET"])
-def get_today_pages_history():
-    try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
+# @data_bp.route("/get_today_pages_history", methods=["GET"])
+# def get_today_pages_history():
+#     try:
+#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+#         # if not payload:
+#         #     return error_response("No valid token has been sent", 401)
+#         # role = payload['role']
+#         # if role not in allowed_roles:
+#         #     return error_response("Access denied", 403)
         
-        history = InfluenceHistoryService.get_today_pages_history()
-        if not history:
-            return error_response("No history found", 404)
+#         history = InfluenceHistoryService.get_today_pages_history()
+#         if not history:
+#             return error_response("No history found", 404)
         
-        data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
-        return success_response(data, 200)
+#         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
+#         return success_response(data, 200)
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+#     except jwt.ExpiredSignatureError:
+#         return error_response("Token has expired", 401)
+#     except jwt.InvalidTokenError:
+#         return error_response("Invalid token", 401)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
 
-@data_bp.route("/get_page_history_today", methods=["GET"])
-def get_page_history():
-    try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
+# @data_bp.route("/get_page_history_today", methods=["GET"])
+# def get_page_history():
+#     try:
+#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+#         # if not payload:
+#         #     return error_response("No valid token has been sent", 401)
+#         # role = payload['role']
+#         # if role not in allowed_roles:
+#         #     return error_response("Access denied", 403)
         
-        page_id = request.args.get("page_id")
+#         page_id = request.args.get("page_id")
 
-        history = InfluenceHistoryService.get_page_history_today(page_id)
-        if not history:
-            return error_response("No history found", 404)
+#         history = InfluenceHistoryService.get_page_history_today(page_id)
+#         if not history:
+#             return error_response("No history found", 404)
         
-        data = {'id': history.id, 'page_id': history.page_id, 'data': history.data}
-        return success_response(data, 200)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+#         data = {'id': history.id, 'page_id': history.page_id, 'data': history.data}
+#         return success_response(data, 200)
+#     except jwt.ExpiredSignatureError:
+#         return error_response("Token has expired", 401)
+#     except jwt.InvalidTokenError:
+#         return error_response("Invalid token", 401)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
 
 @data_bp.route("/get_platform_history", methods=["GET"])

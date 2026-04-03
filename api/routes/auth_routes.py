@@ -259,7 +259,7 @@ def get_user_data():
             "profession": user.profession,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "created_at": user.created_at,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
         })
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
