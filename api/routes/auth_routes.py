@@ -122,14 +122,36 @@ def register_user():
             exp=refresh_token_exp
         )
 
-        response = {
+        response_data = {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "user_role": user.role,
             "user_id": user.id
         }
 
-        return success_response(data=response )
+        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
+        flask_response = make_response(success_response(data=response_data))
+        flask_response.set_cookie(
+            "access_token",
+            access_token,
+            expires=access_token_exp,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+        flask_response.set_cookie(
+            "refresh_token",
+            refresh_token,
+            expires=refresh_token_exp,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+        return flask_response
     except Exception as e:
         return error_response(str(e), 500)
 
@@ -288,14 +310,36 @@ def login():
             exp=refresh_token_exp
         )
 
-        response = {
+        response_data = {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "user_role": user.role,
             "user_id": user.id
         }
 
-        return success_response(response,status_code=200)
+        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
+        flask_response = make_response(success_response(response_data, status_code=200))
+        flask_response.set_cookie(
+            "access_token",
+            access_token,
+            expires=access_token_exp,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+        flask_response.set_cookie(
+            "refresh_token",
+            refresh_token,
+            expires=refresh_token_exp,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+        return flask_response
     except Exception as e:
         return error_response(str(e), 500)
 
