@@ -6,13 +6,15 @@ import requests
 import os
 from api.repositories.user_repository import UserRepository
 import secrets
-from api.routes.main import success_response
+from api.routes.main import error_response, success_response, register_blueprint_error_handlers
 from api.utils.login_codes_utils import store_login_code, consume_login_code
 
 
 
 SECRET = os.environ.get("SECRET_KEY")
 oauth_bp = Blueprint("oauth", __name__)
+
+register_blueprint_error_handlers(oauth_bp)
 
 # 🔑 From Google Console
 GOOGLE_CLIENT_ID =  os.environ.get("GOOGLE_CLIENT_ID")
@@ -68,11 +70,11 @@ def google_callback():
     state = request.args.get("state")
 
     if not code or not state:
-        return jsonify({"error": "Missing code or state"}), 400
+        return error_response("Missing code or state", 400)
 
     # callback
     if state != session.get("oauth_state"):
-        return jsonify({"error": "Invalid or expired state"}), 400
+        return error_response("Invalid or expired state", 400)
 
     return_to = session.pop("return_to")
     session.pop("oauth_state")
@@ -89,18 +91,26 @@ def google_callback():
         "grant_type": "authorization_code",
     }
 
-    token_res = requests.post(GOOGLE_TOKEN_URL, data=token_data)
+    try:
+        token_res = requests.post(GOOGLE_TOKEN_URL, data=token_data, timeout=15)
+    except requests.RequestException:
+        return error_response("Google authentication failed", 502)
+
     token_json = token_res.json()
 
     if "access_token" not in token_json:
-        return jsonify(token_json), 400
+        return error_response("Google authentication failed", 400)
 
     access_token = token_json["access_token"]
 
-    userinfo_res = requests.get(
-        GOOGLE_USERINFO_URL,
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
+    try:
+        userinfo_res = requests.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15,
+        )
+    except requests.RequestException:
+        return error_response("Google authentication failed", 502)
 
     userinfo = userinfo_res.json()
 
@@ -129,12 +139,14 @@ def finalize_google_login():
 
     code_data = consume_login_code(code)
     if not code_data:
-        return jsonify({"error": "Invalid or expired code"}), 400
+        return error_response("Invalid or expired code", 400)
 
     user_id = code_data["user_id"]
 
 
     user = UserRepository.get_by_id(int(user_id))
+    if not user:
+        return error_response("User not found", 404)
 
     # --- unchanged JWT logic ---
     access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)

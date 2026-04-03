@@ -1,10 +1,8 @@
 import os
 
-import jwt
 from flask import request
 from api.routes.main import error_response, success_response
 from api.services.entity_service import EntityService
-from sqlalchemy.exc import SQLAlchemyError
 from . import data_bp
 
 
@@ -43,12 +41,8 @@ def add_entity():
             }
         }, status_code=201)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_all_entities", methods=["GET"])
 def get_all_entities():
@@ -71,12 +65,8 @@ def get_all_entities():
         ]
         return success_response(data, 200)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_data_existing_entities", methods=["GET"])
 def get_data_existing_entities():
@@ -99,12 +89,8 @@ def get_data_existing_entities():
         ]
         return success_response(data, 200)
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/delete_entity", methods=["POST"])
 def delete_entity():
@@ -127,13 +113,8 @@ def delete_entity():
 
         return success_response({"deleted_id": entity_id}, 200)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_entity_profile_card", methods=["GET"])
 def get_entity_profile_card():
@@ -155,12 +136,8 @@ def get_entity_profile_card():
             
         return success_response(data, status_code=200)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_entity_followers_history", methods=["GET"])
 def get_entity_followers_history():
@@ -187,14 +164,8 @@ def get_entity_followers_history():
             return error_response("No history found for this entity.", 404)
         return success_response(data, 200)
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except SQLAlchemyError as e:
-        return error_response(f"Database error: {str(e)}", 500)
-    except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
    
 # @data_bp.route("/get_entity_followers_comparison", methods=["GET"])
 # def get_entity_followers_comparison():
@@ -272,14 +243,8 @@ def compare_entities_followers():
         return success_response(data, 200)
         # we get the entities or category
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except SQLAlchemyError as e:
-        return error_response(f"Database error: {str(e)}", 500)
-    except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)  
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)  
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
@@ -301,7 +266,7 @@ def get_entity_posts_timeline():
         
         try:
             all_posts = EntityService.get_entity_posts_timeline(entity_id, date_str=date_str, max_posts=max_posts)
-        except Exception:
+        except ValueError:
             return error_response("Invalid date format provided.", 400)
 
         if not all_posts or (type(all_posts) == list and len(all_posts) < 1):
@@ -310,14 +275,8 @@ def get_entity_posts_timeline():
         return success_response(all_posts, 200)
 
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except SQLAlchemyError as e:
-        return error_response(f"Database error: {str(e)}", 500)
-    except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
     
 
 @data_bp.route("/mark_entity_to_scrape", methods=["GET"])
@@ -340,12 +299,8 @@ def mark_entity_to_scrape():
 
         return success_response({"message": f"{res}", "entity_id": entity_id}, 200)
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
         
 # a route that returns top k performing posts for an entity
 @data_bp.route("/get_entity_top_posts", methods=["GET"])
@@ -363,7 +318,7 @@ def get_entity_top_posts():
 
         print(f"Processed {posts_num} posts, skipped {skipped} invalid entries.")
         return success_response(day_gains, 200)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 

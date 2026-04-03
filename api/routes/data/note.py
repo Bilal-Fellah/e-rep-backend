@@ -57,8 +57,8 @@ def create_note():
             visibility=data.get("visibility", "private"),
         )
         return success_response(data=_note_dict(note), status_code=201)
-    except Exception as e:
-        return error_response(f"Error creating note: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @data_bp.route("/get_note/<int:note_id>", methods=["GET"])
 def get_note(note_id):

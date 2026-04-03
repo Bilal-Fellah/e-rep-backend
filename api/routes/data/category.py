@@ -1,6 +1,5 @@
 import os
 from flask import request
-import jwt
 from api.routes.main import error_response, success_response
 from api.repositories.category_repository import CategoryRepository
 from . import data_bp
@@ -34,12 +33,8 @@ def add_category():
             "name": category.name,
             "parent_id": category.parent_id
         }, 201)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
     
 
 @data_bp.route("/delete_category", methods=["POST"])
@@ -64,12 +59,8 @@ def delete_category():
 
         return success_response({"deleted_id": category_id}, 200)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_all_categories", methods=["GET"])
@@ -94,11 +85,7 @@ def get_all_categories():
         ]
         return success_response(data, 200)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 

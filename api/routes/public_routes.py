@@ -1,9 +1,11 @@
 # routes/public_routes.py
 from flask import Blueprint
 from api.repositories.page_history_repository import PageHistoryRepository
-from api.routes.main import error_response, success_response
+from api.routes.main import error_response, success_response, register_blueprint_error_handlers
 
 public_bp = Blueprint("public", __name__)
+
+register_blueprint_error_handlers(public_bp)
 
 
 @public_bp.route("/ranking", methods=["GET"])
@@ -37,5 +39,5 @@ def public_ranking():
 
         return success_response(result, 200)
 
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except ValueError:
+        return error_response("Invalid request data", 400)

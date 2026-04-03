@@ -1,5 +1,4 @@
 from flask import request
-import jwt
 from api.routes.main import error_response, success_response
 from api.services.page_service import PageService
 from . import data_bp
@@ -33,12 +32,8 @@ def add_page():
 
 
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @data_bp.route("/delete_page", methods=["POST"])
 def delete_page():
@@ -62,12 +57,8 @@ def delete_page():
         return success_response({"deleted_id": page_id}, status_code=200)
 
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_all_pages", methods=["GET"])
@@ -98,12 +89,8 @@ def get_all_pages():
         return success_response(data, status_code=200)
 
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @data_bp.route("/get_pages_by_platform", methods=["GET"])
 def get_pages_by_platform():
@@ -134,12 +121,8 @@ def get_pages_by_platform():
         return success_response(data, status_code=200)
 
 
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @data_bp.route("/get_page_interaction_stats", methods=["GET"])
 def get_page_interaction_stats():
@@ -152,5 +135,5 @@ def get_page_interaction_stats():
             return error_response(f"No data found for page {page_id}.", 404)
         return success_response(data, 200)
 
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)

@@ -18,13 +18,15 @@ from api.utils.validators import (
     ALLOWED_ROLES, ALLOWED_PROFESSIONS
 )
 
-from api.routes.main import error_response, success_response
+from api.routes.main import error_response, success_response, register_blueprint_error_handlers
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
 FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
+
+register_blueprint_error_handlers(auth_bp, include_token_errors=True)
 
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
@@ -50,8 +52,8 @@ def register_mail():
             json.dump(mails, f, indent=4)
             
         return success_response(data={"message": f"Email {email} registered for temporary access"})
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
@@ -109,8 +111,8 @@ def register_user():
         )
 
         return success_response(data=response )
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/register_entity_name", methods=["POST"])
@@ -137,8 +139,8 @@ def register_entity_name():
             json.dump(entities, f, indent=4)
             
         return success_response(data={"message": f"Entity {entity_name} registered for temporary access"})
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 
@@ -201,12 +203,8 @@ def register_entity():
         
         return success_response(payload, status_code=201)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except ValueError as ve:
+        return error_response(str(ve), 400)
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -238,8 +236,8 @@ def login():
         )
 
         return success_response(response,status_code=200)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @auth_bp.route("/get_user_data", methods=["POST"])
 def get_user_data():
@@ -261,12 +259,8 @@ def get_user_data():
             "last_name": user.last_name,
             "created_at": user.created_at.isoformat() if user.created_at else None,
         })
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/refresh_token", methods=["POST"])
@@ -306,6 +300,8 @@ def refresh():
             path="/"
         )
         return flask_response
+    except jwt.ExpiredSignatureError:
+        return error_response("Refresh token expired", status_code=401)
     except jwt.InvalidTokenError:
         return error_response("Invalid refresh token", status_code=401)
 
@@ -341,12 +337,8 @@ def validate_user_role():
         response = {"user_id": user.id, 'role': user.role}
         return success_response(data=response)
 
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/complete_profile", methods=["POST"])
@@ -386,12 +378,8 @@ def complete_profile():
             "profession": user.profession,
         })
 
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @auth_bp.route("/redirect_to_app", methods=["POST"])
 def redirect_to_app():
@@ -452,5 +440,5 @@ def redirect_to_app():
 
         
 
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)

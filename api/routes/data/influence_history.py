@@ -7,7 +7,6 @@ from api.services.influence_history_service import InfluenceHistoryService
 from api.utils.auth import _extract_token
 from api.utils.posts_utils import ensure_datetime
 from . import data_bp
-from sqlalchemy.exc import SQLAlchemyError
 import traceback
 
 
@@ -118,12 +117,8 @@ def get_platform_history():
             for h in history_list
         ]
         return success_response(data, 200)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_entity_history", methods=["GET"])
@@ -166,15 +161,8 @@ def get_entity_history():
         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data, 'date': h.recorded_at} for h in history]
         return success_response(data, 200)
     
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-
-    except SQLAlchemyError as e:
-        return error_response(f"Database error: {str(e)}", 500)
-    except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
     
 
 @data_bp.route("/get_entities_ranking", methods=["GET"])
@@ -219,12 +207,8 @@ def get_entities_ranking():
        
         # else:
         #     return error_response("Role is not valid", 401)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/entities_ranking", methods=['GET'])
 def entities_ranking():
@@ -244,8 +228,8 @@ def get_entity_interaction_stats():
             return error_response(f"No data found for entity {entity_id}.", 404)
         return success_response(data, 200)
 
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_competitors_interaction_stats", methods=["POST"])
@@ -275,6 +259,6 @@ def get_competitors_interaction_stats():
             return error_response(f"No data found for entity {entity_ids}.", 404)
         return success_response(data, 200)
 
-    except Exception as e:
+    except (TypeError, KeyError, ValueError):
         traceback.print_exc()
-        return error_response(f"Internal server error: {str(e)}", 500)
+        return error_response("Invalid request data", 400)

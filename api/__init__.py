@@ -3,6 +3,8 @@ from flask_cors import CORS
 import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import HTTPException
 
 # create db object (but don't bind to app yet)
 db = SQLAlchemy()
@@ -82,5 +84,20 @@ def create_app():
 
     from .routes import register_routes
     register_routes(app)
+
+    @app.errorhandler(SQLAlchemyError)
+    def handle_database_error(error):
+        from api.routes.main import db_error_response
+
+        return db_error_response(500)
+
+    @app.errorhandler(Exception)
+    def handle_unhandled_error(error):
+        if isinstance(error, HTTPException):
+            return error
+
+        from api.routes.main import server_error_response
+
+        return server_error_response(500)
     
     return app
