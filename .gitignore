@@ -5,6 +5,7 @@ __pycache__
 flask-env/*
 # Environments 
 .env 
+*.env*
 .venv 
 env/ 
 venv/ 
