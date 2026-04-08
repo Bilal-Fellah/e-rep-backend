@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+import json
 import uuid
 
 import pytest
@@ -47,6 +48,14 @@ def test_validators_email_phone_password():
     assert validate_password("12345678") is True
     assert validate_password("short") is False
 
+    assert validate_email(None) is False
+    assert validate_phone(None) is False
+    assert validate_password(None) is False
+
+    assert validate_email(123) is False
+    assert validate_phone(123) is False
+    assert validate_password(123) is False
+
 
 def test_auth_utils_email_phone_and_token_extraction():
     app = Flask(__name__)
@@ -61,6 +70,9 @@ def test_auth_utils_email_phone_and_token_extraction():
 
     with app.test_request_context(headers={}, environ_overrides={"HTTP_COOKIE": "access_token=cookie-token"}):
         assert _extract_token() == "cookie-token"
+
+    with app.test_request_context(headers={}, environ_overrides={}):
+        assert _extract_token() == ""
 
 
 def test_compute_score_uses_weights_and_handles_none():
@@ -77,6 +89,7 @@ def test_interpolate_series_fills_gaps_with_neighbors_or_previous():
     assert interpolate_series([5, 0, 15]) == [5, 10.0, 15]
     assert interpolate_series([5, None, None]) == [5, 5, 5]
     assert interpolate_series([0, None, 10]) == [0, 10, 10]
+    assert interpolate_series([0, None, 0]) == [0, 0, 0]
 
 
 def test_page_uuid_normalization_and_uuid_generation_are_stable():
@@ -107,6 +120,33 @@ def test_login_codes_store_and_consume_with_expiration(tmp_path, monkeypatch):
     assert consume_login_code("missing") is None
 
 
+def test_login_codes_cleanup_persists_only_unexpired_entries(tmp_path, monkeypatch):
+    from api.utils import login_codes_utils as login_utils
+
+    file_path = tmp_path / "codes.json"
+    monkeypatch.setattr(login_utils, "LOGIN_CODE_FILE", str(file_path))
+
+    now = 1_700_000_000.0
+    monkeypatch.setattr(login_utils.time, "time", lambda: now)
+
+    with open(file_path, "w") as f:
+        json.dump(
+            {
+                "expired": {"user_id": 1, "exp": now - 1},
+                "alive": {"user_id": 2, "exp": now + 120},
+            },
+            f,
+        )
+
+    assert consume_login_code("missing") is None
+
+    with open(file_path, "r") as f:
+        saved = json.load(f)
+
+    assert "expired" not in saved
+    assert saved["alive"]["user_id"] == 2
+
+
 def test_parse_relative_time_and_number_casting():
     parsed = parse_relative_time("2 day ago")
 
@@ -115,6 +155,7 @@ def test_parse_relative_time_and_number_casting():
     assert _to_number("12") == 12
     assert _to_number("12.8") == 12
     assert _to_number("abc") == 0
+    assert parse_relative_time("yesterday") is None
 
 
 def test_ensure_datetime_with_naive_aware_string_and_invalid_type():

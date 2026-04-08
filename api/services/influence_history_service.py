@@ -244,9 +244,18 @@ class InfluenceHistoryService:
 
     @staticmethod
     def get_competitors_interaction_stats(entity_ids, start_date=None):
+        normalized_start = ensure_datetime(start_date) if start_date else None
+        date_limit = normalized_start.date() if normalized_start else date.today() - timedelta(days=30)
+
         data = []
         for entity_id in entity_ids:
-            data.extend(PageHistoryRepository.get_entity_posts(entity_id=entity_id))
+            data.extend(
+                PageHistoryRepository().get_entity_posts_new(
+                    entity_id=entity_id,
+                    date_limit=date_limit,
+                    max_posts=10000,
+                )
+            )
 
         if not data:
             return []
@@ -254,33 +263,39 @@ class InfluenceHistoryService:
         post_scores = []
 
         for row in data:
-            platform = row[2]
-            page_id = row[0]
+            platform = row.platform if hasattr(row, "platform") else row[2]
+            page_id = row.page_id if hasattr(row, "page_id") else row[0]
+            entity_id = row.entity_id if hasattr(row, "entity_id") else row[5]
 
             if platform not in platform_metrics:
                 continue
 
-            posts = row.posts
-            if isinstance(posts, list) and len(posts) > 0:
-                posts = posts[0]
-            else:
+            posts = row.posts_metrics if hasattr(row, "posts_metrics") else row[4]
+            if not posts:
+                continue
+            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
+                posts = sum(posts, [])
+            if not isinstance(posts, list):
                 continue
 
             id_key = platform_metrics[platform]["id_key"]
             metrics = platform_metrics[platform]["metrics"]
 
             for post in posts:
+                if not isinstance(post, dict):
+                    continue
+
                 post_sc = 0
 
                 post_date = post.get(platform_metrics[platform]["date"])
-                if start_date and start_date > ensure_datetime(post_date):
+                if normalized_start and post_date and normalized_start > ensure_datetime(post_date):
                     continue
 
                 for metric in metrics:
                     metric_name = metric["name"]
                     metric_score = metric["score"]
 
-                    value = post.get(metric_name, 0)
+                    value = _to_number(post.get(metric_name, 0))
                     post_sc += value * metric_score
 
                 post_scores.append({
@@ -290,7 +305,7 @@ class InfluenceHistoryService:
                     "platform": platform,
                     "create_time": post.get(platform_metrics[platform]["date"]),
                     "page_id": page_id,
-                    "entity_id": row[5],
+                    "entity_id": entity_id,
                 })
 
         return post_scores

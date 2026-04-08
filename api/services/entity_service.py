@@ -185,14 +185,18 @@ class EntityService:
                 continue
 
             for post in posts_metrics:
-                raw_date = None
-                if sorting_map[platform] in post:
-                    raw_date = post[sorting_map[platform]] if sorting_map[platform] else None
+                sort_key = sorting_map.get(platform)
+                if not sort_key:
+                    continue
+
+                raw_date = post.get(sort_key)
                 if not raw_date:
                     continue
 
                 if platform == "youtube":
                     raw_date = parse_relative_time(raw_date)
+                    if not raw_date:
+                        continue
 
                 post_date = ensure_datetime(raw_date)
                 post["compare_date"] = post_date

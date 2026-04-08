@@ -40,8 +40,12 @@ class PageService:
 
     @staticmethod
     def get_page_interaction_stats(page_id, start_date=None):
+        start_datetime = None
         if start_date:
-            start_date = parse_iso_date(start_date)
+            parsed_start = parse_iso_date(start_date)
+            if parsed_start:
+                # Parse as start-of-day UTC to compare consistently with post datetimes.
+                start_datetime = ensure_datetime(parsed_start.isoformat())
 
         data = PageHistoryRepository.get_page_posts(page_id=page_id)
         if not data:
@@ -68,7 +72,10 @@ class PageService:
                 post_sc = 0
 
                 post_date = post.get(platform_metrics[platform]["date"])
-                if start_date and start_date > ensure_datetime(post_date):
+                if not post_date:
+                    continue
+
+                if start_datetime and start_datetime > ensure_datetime(post_date):
                     continue
 
                 for metric in metrics:
