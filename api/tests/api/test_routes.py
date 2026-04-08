@@ -45,6 +45,48 @@ def test_auth_login_invalid_email_and_invalid_credentials(client, monkeypatch):
     assert response.get_json()["success"] is False
 
 
+def test_auth_login_success_returns_tokens(client, monkeypatch):
+    user = SimpleNamespace(id=7, role="registered", check_password=lambda pwd: pwd == "ok")
+
+    monkeypatch.setattr("api.routes.auth_routes.UserRepository.find_by_email", lambda email: user)
+    monkeypatch.setattr(
+        "api.routes.auth_routes.AuthService.issue_token_pair",
+        lambda user: {
+            "access_token": "a-token",
+            "refresh_token": "r-token",
+            "refresh_token_exp": "exp",
+        },
+    )
+
+    persisted = {}
+    monkeypatch.setattr(
+        "api.routes.auth_routes.AuthService.persist_refresh_token",
+        lambda user_id, token, exp: persisted.update({"user_id": user_id, "token": token, "exp": exp}),
+    )
+    monkeypatch.setattr(
+        "api.routes.auth_routes.AuthService.build_auth_response",
+        lambda user, access_token, refresh_token: {
+            "user_id": user.id,
+            "user_role": user.role,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
+    )
+
+    response = client.post("/api/auth/login", json={"email": "a@b.com", "password": "ok"})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["access_token"] == "a-token"
+    assert persisted["user_id"] == 7
+
+
+def test_auth_refresh_token_missing_returns_400(client):
+    response = client.post("/api/auth/refresh_token", json={})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Missing refresh token"
+
+
 def test_public_ranking_formats_top_global_and_category_extras(client, monkeypatch):
     ranking = [
         {"entity_id": 1, "category": "tech", "rank": 1},
@@ -72,6 +114,80 @@ def test_oauth_finalize_google_login_invalid_code(client, monkeypatch):
     response = client.post("/api/oauth/google/finalize", json={"code": "bad-code"})
     assert response.status_code == 400
     assert response.get_json()["success"] is False
+
+
+def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
+    response = client.post("/api/data/add_entity", json={"name": "x"})
+    assert response.status_code == 400
+
+    entity = SimpleNamespace(id=1, name="acme", type="brand")
+    entity_category = SimpleNamespace(entity_id=1, category_id=2)
+    monkeypatch.setattr(
+        "api.routes.data.entity.EntityService.create_entity",
+        lambda name, entity_type, category_id: (entity, entity_category),
+    )
+    response = client.post(
+        "/api/data/add_entity",
+        json={"name": " Acme ", "type": "Brand", "category_id": 2},
+    )
+    assert response.status_code == 201
+    payload = response.get_json()["data"]
+    assert payload["entity"]["id"] == 1
+    assert payload["entity_category"]["category_id"] == 2
+
+
+def test_data_get_post_validation_and_success(client, monkeypatch):
+    response = client.get("/api/data/get_post?page_id=p1&platform=instagram")
+    assert response.status_code == 400
+
+    fake_post = SimpleNamespace(to_dict=lambda: {"post_id": "p1_1", "platform": "instagram"})
+    monkeypatch.setattr("api.routes.data.posts.PostService.get_post", lambda page_id, platform, post_id: fake_post)
+    response = client.get("/api/data/get_post?page_id=p1&platform=instagram&post_id=1")
+    assert response.status_code == 200
+    assert response.get_json()["data"]["post_id"] == "p1_1"
+
+
+def test_data_get_posts_by_entity_validation_and_not_found(client, monkeypatch):
+    response = client.get("/api/data/get_posts_by_entity")
+    assert response.status_code == 400
+
+    monkeypatch.setattr("api.routes.data.posts.PostService.get_posts_by_entity", lambda entity_id, platform=None: [])
+    response = client.get("/api/data/get_posts_by_entity?entity_id=12")
+    assert response.status_code == 404
+
+
+def test_data_create_note_validation_and_success(client, monkeypatch):
+    response = client.post(
+        "/api/data/create_note",
+        json={"content": "x", "target_type": "bad", "target_id": "1", "user_id": 1},
+    )
+    assert response.status_code == 400
+
+    monkeypatch.setattr("api.routes.data.note.PostRepository.get_by_id", lambda post_id: SimpleNamespace(id=post_id))
+    monkeypatch.setattr("api.routes.data.note.UserRepository.get_by_id", lambda user_id: SimpleNamespace(id=user_id))
+    created_note = SimpleNamespace(
+        id=10,
+        author_id=1,
+        title="n",
+        content="hello",
+        target_type="post",
+        target_id="88",
+        context_data=None,
+        visibility="private",
+        status="active",
+        created_at=SimpleNamespace(isoformat=lambda: "2026-01-01T00:00:00Z"),
+        updated_at=None,
+    )
+    monkeypatch.setattr("api.routes.data.note.NoteRepository.create", lambda **kwargs: created_note)
+
+    response = client.post(
+        "/api/data/create_note",
+        json={"content": "hello", "target_type": "post", "target_id": "88", "user_id": 1},
+    )
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["data"]["id"] == 10
 
 
 def test_data_get_entity_history_invalid_date_and_success(client, monkeypatch):
@@ -112,3 +228,13 @@ def test_data_get_competitors_interaction_stats_parsing_and_404(client, monkeypa
     assert response.status_code == 404
     assert captured["entity_ids"] == [1, 2]
     assert captured["start_date"] is not None
+
+
+def test_data_get_competitors_interaction_stats_invalid_payload_returns_400(client):
+    response = client.post("/api/data/get_competitors_interaction_stats", json={"start_date": "2026-01-01T00:00:00Z"})
+    assert response.status_code == 400
+
+
+def test_data_platform_history_missing_param_returns_400(client):
+    response = client.get("/api/data/get_platform_history")
+    assert response.status_code == 400

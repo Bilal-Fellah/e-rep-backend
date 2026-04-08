@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import json
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +8,8 @@ import pytest
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
+from api.repositories.note_repository import NoteRepository
+from api.repositories.page_history_repository import PageHistoryRepository
 from api.repositories.page_repository import PageRepository
 from api.repositories.post_repository import PostRepository
 from api.repositories.user_repository import UserRepository
@@ -153,3 +157,105 @@ def test_category_and_entity_category_create_delete(monkeypatch):
 
     assert EntityCategoryRepository.delete_by_entity(7) is True
     assert EntityCategoryRepository.delete_by_entity(999) is False
+
+
+def test_user_repository_update_profile_updates_known_fields_only(monkeypatch):
+    fake_user = SimpleNamespace(first_name="Old", profession="other")
+    commits = {"count": 0}
+
+    fake_session = SimpleNamespace(
+        get=lambda model, user_id: fake_user if user_id == 1 else None,
+        commit=lambda: commits.update({"count": commits["count"] + 1}),
+    )
+    monkeypatch.setattr("api.repositories.user_repository.db", SimpleNamespace(session=fake_session))
+
+    updated = UserRepository.update_profile(1, first_name="New", profession="ceo", unknown_field="x")
+    assert updated is fake_user
+    assert fake_user.first_name == "New"
+    assert fake_user.profession == "ceo"
+    assert not hasattr(fake_user, "unknown_field")
+    assert commits["count"] == 1
+
+    with pytest.raises(ValueError, match="User not found"):
+        UserRepository.update_profile(999, first_name="x")
+
+
+def test_note_repository_update_and_permissions(monkeypatch):
+    note = SimpleNamespace(
+        author_id=5,
+        title="old",
+        content="old",
+        context_data={},
+        visibility="private",
+        status="active",
+        updated_at=None,
+    )
+
+    commits = {"count": 0}
+    monkeypatch.setattr(
+        "api.repositories.note_repository.db",
+        SimpleNamespace(session=SimpleNamespace(commit=lambda: commits.update({"count": commits["count"] + 1}))),
+    )
+
+    updated = NoteRepository.update(
+        note,
+        title="new",
+        content="updated",
+        context_data={"k": "v"},
+        visibility="public",
+        status="deleted",
+    )
+
+    assert updated.title == "new"
+    assert updated.content == "updated"
+    assert updated.context_data == {"k": "v"}
+    assert updated.visibility == "public"
+    assert updated.status == "deleted"
+    assert updated.updated_at is not None
+    assert commits["count"] == 1
+
+    assert NoteRepository.can_view(updated, user_id=999) is True
+    updated.visibility = "private"
+    assert NoteRepository.can_view(updated, user_id=999) is False
+    assert NoteRepository.can_view(updated, user_id=5) is True
+    assert NoteRepository.can_edit(updated, user_id=5) is True
+    assert NoteRepository.can_edit(updated, user_id=8) is False
+
+
+def test_page_history_public_ranking_cache_miss_and_hit(tmp_path, monkeypatch):
+    cache_file = tmp_path / "ranking_cache.json"
+    monkeypatch.setattr("api.repositories.page_history_repository.RANKING_CACHE_FILE", str(cache_file))
+
+    fixed_now = datetime(2026, 4, 8, 12, 0, 0)
+
+    class _FakeDateTime:
+        @staticmethod
+        def now():
+            return fixed_now
+
+    monkeypatch.setattr("api.repositories.page_history_repository.datetime", _FakeDateTime)
+
+    fresh_data = [{"entity_id": 1, "rank": 1}]
+    monkeypatch.setattr("api.repositories.page_history_repository.PageHistoryRepository.get_all_entities_ranking", lambda: fresh_data)
+
+    # Cache miss: file absent -> compute and persist.
+    result_miss = PageHistoryRepository.get_public_ranking()
+    assert result_miss == fresh_data
+    assert os.path.exists(cache_file)
+
+    with open(cache_file, "r") as f:
+        persisted = json.load(f)
+    assert persisted["month"] == "2026-04"
+    assert persisted["data"] == fresh_data
+
+    # Cache hit: valid month and data -> should return file data without recomputation.
+    cached_data = [{"entity_id": 2, "rank": 9}]
+    with open(cache_file, "w") as f:
+        json.dump({"month": "2026-04", "data": cached_data}, f)
+
+    monkeypatch.setattr(
+        "api.repositories.page_history_repository.PageHistoryRepository.get_all_entities_ranking",
+        lambda: pytest.fail("should not recompute on cache hit"),
+    )
+    result_hit = PageHistoryRepository.get_public_ranking()
+    assert result_hit == cached_data
