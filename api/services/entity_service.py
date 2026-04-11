@@ -5,10 +5,12 @@ from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.utils.data_keys import platform_metrics
+from api.utils.logging_utils import instrument_service_class
 from api.utils.request_parsing import parse_iso_date
 from api.utils.posts_utils import _to_number, ensure_datetime, parse_relative_time
 
 
+@instrument_service_class
 class EntityService:
     @staticmethod
     def refine_daily_followers(points):

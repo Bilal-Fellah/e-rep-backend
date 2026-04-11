@@ -7,6 +7,7 @@ from api.models.page_model import Page
 from sqlalchemy import case, select, and_, cast, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
+from api.utils.logging_utils import instrument_repository_class
 from datetime import date, datetime, time
 import json
 import os
@@ -24,13 +25,14 @@ class _UUIDEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+@instrument_repository_class
 class PageHistoryRepository:
     @staticmethod
     def _followers_case(page_alias=Page, history_alias=PageHistory):
         return case(
-            (page_alias.platform == "youtube", history_alias.data["subscribers"]),
-            (page_alias.platform == "facebook", history_alias.data["page_followers"]),
-            else_=history_alias.data["followers"],
+            (page_alias.platform == "youtube", history_alias.data["subscribers"].astext),
+            (page_alias.platform == "facebook", history_alias.data["page_followers"].astext),
+            else_=history_alias.data["followers"].astext,
         )
 
     @staticmethod
@@ -341,7 +343,7 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                cast(db.func.coalesce(PageHistoryRepository._followers_case().astext, "0"), db.Integer).label("followers"),
+                cast(db.func.coalesce(PageHistoryRepository._followers_case(), "0"), db.Integer).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )

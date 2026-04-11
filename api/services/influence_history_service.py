@@ -3,10 +3,12 @@ from datetime import datetime, date, timedelta
 
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.utils.data_keys import platform_metrics
+from api.utils.logging_utils import instrument_service_class
 from api.utils.request_parsing import parse_iso_date
 from api.utils.posts_utils import _to_number, ensure_datetime
 
 
+@instrument_service_class
 class InfluenceHistoryService:
     @staticmethod
     def get_after_time(hour):

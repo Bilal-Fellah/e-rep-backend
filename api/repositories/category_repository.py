@@ -1,6 +1,9 @@
 from api import db
 from api.models import Category
+from api.utils.logging_utils import instrument_repository_class
 
+
+@instrument_repository_class
 class CategoryRepository:
     @staticmethod   
     def get_by_id(category_id: int) -> Category | None:

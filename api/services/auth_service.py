@@ -5,11 +5,14 @@ from datetime import datetime, timedelta, timezone
 from api.models.user_model import User
 from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
+from api.utils.logging_utils import instrument_service_class
 from api.utils.page_uuid import create_page_uuid
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
+
+@instrument_service_class
 class AuthService:
     @staticmethod
     def signup(first_name, email, password, role="registered", last_name="", phone_number=None, profession="other", is_verified=True):

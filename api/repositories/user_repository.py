@@ -2,7 +2,10 @@
 from datetime import datetime
 from api.models.user_model import User
 from api import db
+from api.utils.logging_utils import instrument_repository_class
 
+
+@instrument_repository_class
 class UserRepository:
     @staticmethod
     def get_by_id(user_id: int) -> User | None:

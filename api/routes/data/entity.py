@@ -233,7 +233,7 @@ def compare_entities_followers():
         #     return error_response("Access denied", 403)
         
         data = request.get_json()
-        entity_ids = data.get("entity_ids")
+        entity_ids = list(data.get("entity_ids"))
         if not entity_ids:
             return error_response("Missing required key: 'entity_ids'.", 400)
 

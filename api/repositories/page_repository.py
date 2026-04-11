@@ -1,8 +1,10 @@
 from api import db
 from api.models import Page
+from api.utils.logging_utils import instrument_repository_class
 from sqlalchemy import select
 
 
+@instrument_repository_class
 class PageRepository:
     @staticmethod
     def get_by_id(page_id: int) -> Page | None:

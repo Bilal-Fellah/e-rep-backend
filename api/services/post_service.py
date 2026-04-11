@@ -1,6 +1,8 @@
 from api.repositories.post_repository import PostRepository
+from api.utils.logging_utils import instrument_service_class
 
 
+@instrument_service_class
 class PostService:
     @staticmethod
     def get_post(page_id, platform, post_id):

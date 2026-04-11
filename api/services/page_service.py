@@ -1,11 +1,13 @@
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.repositories.page_repository import PageRepository
 from api.utils.data_keys import platform_metrics
+from api.utils.logging_utils import instrument_service_class
 from api.utils.page_uuid import create_page_uuid
 from api.utils.posts_utils import ensure_datetime
 from api.utils.request_parsing import parse_iso_date
 
 
+@instrument_service_class
 class PageService:
     @staticmethod
     def create_page(data):

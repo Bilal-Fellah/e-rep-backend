@@ -6,6 +6,8 @@ from flask_migrate import Migrate
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
+from .utils.logging_utils import configure_error_loggers
+
 # create db object (but don't bind to app yet)
 db = SQLAlchemy()
 migrate = Migrate()
@@ -38,6 +40,7 @@ def create_app():
 
     db.init_app(app)
     migrate.init_app(app, db)
+    configure_error_loggers(app)
 
     # ---- Import models so Alembic sees them ----
 

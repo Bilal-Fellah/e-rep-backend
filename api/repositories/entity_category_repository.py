@@ -1,6 +1,9 @@
 from api import db
 from api.models import EntityCategory
+from api.utils.logging_utils import instrument_repository_class
 
+
+@instrument_repository_class
 class EntityCategoryRepository:
     @staticmethod
     def add(entity_id: int, category_id: int):
