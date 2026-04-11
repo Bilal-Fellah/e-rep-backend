@@ -44,13 +44,14 @@ class UserRepository:
 
         
     @staticmethod
-    def update_role(user_id: int, role: str) -> User:
+    def update_role(user_id: int, role: str, is_verified: bool = True) -> User:
        
         user = db.session.get(User, user_id)
         if not user:
             raise ValueError("User not found")
 
         user.role = role
+        user.is_verified = is_verified
         db.session.commit()
         return user
 

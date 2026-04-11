@@ -232,9 +232,9 @@ def compare_entities_followers():
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
         
-        data = request.get_json()
-        entity_ids = list(data.get("entity_ids"))
-        if not entity_ids:
+        data = request.get_json(silent=True) or {}
+        entity_ids = data.get("entity_ids")
+        if not isinstance(entity_ids, list) or not entity_ids:
             return error_response("Missing required key: 'entity_ids'.", 400)
 
         data = EntityService.compare_entities_followers(entity_ids)
@@ -314,9 +314,8 @@ def get_entity_top_posts():
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
         
-        day_gains, posts_num, skipped = EntityService.get_entity_top_posts(entity_id, date, k)
+        day_gains, _posts_num, _skipped = EntityService.get_entity_top_posts(entity_id, date, k)
 
-        print(f"Processed {posts_num} posts, skipped {skipped} invalid entries.")
         return success_response(day_gains, 200)
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)

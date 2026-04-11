@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from flask import redirect, request, jsonify, Blueprint,  session
-from datetime import datetime
+from flask import redirect, request, Blueprint, session
 import jwt
 import requests
 import os
@@ -20,6 +19,23 @@ register_blueprint_error_handlers(oauth_bp)
 GOOGLE_CLIENT_ID =  os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:5000")
+FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
+
+ALLOWED_RETURN_URLS = {
+    url.strip()
+    for url in os.environ.get("ALLOWED_OAUTH_RETURN_URLS", "").split(",")
+    if url.strip()
+}
+
+if not ALLOWED_RETURN_URLS:
+    ALLOWED_RETURN_URLS = {
+        FRONTEND_REDIRECT_URL,
+        "https://www.brendex.net",
+        "https://brendex.net",
+        "http://localhost:3000",
+        "http://localhost:5000",
+    }
+
 # Must match Google Console redirect URI
 REDIRECT_URI = f"{BACKEND_URL}/api/oauth/google/callback"
 
@@ -30,24 +46,15 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 @oauth_bp.route("/google/login")
 def login_google():
-    return_to = request.args.get("return_to")
-
-    # ALLOWED_RETURN_URLS = {
-    #     "https://www.brendex.net",
-    #     "https://brendex.net",
-    # }
-
-    # if return_to not in ALLOWED_RETURN_URLS:
-    #     return jsonify({"error": "Invalid return_to"}), 400
+    return_to = request.args.get("return_to", FRONTEND_REDIRECT_URL)
+    if return_to not in ALLOWED_RETURN_URLS:
+        return error_response("Invalid return_to", 400)
 
     state = secrets.token_urlsafe(32)
 
     # login
     session["oauth_state"] = state
     session["return_to"] = return_to
-
-    print("SET STATE:", state)
-    print("SESSION:", dict(session))
 
 
     params = {
@@ -76,11 +83,10 @@ def google_callback():
     if state != session.get("oauth_state"):
         return error_response("Invalid or expired state", 400)
 
-    return_to = session.pop("return_to")
-    session.pop("oauth_state")
-
-    print("CALLBACK STATE:", state)
-    print("SESSION:", dict(session))
+    return_to = session.pop("return_to", FRONTEND_REDIRECT_URL)
+    session.pop("oauth_state", None)
+    if return_to not in ALLOWED_RETURN_URLS:
+        return_to = FRONTEND_REDIRECT_URL
    
     # --- everything below stays the same ---
     token_data = {
@@ -94,6 +100,9 @@ def google_callback():
     try:
         token_res = requests.post(GOOGLE_TOKEN_URL, data=token_data, timeout=15)
     except requests.RequestException:
+        return error_response("Google authentication failed", 502)
+
+    if token_res.status_code >= 400:
         return error_response("Google authentication failed", 502)
 
     token_json = token_res.json()
@@ -112,7 +121,12 @@ def google_callback():
     except requests.RequestException:
         return error_response("Google authentication failed", 502)
 
+    if userinfo_res.status_code >= 400:
+        return error_response("Google authentication failed", 502)
+
     userinfo = userinfo_res.json()
+    if "email" not in userinfo:
+        return error_response("Google authentication failed", 502)
 
     user = UserRepository.find_by_email(userinfo["email"])
     if not user:
@@ -121,7 +135,7 @@ def google_callback():
             last_name=userinfo.get("family_name", ""),
             email=userinfo["email"],
             password="",
-            role=None,
+            role="registered",
             is_verified=False
         )
 
@@ -135,7 +149,10 @@ def google_callback():
 
 @oauth_bp.route("/google/finalize", methods=["POST"])
 def finalize_google_login():
-    code = request.json.get("code")
+    body = request.get_json(silent=True) or {}
+    code = body.get("code")
+    if not code:
+        return error_response("Missing code", 400)
 
     code_data = consume_login_code(code)
     if not code_data:
@@ -182,6 +199,7 @@ def finalize_google_login():
                 "last_name": user.last_name,
                 "email": user.email,
                 "role": user.role,
+                "is_verified": bool(getattr(user, "is_verified", False)),
                 "profession": user.profession,
                 "created_at": user.created_at.isoformat()
             }

@@ -31,7 +31,7 @@ def create_app():
 
     app.config.update(
         SESSION_COOKIE_NAME="brendex_session",
-        SESSION_COOKIE_HTTPONLY=False,
+        SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="None",  # REQUIRED for Google redirect
         SESSION_COOKIE_SECURE=True,      # REQUIRED for SameSite=None
     )

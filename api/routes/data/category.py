@@ -8,8 +8,6 @@ SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_category", methods=["POST"])
 def add_category():
-    pass
-
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=["HS256"])

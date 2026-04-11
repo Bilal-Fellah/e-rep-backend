@@ -107,7 +107,6 @@ def get_platform_history():
         platform = request.args.get("platform")
         if not platform:
             return error_response("Missing platform parameter", 400)
-        print(platform)
         history_list = InfluenceHistoryService.get_platform_history(platform)
         if not history_list:
             return error_response("No history found", 404)
@@ -236,10 +235,10 @@ def get_entity_interaction_stats():
 def get_competitors_interaction_stats():
 
     try:
-        inputs = request.get_json()
+        inputs = request.get_json(silent=True) or {}
 
-        entity_ids = list(inputs.get("entity_ids"))
-        if not entity_ids:
+        entity_ids = inputs.get("entity_ids")
+        if not isinstance(entity_ids, list) or not entity_ids:
             return error_response(f"wrong value for entity_ids")
         
         start_date = inputs.get("start_date", None)
@@ -250,9 +249,6 @@ def get_competitors_interaction_stats():
         else:
             start_date = None
 
-        if not isinstance(entity_ids, list):
-            return error_response(f"entity_ids must be a list not a {type(entity_ids)}")
-        
         data = InfluenceHistoryService.get_competitors_interaction_stats(entity_ids, start_date=start_date)
 
         if not data or (isinstance(data, list) and len(data) < 1):
@@ -260,5 +256,4 @@ def get_competitors_interaction_stats():
         return success_response(data, 200)
 
     except (TypeError, KeyError, ValueError):
-        traceback.print_exc()
         return error_response("Invalid request data", 400)

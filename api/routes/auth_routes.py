@@ -1,6 +1,5 @@
 # routes/auth_routes.py
 import json
-import json
 from api.services.auth_service import AuthService
 from api.utils.auth import validate_email, _extract_token
 from flask import Blueprint, request, jsonify, redirect, make_response
@@ -109,6 +108,7 @@ def register_user():
             tokens["access_token"],
             tokens["refresh_token"],
         )
+        response["is_verified"] = bool(getattr(user, "is_verified", False))
 
         return success_response(data=response )
     except (TypeError, KeyError, ValueError):
@@ -234,6 +234,7 @@ def login():
             tokens["access_token"],
             tokens["refresh_token"],
         )
+        response["is_verified"] = bool(getattr(user, "is_verified", False))
 
         return success_response(response,status_code=200)
     except (TypeError, KeyError, ValueError):
@@ -254,6 +255,7 @@ def get_user_data():
             "email": user.email,
             "user_id": user.id,
             "role": user.role,
+            "is_verified": bool(getattr(user, "is_verified", False)),
             "profession": user.profession,
             "first_name": user.first_name,
             "last_name": user.last_name,
@@ -334,7 +336,7 @@ def validate_user_role():
         role = data['role']
 
         user = UserRepository.update_role(user_id=user_id, role= role, is_verified=True)
-        response = {"user_id": user.id, 'role': user.role}
+        response = {"user_id": user.id, 'role': user.role, "is_verified": bool(getattr(user, "is_verified", False))}
         return success_response(data=response)
 
     except (TypeError, KeyError, ValueError):
@@ -376,6 +378,7 @@ def complete_profile():
             "user_id": user.id,
             "phone_number": user.phone_number,
             "profession": user.profession,
+            "is_verified": bool(getattr(user, "is_verified", False)),
         })
 
     except (TypeError, KeyError, ValueError):
