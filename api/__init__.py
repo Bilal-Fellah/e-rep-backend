@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
 import os
+from urllib.parse import quote_plus
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,17 +16,38 @@ migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
-    
+
     VPS_ADDRESS = os.getenv("VPS_ADDRESS")
     VPS_DB_PORT = os.getenv("VPS_DB_PORT")
     DB_USER = os.getenv("DB_USER")
     DB_PWD = os.getenv("DB_PWD")
     DB_NAME = os.getenv("DB_NAME")
 
-    
+    # In containers, localhost points to the container itself, not the VPS host.
+    if os.path.exists("/.dockerenv") and VPS_ADDRESS in {"localhost", "127.0.0.1", "::1"}:
+        VPS_ADDRESS = os.getenv("DOCKER_HOST_ADDRESS", "host.docker.internal")
+
+    required_db_vars = {
+        "VPS_ADDRESS": VPS_ADDRESS,
+        "VPS_DB_PORT": VPS_DB_PORT,
+        "DB_USER": DB_USER,
+        "DB_PWD": DB_PWD,
+        "DB_NAME": DB_NAME,
+    }
+    missing_db_vars = [key for key, value in required_db_vars.items() if not value]
+    if missing_db_vars:
+        raise RuntimeError(f"Missing required DB environment variables: {', '.join(missing_db_vars)}")
+
     # ---- Config ----
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{DB_USER}:{DB_PWD}@{VPS_ADDRESS}:{VPS_DB_PORT}/{DB_NAME}"
+    encoded_db_password = quote_plus(DB_PWD)
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        f"postgresql://{DB_USER}:{encoded_db_password}@{VPS_ADDRESS}:{VPS_DB_PORT}/{DB_NAME}"
+    )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    }
 
     app.secret_key = os.getenv("SECRET_KEY")
 
