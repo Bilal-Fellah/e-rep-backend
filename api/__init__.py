@@ -56,7 +56,9 @@ def create_app():
         "http://localhost:3000",
         "http://localhost:5000",
         "https://www.brendex.net",
+        "https://www.app.brendex.net",
         "https://brendex.net",
+        "https://app.brendex.net",
     ]
 
     CORS(app,
