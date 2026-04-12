@@ -21,9 +21,18 @@ def create_app():
     DB_USER = os.getenv("DB_USER")
     DB_PWD = os.getenv("DB_PWD")
     DB_NAME = os.getenv("DB_NAME")
+    environment = os.getenv("FLASK_ENV", "development").lower()
 
     # ---- Config ----
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{DB_USER}:{DB_PWD}@{VPS_ADDRESS}:{VPS_DB_PORT}/{DB_NAME}"
+    if environment == "production":
+        app.config["SQLALCHEMY_DATABASE_URI"] = (
+            f"postgresql://{DB_USER}:{DB_PWD}@/{DB_NAME}"
+            f"?host=/var/run/postgresql"
+        )
+    else:
+        app.config["SQLALCHEMY_DATABASE_URI"] = (
+            f"postgresql://{DB_USER}:{DB_PWD}@{VPS_ADDRESS}:{VPS_DB_PORT}/{DB_NAME}"
+        )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     app.secret_key = os.getenv("SECRET_KEY")
@@ -43,11 +52,6 @@ def create_app():
 
     # ---- Import models so Alembic sees them ----
 
-    
-    # Get environment
-    os.environ.get('FLASK_ENV', 'development')
-    
-
     ALLOWED_ORIGINS = [
         "http://localhost:3000",
         "http://localhost:5000",
@@ -65,11 +69,7 @@ def create_app():
     )
 
     # # Configure CORS based on environment
-    # if environment == 'production':
-    #     # Production: Only allow requests from your Vercel app
-    #     CORS(app, 
-    #          resources={r"/api/*": {
-    #              "origins": "*",  # Only allow this specific origin
+
     #              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     #              "allow_headers": ["Content-Type", "Authorization", "Accept"],
     #              "supports_credentials": True
