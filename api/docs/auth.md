@@ -392,6 +392,41 @@ Authorization: Bearer <refresh_token>
 
 ---
 
+## **POST /logout**
+
+Logs out the current user by clearing access and refresh cookies and revoking the stored refresh token when the user can be identified.
+
+### Headers
+
+```
+Authorization: Bearer <access_token or refresh_token>
+```
+
+### Request
+
+No request body is required.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Logged out successfully"
+  }
+}
+```
+
+### Error Responses
+
+```json
+{
+  "error": "Invalid request data"
+}
+```
+
+---
+
 ## **POST /validate_user_role**
 
 Updates the role of a user.

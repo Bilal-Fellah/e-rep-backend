@@ -70,22 +70,6 @@ def create_app():
         }}
     )
 
-    # # Configure CORS based on environment
-
-    #              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    #              "allow_headers": ["Content-Type", "Authorization", "Accept"],
-    #              "supports_credentials": True
-    #          }})
-    # else:
-    #     # Development: Allow all origins
-    #     CORS(app, 
-    #          resources={r"/api/*": {
-    #              "origins": "*",
-    #              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    #              "allow_headers": ["Content-Type", "Authorization", "Accept"],
-    #              "supports_credentials": True
-    #          }})
-
     from .routes import register_routes
     register_routes(app)
 

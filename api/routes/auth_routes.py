@@ -308,6 +308,65 @@ def refresh():
         return error_response("Invalid refresh token", status_code=401)
 
 
+@auth_bp.route("/logout", methods=["POST"])
+def logout():
+    try:
+        user_id = None
+
+        refresh_token = _extract_token("refresh_token")
+        if refresh_token:
+            try:
+                refresh_payload = jwt.decode(refresh_token, SECRET, algorithms=["HS256"])
+                user_id = refresh_payload.get("user_id")
+            except jwt.InvalidTokenError:
+                user_id = None
+
+        if user_id is None:
+            access_token = _extract_token("access_token")
+            if access_token:
+                try:
+                    access_payload = jwt.decode(access_token, SECRET, algorithms=["HS256"])
+                    user_id = access_payload.get("user_id")
+                except jwt.InvalidTokenError:
+                    user_id = None
+
+        if user_id is not None:
+            user = UserRepository.get_by_id(user_id)
+            if user:
+                AuthService.persist_refresh_token(
+                    user.id,
+                    token="",
+                    exp=datetime.now(timezone.utc),
+                )
+
+        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
+        response = make_response(success_response(data={"message": "Logged out successfully"}))
+        response.set_cookie(
+            "access_token",
+            "",
+            expires=0,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+        response.set_cookie(
+            "refresh_token",
+            "",
+            expires=0,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/"
+        )
+
+        return response
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
 @auth_bp.route("/validate_user_role", methods=["POST"])
 def validate_user_role():
 
