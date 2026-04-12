@@ -1,12 +1,17 @@
 # Page Routes Documentation
 
+All routes in this document are prefixed with `/api/data`.
+
+Note: role checks are currently commented out in these handlers.
+
 ---
 
-## **POST /add_page**
-Add a new page.
-####   allowed_roles = ["admin", "subscribed", "registered"]
+## **POST /api/data/add_page**
+
+Create a page for an entity.
 
 ### Request
+
 ```json
 {
   "platform": "twitter",
@@ -14,7 +19,9 @@ Add a new page.
   "entity_id": 3,
   "name": "Example Page"
 }
-````
+```
+
+`name` is optional. If omitted, it defaults to `link`.
 
 ### Success Response (201)
 
@@ -34,25 +41,23 @@ Add a new page.
 ### Error Responses
 
 ```json
-{ "error": "Missing required fields: 'platform', 'link', or 'entity_id'." }
+{ "success": false, "error": "Missing required fields: 'platform', 'link', or 'entity_id'." }
 ```
 
 ```json
-{ "error": "Internal server error details" }
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **POST /delete\_page**
+## **POST /api/data/delete_page**
 
-Delete an existing page by ID.
-
-####   allowed_roles = ["admin"]
+Delete a page by id/uuid.
 
 ### Request
 
 ```json
-{ "id": 5 }
+{ "id": "3f5d7c6a-8b10-54c3-a2b5-1c77d33f9e31" }
 ```
 
 ### Success Response (200)
@@ -60,39 +65,26 @@ Delete an existing page by ID.
 ```json
 {
   "success": true,
-  "data": { "deleted_id": 5 }
+  "data": { "deleted_id": "3f5d7c6a-8b10-54c3-a2b5-1c77d33f9e31" }
 }
 ```
 
 ### Error Responses
 
 ```json
-{ "error": "Missing required field: 'id'." }
+{ "success": false, "error": "Missing required field: 'id'." }
 ```
 
 ```json
-{ "error": "No page found with id 5 or already deleted." }
-```
-
-```json
-{ "error": "Internal server error details" }
+{ "success": false, "error": "No page found with id <id> or already deleted." }
 ```
 
 ---
 
-## **GET /get\_all\_pages**
+## **GET /api/data/get_all_pages**
 
 Fetch all pages.
 
-####   allowed_roles = ["admin", "subscribed", "registered"]
-
-
-### Request
-
-```
-/get_all_pages
-```
-
 ### Success Response (200)
 
 ```json
@@ -105,13 +97,6 @@ Fetch all pages.
       "link": "https://twitter.com/example",
       "platform": "twitter",
       "entity_id": 3
-    },
-    {
-      "uuid": "789e4567-e89b-12d3-a456-426614174999",
-      "name": "Another Page",
-      "link": "https://facebook.com/example",
-      "platform": "facebook",
-      "entity_id": 4
     }
   ]
 }
@@ -120,26 +105,18 @@ Fetch all pages.
 ### Error Responses
 
 ```json
-{ "error": "No pages found." }
-```
-
-```json
-{ "error": "Internal server error details" }
+{ "success": false, "error": "No pages found." }
 ```
 
 ---
 
-## **GET /get\_pages\_by\_platform**
+## **GET /api/data/get_pages_by_platform**
 
-Fetch all pages for a given platform.
+Fetch pages for one platform.
 
-####   allowed_roles = ["admin", "subscribed", "registered"]
+### Query Parameters
 
-### Request
-
-```
-/get_pages_by_platform?platform=twitter
-```
+- `platform` (required)
 
 ### Success Response (200)
 
@@ -161,10 +138,44 @@ Fetch all pages for a given platform.
 ### Error Responses
 
 ```json
-{ "error": "No pages found." }
+{ "success": false, "error": "No pages found." }
+```
+
+---
+
+## **GET /api/data/get_page_interaction_stats**
+
+Get scored interaction stats for posts belonging to one page.
+
+### Query Parameters
+
+- `page_id` (required)
+- `start_date` (optional, ISO date string)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "post_id": "7387618805675610113",
+      "platform": "linkedin",
+      "create_time": "2025-10-26T19:56:45.945Z",
+      "score": 53.4
+    }
+  ]
+}
+```
+
+Metric fields vary by platform and are included in each item.
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No data found for page <page_id>." }
 ```
 
 ```json
-{ "error": "Internal server error details" }
+{ "success": false, "error": "Invalid request data" }
 ```
-

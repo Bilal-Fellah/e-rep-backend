@@ -1,167 +1,117 @@
 # Posts API
 
-All routes are prefixed with `/data`.
+All routes in this document are prefixed with `/api/data`.
 
-Posts are read-only — they are sourced from the `posts_mv` and `posts_history_mv` materialized views, which are refreshed after each scrape cycle. There are no create / update / delete endpoints.
-
-**Supported platforms:** `instagram`, `linkedin`, `tiktok`, `youtube`, `x`, `facebook`
+Posts are read-only and served from repository/materialized-view data.
 
 ---
 
-## Post Object
+## **GET /api/data/get_post**
 
-```json
-{
-  "page_id": "uuid",
-  "platform": "instagram",
-  "post_id": "ABC123",
-  "created_at": "2026-01-15T10:30:00",
-  "recorded_at": "2026-02-24T06:00:00",
-  "url": "https://...",
-  "likes": 1500,
-  "comments": 42,
-  "shares": null,
-  "views": null,
-  "caption": "Post caption text",
-  "content_type": "photo",
-  "image_url": "https://...",
-  "video_url": null,
-  "is_pinned": false,
-  "extra_data": { ...full original scrape JSON... }
-}
-```
-
-`recorded_at` is the timestamp of the scrape snapshot the metrics come from.
-
----
-
-## **GET /data/get_post**
-
-Get a single post by its composite key.
+Get one post by composite key.
 
 ### Query Parameters
 
-| Param | Type | Required |
-|-------|------|----------|
-| `page_id` | UUID string | ✅ |
-| `platform` | string | ✅ |
-| `post_id` | string | ✅ |
+- `page_id` (required)
+- `platform` (required)
+- `post_id` (required)
 
 ### Success Response (200)
 
 ```json
 {
   "success": true,
-  "data": { ...post object... }
+  "data": {
+    "page_id": "page_uuid",
+    "platform": "instagram",
+    "post_id": "ABC123"
+  }
 }
 ```
 
 ### Error Responses
-
-| Status | Message |
-|--------|---------|
-| 400 | `"page_id, platform, and post_id are required"` |
-| 404 | `"Post not found"` |
-
----
-
-## **GET /data/get_posts_by_platform**
-
-Get all latest posts for a given platform.
-
-### Query Parameters
-
-| Param | Type | Required |
-|-------|------|----------|
-| `platform` | string | ✅ |
-
-### Success Response (200)
 
 ```json
-{
-  "success": true,
-  "data": [ ...array of post objects... ]
-}
+{ "success": false, "error": "page_id, platform, and post_id are required" }
 ```
-
-### Error Responses
-
-| Status | Message |
-|--------|---------|
-| 400 | `"platform is required"` |
-| 404 | `"No posts found"` |
-
----
-
-## **GET /data/get_posts_by_page**
-
-Get all latest posts for a specific page.
-
-### Query Parameters
-
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| `page_id` | UUID string | ✅ | |
-| `platform` | string | ❌ | Filter by platform if provided |
-
-### Success Response (200)
 
 ```json
-{
-  "success": true,
-  "data": [ ...array of post objects, ordered by created_at desc... ]
-}
+{ "success": false, "error": "Post not found" }
 ```
-
-### Error Responses
-
-| Status | Message |
-|--------|---------|
-| 400 | `"page_id is required"` |
-| 404 | `"No posts found"` |
 
 ---
 
-## **GET /data/get_posts_by_entity**
+## **GET /api/data/get_posts_by_platform**
 
-Get all latest posts across every page belonging to an entity.
+Get latest posts for a platform.
 
 ### Query Parameters
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| `entity_id` | integer | ✅ | |
-| `platform` | string | ❌ | Filter by platform if provided |
+- `platform` (required)
 
-### Success Response (200)
+### Error Responses
 
 ```json
-{
-  "success": true,
-  "data": [ ...array of post objects, ordered by created_at desc... ]
-}
+{ "success": false, "error": "platform is required" }
 ```
 
-### Error Responses
-
-| Status | Message |
-|--------|---------|
-| 400 | `"entity_id is required"` |
-| 404 | `"No posts found"` |
+```json
+{ "success": false, "error": "No posts found" }
+```
 
 ---
 
-## **GET /data/get_post_history**
+## **GET /api/data/get_posts_by_page**
 
-Get the full time-series snapshot history for a single post from `posts_history_mv`. Each entry is one scrape snapshot — useful for tracking metric changes over time.
+Get latest posts for one page.
 
 ### Query Parameters
 
-| Param | Type | Required |
-|-------|------|----------|
-| `page_id` | UUID string | ✅ |
-| `platform` | string | ✅ |
-| `post_id` | string | ✅ |
+- `page_id` (required)
+- `platform` (optional)
+
+### Error Responses
+
+```json
+{ "success": false, "error": "page_id is required" }
+```
+
+```json
+{ "success": false, "error": "No posts found" }
+```
+
+---
+
+## **GET /api/data/get_posts_by_entity**
+
+Get latest posts across all pages under an entity.
+
+### Query Parameters
+
+- `entity_id` (required)
+- `platform` (optional)
+
+### Error Responses
+
+```json
+{ "success": false, "error": "entity_id is required" }
+```
+
+```json
+{ "success": false, "error": "No posts found" }
+```
+
+---
+
+## **GET /api/data/get_post_history**
+
+Get full snapshot history for one post.
+
+### Query Parameters
+
+- `page_id` (required)
+- `platform` (required)
+- `post_id` (required)
 
 ### Success Response (200)
 
@@ -170,32 +120,21 @@ Get the full time-series snapshot history for a single post from `posts_history_
   "success": true,
   "data": [
     {
-      "page_id": "uuid",
+      "page_id": "page_uuid",
       "platform": "instagram",
       "post_id": "ABC123",
-      "recorded_at": "2026-02-24T06:00:00",
-      "created_at": "2026-01-15T10:30:00",
-      "likes": 1500,
-      "comments": 42,
-      "shares": null,
-      "views": null,
-      "url": "https://...",
-      "caption": "...",
-      "content_type": "photo",
-      "image_url": "https://...",
-      "video_url": null,
-      "is_pinned": false,
-      "extra_data": {}
+      "recorded_at": "2026-02-24T06:00:00"
     }
   ]
 }
 ```
 
-Results are ordered by `recorded_at DESC` (newest first).
-
 ### Error Responses
 
-| Status | Message |
-|--------|---------|
-| 400 | `"page_id, platform, and post_id are required"` |
-| 404 | `"No history found for this post"` |
+```json
+{ "success": false, "error": "page_id, platform, and post_id are required" }
+```
+
+```json
+{ "success": false, "error": "No history found for this post" }
+```

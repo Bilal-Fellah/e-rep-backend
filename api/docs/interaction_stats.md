@@ -1,179 +1,138 @@
-**Interaction stats -- Routes documentation**
+# Interaction Stats Routes Documentation
 
-GET /api/data/get_page_interaction_stats
-Returns interaction statistics for a specific page.
-
-Parameters:
-page_id (required): Unique identifier of the page.
-start_date (optional, ISO8601): Filter posts created on or after this date.
-
-Response:
-A list of posts with their engagement metrics and computed score.
-Each post includes:
-post_id
-platform
-create_time
-raw interaction metrics depending on the platform
-computed score
-
-Example response:
-{
-"success": true,
-"data": [
-{
-"comments_count": 1,
-"likes_count": 132,
-"platform": "linkedin",
-"post_id": "7387618805675610113",
-"create_time": "2025-10-26T19:56:45.945Z",
-"score": 53.4
-}
-]
-}
+All routes in this document are prefixed with `/api/data`.
 
 ---
 
-GET /api/data/get_entity_interaction_stats
-Returns aggregated interaction statistics for all pages belonging to an entity.
+## **GET /api/data/get_page_interaction_stats**
 
-Parameters:
-entity_id (required): Identifier of the entity.
-start_date (optional, ISO8601): Filter posts created on or after this date.
+Return scored interaction stats for posts under a page.
 
-Response:
-A list of posts aggregated across all pages of the entity.
-Each item contains:
-post_id
-platform
-create_time
-raw interaction metrics
-computed score
+### Query Parameters
 
-Example response:
+- `page_id` (required)
+- `start_date` (optional, ISO date)
+
+### Success Response (200)
+
+```json
 {
-"success": true,
-"data": [
-{
-"comments": 15,
-"likes": 143,
-"platform": "instagram",
-"post_id": "3770189665996505307",
-"create_time": "2025-11-20T18:01:12.000Z",
-"score": 53.4
+  "success": true,
+  "data": [
+    {
+      "post_id": "7387618805675610113",
+      "platform": "linkedin",
+      "create_time": "2025-10-26T19:56:45.945Z",
+      "comments_count": 1,
+      "likes_count": 132,
+      "score": 53.4
+    }
+  ]
 }
-]
-}
+```
+
+Metric keys vary by platform.
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No data found for page <page_id>." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
 
 ---
 
-POST /api/data/get_competitors_interaction_stats
-Returns interaction statistics for one or multiple competitor entities.
+## **GET /api/data/get_entity_interaction_stats**
 
-Body:
-entity_ids (required): List of entity IDs to compare.
-start_date (optional, ISO8601): Filter posts created on or after this date.
+Return day-level interaction gains/score summary for one entity.
 
-Response:
-A list of posts for each competitor entity.
-Each item includes:
-post_id
-platform
-create_time
-interaction metrics
-computed score
+### Query Parameters
 
-Example request body:
+- `entity_id` (required, int)
+- `start_date` (optional, ISO datetime/date)
+
+### Success Response (200)
+
+```json
 {
-"entity_ids": [94],
-"start_date": "2025-11-27"
-}
-
-Example response:
-{
-"success": true,
-"data": [
-{
+  "success": true,
+  "data": [
+    {
       "date": "2025-08-23",
+      "total_score": 605.0,
+      "platform_scores": {
+        "instagram": 368.0,
+        "linkedin": 237.0
+      },
       "day_gains": {
         "instagram": {
           "comments": 27,
           "likes": 341
-        },
-        "linkedin": {
-          "comments_count": 6,
-          "likes_count": 231
         }
-      },
-      "platform_scores": {
-        "instagram": 368.0,
-        "linkedin": 237.0,
-        "tiktok": 124.0,
-        "x": 6367.0
-      },
-      "total_score": 605.0
-    },
-    ]
+      }
+    }
+  ]
 }
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No data found for entity <entity_id>." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
 
 ---
 
-GET /api/data/get_entity_interaction_stats
-Retrieve the progress of interaction statistics for a specific entity.
+## **POST /api/data/get_competitors_interaction_stats**
 
-Parameters:
-entity_id (required): Identifier of the entity.
-start_date (optional, ISO8601): Filter posts created on or after this date.
+Return scored post interactions across multiple entities.
 
+### Request Body
 
-Response:
-A list of days, in which day there are posts with total interactions 
-and the gained interactions on that day.
-
-Example request body:
-  /api/data/get_entity_interaction_stats?entity_id=94
-
-
-Example response:
-
----
+```json
 {
+  "entity_ids": [94, 12],
+  "start_date": "2025-11-27"
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
   "data": [
     {
-      "day": "2025-08-22",
-      "posts": []
-    },
-    {
-      "day": "2025-08-23",
-      "posts": [
-        {
-          "comments_count": 6,
-          "create_time": "2025-08-22T19:59:05.796Z",
-          "gained_comments_count": 5,
-          "gained_likes_count": 9,
-          "likes_count": 26,
-          "platform": "linkedin",
-          "post_id": "7364704661401935873"
-        },
-        {
-          "comments_count": 2,
-          "create_time": "2025-08-21T19:59:05.799Z",
-          "gained_comments_count": 1,
-          "gained_likes_count": 5,
-          "likes_count": 27,
-          "platform": "linkedin",
-          "post_id": "7364340544061227008"
-        },
-        {
-          "comments_count": 9,
-          "create_time": "2025-08-18T19:59:05.801Z",
-          "gained_comments_count": 0,
-          "gained_likes_count": 1,
-          "likes_count": 29,
-          "platform": "linkedin",
-          "post_id": "7363253349141340161"
-        }
-      ]
+      "entity_id": 94,
+      "page_id": "page_uuid",
+      "post_id": "3770189665996505307",
+      "platform": "instagram",
+      "create_time": "2025-11-20T18:01:12.000Z",
+      "comments": 15,
+      "likes": 143,
+      "score": 53.4
     }
-  ],
-  "success": true
+  ]
 }
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "wrong value for entity_ids" }
+```
+
+```json
+{ "success": false, "error": "No data found for entity [94, 12]." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```

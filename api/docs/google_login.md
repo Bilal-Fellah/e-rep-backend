@@ -1,90 +1,113 @@
+# Google OAuth Routes Documentation
 
-## ✅ FRONTEND FLOW (Google OAuth – correct way)
+All routes in this document are prefixed with `/api/oauth`.
 
-### 1️⃣ User clicks **“Login with Google”**
+---
 
-Frontend **redirects browser** (not fetch):
+## **GET /api/oauth/google/login**
 
-```js
-window.location.href =
-  "https://api.brendex.net/google/login?return_to=https://www.brendex.net";
+Starts Google OAuth by redirecting the browser to Google authorization.
+
+### Query Parameters
+
+- `return_to` (optional): frontend base URL to redirect back to after callback.
+
+`return_to` must be in the backend allowlist (`ALLOWED_OAUTH_RETURN_URLS`), otherwise request fails with 400.
+
+### Success Response (302)
+
+Redirects to Google OAuth URL.
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Invalid return_to" }
 ```
 
 ---
 
-### 2️⃣ User logs in with Google
+## **GET /api/oauth/google/callback**
 
-Nothing to do here (Google UI).
+Handles Google callback, validates state, exchanges auth code, gets user profile, and issues a temporary login code.
 
----
+### Query Parameters
 
-### 3️⃣ Backend redirects user to frontend
+- `code` (required)
+- `state` (required)
 
-User lands on:
+### Success Response (302)
+
+Redirects to:
 
 ```
-https://www.brendex.net/auth/complete?code=TEMP_CODE
+<return_to>/auth/complete?code=<temporary_login_code>
 ```
 
-Frontend page: `/auth/complete`
+### Error Responses
 
----
-
-### 4️⃣ Frontend finalizes login (VERY IMPORTANT)
-
-On `/auth/complete` page:
-
-```js
-const params = new URLSearchParams(window.location.search);
-const code = params.get("code");
-
-await fetch("https://api.brendex.net/google/finalize", {
-  method: "POST",
-  credentials: "include",   // REQUIRED
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ code })
-});
+```json
+{ "success": false, "error": "Missing code or state" }
 ```
 
-✅ Backend now sets **HttpOnly cookies**
+```json
+{ "success": false, "error": "Invalid or expired state" }
+```
 
----
-
-### 5️⃣ Frontend redirects user inside app
-
-```js
-window.location.replace("/dashboard");
+```json
+{ "success": false, "error": "Google authentication failed" }
 ```
 
 ---
 
-## 🔍 How frontend verifies login later
+## **POST /api/oauth/google/finalize**
 
-```js
-fetch("https://api.brendex.net/me", {
-  credentials: "include"
-});
+Consumes the temporary login code and returns JWT tokens plus user data.
+
+### Request
+
+```json
+{
+  "code": "temporary_login_code"
+}
 ```
 
-Cookies are sent automatically.
+### Success Response (200)
 
----
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "jwt_access_token_here",
+    "refresh_token": "jwt_refresh_token_here",
+    "user_role": "registered",
+    "user": {
+      "id": 1,
+      "first_name": "John",
+      "last_name": "Doe",
+      "email": "john@example.com",
+      "role": "registered",
+      "is_verified": false,
+      "profession": "other",
+      "created_at": "2026-04-12T08:20:30+00:00"
+    }
+  }
+}
+```
 
-## ❌ Frontend must NOT do
+Notes:
+- Refresh token is persisted in database.
+- Current implementation returns tokens in JSON response body.
 
-* ❌ Do NOT store tokens
-* ❌ Do NOT read cookies
-* ❌ Do NOT redirect before finalize finishes
+### Error Responses
 
----
+```json
+{ "success": false, "error": "Missing code" }
+```
 
-## 🧠 Summary (one screen)
+```json
+{ "success": false, "error": "Invalid or expired code" }
+```
 
-1. Redirect to backend login
-2. Google auth
-3. Backend → `/auth/complete?code=...`
-4. `POST /google/finalize`
-5. Redirect user inside app
-
-That’s it. Production-safe.
-
+```json
+{ "success": false, "error": "User not found" }
+```

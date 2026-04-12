@@ -1,54 +1,16 @@
+# Influence History Routes Documentation
 
-# Page History Routes Documentation
-
----
-
-## **GET /get_after_time**
-Get all history records created after a given hour.
-
-####   allowed_roles = ["admin"]
-
-### Request
-````
-
-/get\_after\_time?hour=12
-
-````
-
-### Success Response (200)
-```json
-{
-  "success": true,
-  "data": [
-    { "id": 1, "page_id": 10, "data": "some data" },
-    { "id": 2, "page_id": 11, "data": "more data" }
-  ]
-}
-````
-
-### Error Responses
-
-```json
-{ "error": "No history found" }
-```
-
-```json
-{ "error": "Internal server error details" }
-```
+All routes in this document are prefixed with `/api/data`.
 
 ---
 
-## **GET /get\_today\_pages\_history**
+## **GET /api/data/get_platform_history**
 
-Get all page histories for today.
+Return history records for a platform.
 
-####   allowed_roles = ["admin", "subscribed", "registered"]
+### Query Parameters
 
-### Request
-
-```
-/get_today_pages_history
-```
+- `platform` (required)
 
 ### Success Response (200)
 
@@ -56,8 +18,12 @@ Get all page histories for today.
 {
   "success": true,
   "data": [
-    { "id": 1, "page_id": 5, "data": "some data" },
-    { "id": 2, "page_id": 6, "data": "other data" }
+    {
+      "id": 1,
+      "page_id": "page_uuid",
+      "data": {},
+      "recorded_at": "2026-04-12T09:00:00"
+    }
   ]
 }
 ```
@@ -65,59 +31,28 @@ Get all page histories for today.
 ### Error Responses
 
 ```json
-{ "error": "No history found" }
+{ "success": false, "error": "Missing platform parameter" }
 ```
 
 ```json
-{ "error": "Internal server error details" }
+{ "success": false, "error": "No history found" }
 ```
 
 ---
 
-## **GET /get\_page\_history\_today**
+## **GET /api/data/get_entity_history**
 
-Get today’s history for a specific page.
+Return entity history by date (today by default).
 
-####   allowed_roles = ["admin", "subscribed", "registered"]
+### Query Parameters
 
-### Request
+- `entity_id` (required, int)
+- `date` (optional, `YYYY-MM-DD`)
 
-```
-/get_page_history_today?page_id=5
-```
+### Notes
 
-### Success Response (200)
-
-```json
-{
-  "success": true,
-  "data": { "id": 1, "page_id": 5, "data": "some data" }
-}
-```
-
-### Error Responses
-
-```json
-{ "error": "No history found" }
-```
-
-```json
-{ "error": "Internal server error details" }
-```
-
----
-
-## **GET /get\_platform\_history**
-
-Get history for a given platform.
-
-####   allowed_roles = ["admin", "subscribed", "registered"]
-
-### Request
-
-```
-/get_platform_history?platform=twitter
-```
+- This route decodes `access_token` and currently expects a valid token.
+- Token errors are handled by shared blueprint handlers.
 
 ### Success Response (200)
 
@@ -125,8 +60,12 @@ Get history for a given platform.
 {
   "success": true,
   "data": [
-    { "id": 1, "page_id": 5, "data": "data 1" },
-    { "id": 2, "page_id": 7, "data": "data 2" }
+    {
+      "id": 1,
+      "page_id": "page_uuid",
+      "data": {},
+      "date": "2026-04-12T09:00:00"
+    }
   ]
 }
 ```
@@ -134,30 +73,30 @@ Get history for a given platform.
 ### Error Responses
 
 ```json
-{ "error": "Missing platform parameter" }
+{ "success": false, "error": "Missing required query param: 'entity_id'." }
 ```
 
 ```json
-{ "error": "No history found" }
+{ "success": false, "error": "Invalid date format. Use ISO format: YYYY-MM-DD." }
 ```
 
 ```json
-{ "error": "Internal server error details" }
+{ "success": false, "error": "No history found for this entity." }
+```
+
+```json
+{ "success": false, "error": "Token has expired" }
+```
+
+```json
+{ "success": false, "error": "Invalid token" }
 ```
 
 ---
 
-## **GET /get\_entity\_history**
+## **GET /api/data/get_entities_ranking**
 
-Get all histories for an entity, optionally filtered by date.
-
-####   allowed_roles = ["admin", "subscribed", "registered"]
-
-### Request
-
-```
-/get_entity_history?entity_id=3&date=2025-09-15
-```
+Return ranking data from the current ranking query.
 
 ### Success Response (200)
 
@@ -165,8 +104,11 @@ Get all histories for an entity, optionally filtered by date.
 {
   "success": true,
   "data": [
-    { "id": 1, "page_id": 10, "data": "some data", "date": "2025-09-15T08:00:00" },
-    { "id": 2, "page_id": 12, "data": "other data", "date": "2025-09-15T09:30:00" }
+    {
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "rank": 1
+    }
   ]
 }
 ```
@@ -174,38 +116,14 @@ Get all histories for an entity, optionally filtered by date.
 ### Error Responses
 
 ```json
-{ "error": "Missing required query param: 'entity_id'." }
-```
-
-```json
-{ "error": "Invalid date format. Use ISO format: YYYY-MM-DD." }
-```
-
-```json
-{ "error": "No history found for this entity." }
-```
-
-```json
-{ "error": "Database error: details" }
-```
-
-```json
-{ "error": "Unexpected error: details" }
+{ "success": false, "error": "No data found for entities." }
 ```
 
 ---
 
-## **GET /get\_entities\_ranking**
+## **GET /api/data/entities_ranking**
 
-Get ranking data for all entities.
-
-####   allowed_roles = ["admin", "subscribed", "registered"]
-
-### Request
-
-```
-/get_entities_ranking
-```
+Return the computed 30-day ranking with platform/follower summary.
 
 ### Success Response (200)
 
@@ -213,18 +131,18 @@ Get ranking data for all entities.
 {
   "success": true,
   "data": [
-    { "entity_id": 1, "score": 95 },
-    { "entity_id": 2, "score": 88 }
+    {
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "platforms": {},
+      "total_score": 1500,
+      "average_score": 120.5,
+      "total_followers": 100000,
+      "total_prev_followers": 98000,
+      "rank": 1
+    }
   ]
 }
-```
-
-### Error Responses
-
-```json
-{ "error": "No data found for entities." }
-```
-
-```json
-{ "error": "Internal server error: details" }
 ```
