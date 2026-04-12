@@ -1,4 +1,3 @@
-version: '3'
 
 services:
   web:
@@ -8,10 +7,12 @@ services:
     expose:
       - "8000"
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./instance:/app/instance
       - ./uploads:/app/uploads
-
+      - /var/run/postgresql:/var/run/postgresql
   nginx:
     image: nginx:latest
     container_name: nginx
