@@ -285,6 +285,45 @@ def compare_entities_likes():
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
 
+
+@data_bp.route("/get_entity_comments_history", methods=["GET"])
+def get_entity_comments_history():
+    try:
+        entity_id = request.args.get("entity_id", type=int)
+        start_date = request.args.get("start_date")
+
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
+        data = EntityService.get_entity_comments_history(entity_id, start_date=start_date)
+        if not data or (type(data) == list and len(data) < 1):
+            return error_response("No comments development found for this entity.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
+@data_bp.route("/compare_entities_comments", methods=['POST'])
+def compare_entities_comments():
+    try:
+        payload = request.get_json(silent=True) or {}
+        entity_ids = payload.get("entity_ids")
+        start_date = payload.get("start_date")
+
+        if not isinstance(entity_ids, list) or not entity_ids:
+            return error_response("Missing required key: 'entity_ids'.", 400)
+
+        data = EntityService.compare_entities_comments(entity_ids, start_date=start_date)
+        if not data or len(data) < 1:
+            return error_response("No comments development data for this entities", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
 def get_entity_posts_timeline():
     try:

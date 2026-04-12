@@ -574,6 +574,144 @@ def test_entity_service_compare_entities_likes_default_window_ignores_invalid_en
     assert data["A"]["records"][1]["likes_gained"] == 5
 
 
+def test_entity_service_get_entity_comments_history_interpolates_and_handles_facebook(monkeypatch):
+    rows = [
+        SimpleNamespace(
+            page_id="ig-page",
+            platform="instagram",
+            recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-post-1", "comments": 10}],
+        ),
+        SimpleNamespace(
+            page_id="ig-page",
+            platform="instagram",
+            recorded_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-post-1", "comments": 16}],
+        ),
+        SimpleNamespace(
+            page_id="fb-page",
+            platform="facebook",
+            recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "fb-post-1", "num_comments": 4}],
+        ),
+        SimpleNamespace(
+            page_id="fb-page",
+            platform="facebook",
+            recorded_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "fb-post-1", "num_comments": 10}],
+        ),
+    ]
+
+    captured = {}
+
+    def _repo(self, entity_id, date_limit):
+        captured["entity_id"] = entity_id
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.entity_service.PageHistoryRepository.get_entity_comments_development", _repo)
+
+    data = EntityService.get_entity_comments_history(7, start_date="2026-01-01")
+
+    assert captured["entity_id"] == 7
+    assert captured["date_limit"].isoformat() == "2026-01-01"
+
+    gains = {
+        (item["page_id"], item["platform"], item["date"]): item["comments_gained"]
+        for item in data
+    }
+
+    assert gains[("ig-page", "instagram", "2026-01-01")] == 0
+    assert gains[("ig-page", "instagram", "2026-01-02")] == 3
+    assert gains[("ig-page", "instagram", "2026-01-03")] == 3
+    assert gains[("fb-page", "facebook", "2026-01-02")] == 6
+
+
+def test_entity_service_compare_entities_comments_default_window_and_mapping(monkeypatch):
+    fixed_now = datetime(2026, 4, 12, 10, 0, tzinfo=timezone.utc)
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("api.services.entity_service.datetime", _FixedDateTime)
+
+    rows = [
+        SimpleNamespace(
+            entity_name="A",
+            entity_id=1,
+            page_id="a-x",
+            platform="x",
+            recorded_at=datetime(2026, 3, 20, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "replies": 20}],
+        ),
+        SimpleNamespace(
+            entity_name="A",
+            entity_id=1,
+            page_id="a-x",
+            platform="x",
+            recorded_at=datetime(2026, 3, 21, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "replies": 29}],
+        ),
+        SimpleNamespace(
+            entity_name="B",
+            entity_id=2,
+            page_id="b-li",
+            platform="linkedin",
+            recorded_at=datetime(2026, 3, 20, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "li-1", "comments_count": 10}],
+        ),
+        SimpleNamespace(
+            entity_name="B",
+            entity_id=2,
+            page_id="b-li",
+            platform="linkedin",
+            recorded_at=datetime(2026, 3, 22, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "li-1", "comments_count": 16}],
+        ),
+        # Should be ignored because entity_name is missing.
+        SimpleNamespace(
+            entity_name=None,
+            entity_id=3,
+            page_id="skip",
+            platform="instagram",
+            recorded_at=datetime(2026, 3, 21, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-1", "comments": 12}],
+        ),
+    ]
+
+    captured = {}
+
+    def _repo(self, entity_ids, date_limit):
+        captured["entity_ids"] = entity_ids
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.entity_service.PageHistoryRepository.get_entities_comments_development", _repo)
+
+    data = EntityService.compare_entities_comments([1, 2, 3])
+
+    assert captured["entity_ids"] == [1, 2, 3]
+    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert set(data.keys()) == {"A", "B"}
+
+    a_gains = {
+        (item["page_id"], item["platform"], item["date"]): item["comments_gained"]
+        for item in data["A"]["records"]
+    }
+    b_gains = {
+        (item["page_id"], item["platform"], item["date"]): item["comments_gained"]
+        for item in data["B"]["records"]
+    }
+
+    assert a_gains[("a-x", "x", "2026-03-21")] == 9
+    assert b_gains[("b-li", "linkedin", "2026-03-21")] == 3
+    assert b_gains[("b-li", "linkedin", "2026-03-22")] == 3
+
+
 def test_entity_service_delegates_and_timeline_youtube_branch(monkeypatch):
     monkeypatch.setattr("api.services.entity_service.EntityRepository.create", lambda name, type_: SimpleNamespace(id=5, name=name, type=type_))
     monkeypatch.setattr("api.services.entity_service.EntityCategoryRepository.add", lambda entity_id, category_id: {"entity_id": entity_id, "category_id": category_id})
