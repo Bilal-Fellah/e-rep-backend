@@ -240,6 +240,91 @@ Compare followers history for multiple entities.
 
 ---
 
+## **GET /api/data/get_entity_likes_history**
+
+Get interpolated daily likes development (gained likes) for each page under an entity.
+
+### Query Parameters
+
+- `entity_id` (required, int)
+- `start_date` (optional, ISO date/datetime; default = last 30 days)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "page_id": "page_uuid",
+      "platform": "instagram",
+      "date": "2026-04-01",
+      "likes_gained": 42
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Missing required query param: 'entity_id'." }
+```
+
+```json
+{ "success": false, "error": "No likes development found for this entity." }
+```
+
+---
+
+## **POST /api/data/compare_entities_likes**
+
+Compare interpolated daily likes development (gained likes) for multiple entities.
+
+### Request
+
+```json
+{
+  "entity_ids": [1, 2, 3],
+  "start_date": "2026-03-01"
+}
+```
+
+`start_date` is optional. If omitted, the last 30 days are used.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "Tesla": {
+      "entity_id": 1,
+      "records": [
+        {
+          "page_id": "page_uuid",
+          "platform": "x",
+          "date": "2026-04-01",
+          "likes_gained": 18
+        }
+      ]
+    }
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Missing required key: 'entity_ids'." }
+```
+
+```json
+{ "success": false, "error": "No likes development data for this entities" }
+```
+
+---
+
 ## **GET /api/data/get_entity_posts_timeline**
 
 Get recent posts timeline for an entity.

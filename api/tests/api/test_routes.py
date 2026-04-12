@@ -136,6 +136,108 @@ def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
     assert payload["entity_category"]["category_id"] == 2
 
 
+def test_data_get_entity_likes_history_validation_not_found_and_success(client, monkeypatch):
+    response = client.get("/api/data/get_entity_likes_history")
+    assert response.status_code == 400
+
+    monkeypatch.setattr("api.routes.data.entity.EntityService.get_entity_likes_history", lambda entity_id, start_date=None: [])
+    response = client.get("/api/data/get_entity_likes_history?entity_id=1")
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(entity_id, start_date=None):
+        captured["entity_id"] = entity_id
+        captured["start_date"] = start_date
+        return [
+            {
+                "page_id": "p1",
+                "platform": "instagram",
+                "date": "2026-01-02",
+                "likes_gained": 12,
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.data.entity.EntityService.get_entity_likes_history", _service)
+    response = client.get("/api/data/get_entity_likes_history?entity_id=5&start_date=2026-01-01")
+    assert response.status_code == 200
+    assert captured["entity_id"] == 5
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"][0]["likes_gained"] == 12
+
+
+def test_data_get_entity_likes_history_invalid_start_date_returns_400(client, monkeypatch):
+    monkeypatch.setattr(
+        "api.routes.data.entity.EntityService.get_entity_likes_history",
+        lambda entity_id, start_date=None: (_ for _ in ()).throw(ValueError("Invalid date format")),
+    )
+    response = client.get("/api/data/get_entity_likes_history?entity_id=5&start_date=bad-date")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid request data"
+
+
+def test_data_compare_entities_likes_validation_not_found_and_success(client, monkeypatch):
+    response = client.post("/api/data/compare_entities_likes", json={})
+    assert response.status_code == 400
+
+    monkeypatch.setattr("api.routes.data.entity.EntityService.compare_entities_likes", lambda entity_ids, start_date=None: None)
+    response = client.post("/api/data/compare_entities_likes", json={"entity_ids": [1]})
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(entity_ids, start_date=None):
+        captured["entity_ids"] = entity_ids
+        captured["start_date"] = start_date
+        return {
+            "A": {
+                "entity_id": 1,
+                "records": [
+                    {
+                        "page_id": "p1",
+                        "platform": "x",
+                        "date": "2026-01-02",
+                        "likes_gained": 4,
+                    }
+                ],
+            }
+        }
+
+    monkeypatch.setattr("api.routes.data.entity.EntityService.compare_entities_likes", _service)
+    response = client.post(
+        "/api/data/compare_entities_likes",
+        json={"entity_ids": [1, 2], "start_date": "2026-01-01"},
+    )
+
+    assert response.status_code == 200
+    assert captured["entity_ids"] == [1, 2]
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"]["A"]["records"][0]["likes_gained"] == 4
+
+
+def test_data_compare_entities_likes_invalid_payload_shapes_return_400(client):
+    response = client.post("/api/data/compare_entities_likes", json={"entity_ids": "1,2"})
+    assert response.status_code == 400
+
+    response = client.post("/api/data/compare_entities_likes", json={"entity_ids": []})
+    assert response.status_code == 400
+
+
+def test_data_compare_entities_likes_invalid_start_date_returns_400(client, monkeypatch):
+    monkeypatch.setattr(
+        "api.routes.data.entity.EntityService.compare_entities_likes",
+        lambda entity_ids, start_date=None: (_ for _ in ()).throw(ValueError("Invalid date format")),
+    )
+
+    response = client.post(
+        "/api/data/compare_entities_likes",
+        json={"entity_ids": [1, 2], "start_date": "bad-date"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid request data"
+
+
 def test_data_get_post_validation_and_success(client, monkeypatch):
     response = client.get("/api/data/get_post?page_id=p1&platform=instagram")
     assert response.status_code == 400

@@ -147,6 +147,155 @@ class EntityService:
         return data
 
     @staticmethod
+    def _build_likes_gains_rows(rows):
+        if not rows:
+            return []
+
+        likes_metric_key = {
+            "instagram": "likes",
+            "linkedin": "likes_count",
+            "tiktok": "favorites_count",
+            "x": "likes",
+            "facebook": "likes",
+        }
+        id_key = {
+            "instagram": platform_metrics["instagram"]["id_key"],
+            "linkedin": platform_metrics["linkedin"]["id_key"],
+            "tiktok": platform_metrics["tiktok"]["id_key"],
+            "x": platform_metrics["x"]["id_key"],
+            "facebook": platform_metrics["facebook"]["id_key"],
+        }
+
+        # Per page/platform, keep one likes snapshot per post for each recorded day.
+        daily_posts = defaultdict(lambda: defaultdict(dict))
+
+        for row in rows:
+            platform = row.platform
+            page_id = row.page_id
+            recorded_at = ensure_datetime(row.recorded_at)
+            posts_metrics = row.posts_metrics
+
+            if platform not in likes_metric_key:
+                continue
+
+            if not posts_metrics:
+                continue
+
+            if isinstance(posts_metrics, list) and len(posts_metrics) > 0 and isinstance(posts_metrics[0], list):
+                posts_metrics = sum(posts_metrics, [])
+            elif isinstance(posts_metrics, dict):
+                posts_metrics = [posts_metrics]
+
+            if not isinstance(posts_metrics, list):
+                continue
+
+            day = recorded_at.date()
+            for post in posts_metrics:
+                if not isinstance(post, dict):
+                    continue
+
+                post_id = post.get(id_key[platform])
+                if not post_id:
+                    continue
+
+                likes_value = _to_number(post.get(likes_metric_key[platform], 0))
+                daily_posts[(page_id, platform)][day][post_id] = likes_value
+
+        data = []
+        for (page_id, platform), day_posts in daily_posts.items():
+            if not day_posts:
+                continue
+
+            sorted_days = sorted(day_posts.keys())
+            first_day = sorted_days[0]
+            last_day = sorted_days[-1]
+
+            post_series = defaultdict(list)
+            for day in sorted_days:
+                for post_id, likes_value in day_posts[day].items():
+                    post_series[post_id].append((day, likes_value))
+
+            distributed_gains = defaultdict(float)
+            for samples in post_series.values():
+                samples.sort(key=lambda x: x[0])
+
+                for idx in range(1, len(samples)):
+                    prev_day, prev_data = samples[idx - 1]
+                    cur_day, cur_data = samples[idx]
+
+                    span_days = (cur_day - prev_day).days
+                    if span_days <= 0:
+                        continue
+
+                    step_gain = (cur_data - prev_data) / span_days
+                    for step in range(1, span_days + 1):
+                        day = prev_day + timedelta(days=step)
+                        distributed_gains[day] += step_gain
+
+            day_range = (last_day - first_day).days + 1
+            for i in range(day_range):
+                day = first_day + timedelta(days=i)
+                likes_gained = round(distributed_gains.get(day, 0.0), 4)
+                if float(likes_gained).is_integer():
+                    likes_gained = int(likes_gained)
+
+                data.append(
+                    {
+                        "page_id": page_id,
+                        "platform": platform,
+                        "date": day.isoformat(),
+                        "likes_gained": likes_gained,
+                    }
+                )
+
+        data.sort(key=lambda x: (x["date"], x["platform"], str(x["page_id"])))
+        return data
+
+    @staticmethod
+    def get_entity_likes_history(entity_id, start_date=None):
+        date_limit = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
+        history = PageHistoryRepository().get_entity_likes_development(entity_id, date_limit=date_limit)
+        if not history:
+            return []
+
+        return EntityService._build_likes_gains_rows(history)
+
+    @staticmethod
+    def compare_entities_likes(entity_ids, start_date=None):
+        date_limit = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
+        raw_results = PageHistoryRepository().get_entities_likes_development(entity_ids, date_limit=date_limit)
+        if not raw_results:
+            return None
+
+        rows_by_entity = defaultdict(list)
+        entity_ids_by_name = {}
+
+        for row in raw_results:
+            if not row.entity_name:
+                continue
+            rows_by_entity[row.entity_name].append(row)
+            entity_ids_by_name[row.entity_name] = row.entity_id
+
+        if not rows_by_entity:
+            return None
+
+        data = {}
+        for entity_name, rows in rows_by_entity.items():
+            records = EntityService._build_likes_gains_rows(rows)
+            if not records:
+                continue
+
+            data[entity_name] = {
+                "entity_id": entity_ids_by_name.get(entity_name),
+                "records": records,
+            }
+
+        if not data:
+            return None
+
+        return data
+
+    @staticmethod
     def get_entity_posts_timeline(entity_id, date_str=None, max_posts=None):
         if date_str:
             date = parse_iso_date(date_str)

@@ -293,6 +293,287 @@ def test_entity_service_compare_and_posts_timeline(monkeypatch):
     assert [p["id"] for p in result] == ["new"]
 
 
+def test_entity_service_get_entity_likes_history_interpolates_and_handles_facebook(monkeypatch):
+    rows = [
+        SimpleNamespace(
+            page_id="ig-page",
+            platform="instagram",
+            recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-post-1", "likes": 10}],
+        ),
+        SimpleNamespace(
+            page_id="ig-page",
+            platform="instagram",
+            recorded_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-post-1", "likes": 16}],
+        ),
+        SimpleNamespace(
+            page_id="fb-page",
+            platform="facebook",
+            recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "fb-post-1", "likes": 4}],
+        ),
+        SimpleNamespace(
+            page_id="fb-page",
+            platform="facebook",
+            recorded_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "fb-post-1", "likes": 10}],
+        ),
+    ]
+
+    captured = {}
+
+    def _repo(self, entity_id, date_limit):
+        captured["entity_id"] = entity_id
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.entity_service.PageHistoryRepository.get_entity_likes_development", _repo)
+
+    data = EntityService.get_entity_likes_history(7, start_date="2026-01-01")
+
+    assert captured["entity_id"] == 7
+    assert captured["date_limit"].isoformat() == "2026-01-01"
+
+    gains = {
+        (item["page_id"], item["platform"], item["date"]): item["likes_gained"]
+        for item in data
+    }
+
+    assert gains[("ig-page", "instagram", "2026-01-01")] == 0
+    assert gains[("ig-page", "instagram", "2026-01-02")] == 3
+    assert gains[("ig-page", "instagram", "2026-01-03")] == 3
+    assert gains[("fb-page", "facebook", "2026-01-02")] == 6
+
+
+def test_entity_service_compare_entities_likes_groups_by_entity(monkeypatch):
+    rows = [
+        SimpleNamespace(
+            entity_name="A",
+            entity_id=1,
+            page_id="a-x",
+            platform="x",
+            recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "likes": 5}],
+        ),
+        SimpleNamespace(
+            entity_name="A",
+            entity_id=1,
+            page_id="a-x",
+            platform="x",
+            recorded_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "likes": 9}],
+        ),
+        SimpleNamespace(
+            entity_name="B",
+            entity_id=2,
+            page_id="b-li",
+            platform="linkedin",
+            recorded_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "li-1", "likes_count": 10}],
+        ),
+        SimpleNamespace(
+            entity_name="B",
+            entity_id=2,
+            page_id="b-li",
+            platform="linkedin",
+            recorded_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "li-1", "likes_count": 14}],
+        ),
+    ]
+
+    captured = {}
+
+    def _repo(self, entity_ids, date_limit):
+        captured["entity_ids"] = entity_ids
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.entity_service.PageHistoryRepository.get_entities_likes_development", _repo)
+
+    data = EntityService.compare_entities_likes([1, 2], start_date="2026-01-01")
+
+    assert captured["entity_ids"] == [1, 2]
+    assert captured["date_limit"].isoformat() == "2026-01-01"
+    assert data["A"]["entity_id"] == 1
+    assert data["B"]["entity_id"] == 2
+
+    a_gains = {
+        (item["page_id"], item["platform"], item["date"]): item["likes_gained"]
+        for item in data["A"]["records"]
+    }
+    b_gains = {
+        (item["page_id"], item["platform"], item["date"]): item["likes_gained"]
+        for item in data["B"]["records"]
+    }
+
+    assert a_gains[("a-x", "x", "2026-01-02")] == 4
+    assert b_gains[("b-li", "linkedin", "2026-01-02")] == 2
+    assert b_gains[("b-li", "linkedin", "2026-01-03")] == 2
+
+
+def test_entity_service_get_entity_likes_history_default_window_and_mixed_platform_mapping(monkeypatch):
+    fixed_now = datetime(2026, 4, 12, 10, 0, tzinfo=timezone.utc)
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("api.services.entity_service.datetime", _FixedDateTime)
+
+    rows = [
+        # LinkedIn uses likes_count.
+        SimpleNamespace(
+            page_id="li-page",
+            platform="linkedin",
+            recorded_at=datetime(2026, 3, 20, 8, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "li-1", "likes_count": 100}],
+        ),
+        SimpleNamespace(
+            page_id="li-page",
+            platform="linkedin",
+            recorded_at=datetime(2026, 3, 22, 8, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "li-1", "likes_count": 130}],
+        ),
+        # TikTok uses favorites_count.
+        SimpleNamespace(
+            page_id="tt-page",
+            platform="tiktok",
+            recorded_at=datetime(2026, 3, 20, 8, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"video_id": "tt-1", "favorites_count": 50}],
+        ),
+        SimpleNamespace(
+            page_id="tt-page",
+            platform="tiktok",
+            recorded_at=datetime(2026, 3, 21, 8, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"video_id": "tt-1", "favorites_count": 70}],
+        ),
+        # X uses likes and should keep the latest same-day snapshot.
+        SimpleNamespace(
+            page_id="x-page",
+            platform="x",
+            recorded_at=datetime(2026, 3, 20, 9, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "likes": 5}],
+        ),
+        SimpleNamespace(
+            page_id="x-page",
+            platform="x",
+            recorded_at=datetime(2026, 3, 20, 23, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "likes": 9}],
+        ),
+        SimpleNamespace(
+            page_id="x-page",
+            platform="x",
+            recorded_at=datetime(2026, 3, 21, 10, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "likes": 14}],
+        ),
+        # Facebook supported in likes development.
+        SimpleNamespace(
+            page_id="fb-page",
+            platform="facebook",
+            recorded_at=datetime(2026, 3, 20, 7, 0, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "fb-1", "likes": 3}],
+        ),
+    ]
+
+    captured = {}
+
+    def _repo(self, entity_id, date_limit):
+        captured["entity_id"] = entity_id
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.entity_service.PageHistoryRepository.get_entity_likes_development", _repo)
+
+    data = EntityService.get_entity_likes_history(9)
+
+    assert captured["entity_id"] == 9
+    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert data == sorted(data, key=lambda x: (x["date"], x["platform"], str(x["page_id"])))
+
+    gains = {
+        (item["page_id"], item["platform"], item["date"]): item["likes_gained"]
+        for item in data
+    }
+
+    assert gains[("li-page", "linkedin", "2026-03-20")] == 0
+    assert gains[("li-page", "linkedin", "2026-03-21")] == 15
+    assert gains[("li-page", "linkedin", "2026-03-22")] == 15
+    assert gains[("tt-page", "tiktok", "2026-03-21")] == 20
+    assert gains[("x-page", "x", "2026-03-21")] == 5
+    assert gains[("fb-page", "facebook", "2026-03-20")] == 0
+
+
+def test_entity_service_compare_entities_likes_default_window_ignores_invalid_entities(monkeypatch):
+    fixed_now = datetime(2026, 4, 12, 10, 0, tzinfo=timezone.utc)
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("api.services.entity_service.datetime", _FixedDateTime)
+
+    rows = [
+        SimpleNamespace(
+            entity_name="A",
+            entity_id=1,
+            page_id="a-ig",
+            platform="instagram",
+            recorded_at=datetime(2026, 3, 20, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-1", "likes": 10}],
+        ),
+        SimpleNamespace(
+            entity_name="A",
+            entity_id=1,
+            page_id="a-ig",
+            platform="instagram",
+            recorded_at=datetime(2026, 3, 21, tzinfo=timezone.utc),
+            posts_metrics=[{"id": "ig-1", "likes": 15}],
+        ),
+        # Should be ignored because entity_name is missing.
+        SimpleNamespace(
+            entity_name=None,
+            entity_id=2,
+            page_id="no-name",
+            platform="x",
+            recorded_at=datetime(2026, 3, 21, tzinfo=timezone.utc),
+            posts_metrics=[{"post_id": "x-1", "likes": 100}],
+        ),
+        # Should be ignored because posts are empty and produce no records.
+        SimpleNamespace(
+            entity_name="B",
+            entity_id=2,
+            page_id="b-li",
+            platform="linkedin",
+            recorded_at=datetime(2026, 3, 21, tzinfo=timezone.utc),
+            posts_metrics=[],
+        ),
+    ]
+
+    captured = {}
+
+    def _repo(self, entity_ids, date_limit):
+        captured["entity_ids"] = entity_ids
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.entity_service.PageHistoryRepository.get_entities_likes_development", _repo)
+
+    data = EntityService.compare_entities_likes([1, 2])
+
+    assert captured["entity_ids"] == [1, 2]
+    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert list(data.keys()) == ["A"]
+    assert data["A"]["entity_id"] == 1
+    assert data["A"]["records"][1]["likes_gained"] == 5
+
+
 def test_entity_service_delegates_and_timeline_youtube_branch(monkeypatch):
     monkeypatch.setattr("api.services.entity_service.EntityRepository.create", lambda name, type_: SimpleNamespace(id=5, name=name, type=type_))
     monkeypatch.setattr("api.services.entity_service.EntityCategoryRepository.add", lambda entity_id, category_id: {"entity_id": entity_id, "category_id": category_id})

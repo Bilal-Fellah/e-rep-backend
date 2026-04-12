@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import json
 import os
 from types import SimpleNamespace
@@ -259,3 +259,51 @@ def test_page_history_public_ranking_cache_miss_and_hit(tmp_path, monkeypatch):
     )
     result_hit = PageHistoryRepository.get_public_ranking()
     assert result_hit == cached_data
+
+
+def test_page_history_repository_entity_likes_development_query_executes_with_expected_params(monkeypatch):
+    calls = []
+
+    class _Result:
+        @staticmethod
+        def all():
+            return ["ok"]
+
+    fake_session = SimpleNamespace(
+        execute=lambda stmt, params: calls.append((stmt, params)) or _Result(),
+    )
+    monkeypatch.setattr("api.repositories.page_history_repository.db", SimpleNamespace(session=fake_session))
+
+    result = PageHistoryRepository.get_entity_likes_development(11, date(2026, 3, 1))
+
+    assert result == ["ok"]
+    assert len(calls) == 1
+    stmt, params = calls[0]
+    assert params == {"entity_id": 11, "date_limit": date(2026, 3, 1)}
+    assert "page_posts_metrics_mv" in str(stmt)
+    assert "platform IN ('instagram','linkedin','tiktok','x','facebook')" in str(stmt)
+
+
+def test_page_history_repository_entities_likes_development_short_circuit_and_query(monkeypatch):
+    calls = []
+
+    class _Result:
+        @staticmethod
+        def all():
+            return ["row-1", "row-2"]
+
+    fake_session = SimpleNamespace(
+        execute=lambda stmt, params: calls.append((stmt, params)) or _Result(),
+    )
+    monkeypatch.setattr("api.repositories.page_history_repository.db", SimpleNamespace(session=fake_session))
+
+    assert PageHistoryRepository.get_entities_likes_development([], date(2026, 3, 1)) == []
+    assert calls == []
+
+    rows = PageHistoryRepository.get_entities_likes_development([1, 2], date(2026, 3, 1))
+
+    assert rows == ["row-1", "row-2"]
+    assert len(calls) == 1
+    stmt, params = calls[0]
+    assert params == {"entity_ids": [1, 2], "date_limit": date(2026, 3, 1)}
+    assert "entity_id IN" in str(stmt)

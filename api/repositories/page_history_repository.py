@@ -4,7 +4,7 @@ from api.models.category_model import Category
 from api.models.entity_category_model import EntityCategory
 from api.models.entity_model import Entity
 from api.models.page_model import Page
-from sqlalchemy import case, select, and_, cast, text
+from sqlalchemy import case, select, and_, cast, text, bindparam
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from api.utils.logging_utils import instrument_repository_class
@@ -126,6 +126,48 @@ class PageHistoryRepository:
         )
 
         return db.session.execute(stmt).all()
+
+    @staticmethod
+    def get_entity_likes_development(entity_id: int, date_limit: date):
+        query = text("""
+            SELECT
+                entity_id,
+                entity_name,
+                page_id,
+                platform,
+                recorded_at,
+                posts_metrics
+            FROM page_posts_metrics_mv
+            WHERE entity_id = :entity_id
+              AND platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND date(recorded_at) >= :date_limit
+              AND to_scrape
+            ORDER BY page_id, platform, recorded_at ASC
+        """)
+        return db.session.execute(query, {"entity_id": entity_id, "date_limit": date_limit}).all()
+
+    @staticmethod
+    def get_entities_likes_development(entity_ids: list[int], date_limit: date):
+        if not entity_ids:
+            return []
+
+        query = text("""
+            SELECT
+                entity_id,
+                entity_name,
+                page_id,
+                platform,
+                recorded_at,
+                posts_metrics
+            FROM page_posts_metrics_mv
+            WHERE entity_id IN :entity_ids
+              AND platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND date(recorded_at) >= :date_limit
+              AND to_scrape
+            ORDER BY entity_name, page_id, platform, recorded_at ASC
+        """).bindparams(bindparam("entity_ids", expanding=True))
+
+        return db.session.execute(query, {"entity_ids": entity_ids, "date_limit": date_limit}).all()
     
     @staticmethod
     def get_entity_posts__old(entity_id: int):
