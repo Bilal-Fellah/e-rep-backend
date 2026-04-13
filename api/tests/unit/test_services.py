@@ -978,6 +978,8 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
         {
             "entity_id": 1,
             "entity_name": "A Corp",
+            "category": "auto",
+            "root_category": "business",
             "platform": "instagram",
             "posts_count": 2,
             "total_likes": 100,
@@ -988,6 +990,8 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
         {
             "entity_id": 1,
             "entity_name": "A Corp",
+            "category": "auto",
+            "root_category": "business",
             "platform": "x",
             "posts_count": 1,
             "total_likes": 20,
@@ -998,6 +1002,8 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
         {
             "entity_id": 2,
             "entity_name": "B Corp",
+            "category": "tech",
+            "root_category": "business",
             "platform": "linkedin",
             "posts_count": 3,
             "total_likes": 50,
@@ -1009,6 +1015,8 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
         {
             "entity_id": 2,
             "entity_name": "B Corp",
+            "category": "tech",
+            "root_category": "business",
             "platform": "youtube",
             "posts_count": 9,
             "total_likes": 999,
@@ -1029,6 +1037,8 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
     assert captured["date_limit"].isoformat() == "2026-03-13"
     assert len(ranking) == 2
     assert ranking[0]["entity_name"] == "A Corp"
+    assert ranking[0]["category"] == "auto"
+    assert ranking[0]["root_category"] == "business"
     assert ranking[0]["rank"] == 1
     assert ranking[0]["total_posts"] == 3
     ig_weights = {m["name"]: m["score"] for m in platform_metrics["instagram"]["metrics"]}
@@ -1049,6 +1059,8 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
     assert "x" in ranking[0]["platforms"]
 
     assert ranking[1]["entity_name"] == "B Corp"
+    assert ranking[1]["category"] == "tech"
+    assert ranking[1]["root_category"] == "business"
     assert ranking[1]["rank"] == 2
     assert ranking[1]["total_score"] == pytest.approx(expected_b_score)
     assert "youtube" not in ranking[1]["platforms"]

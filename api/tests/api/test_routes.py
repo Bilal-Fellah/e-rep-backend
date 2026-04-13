@@ -447,6 +447,8 @@ def test_data_get_interactions_ranking_not_found_and_success(client, monkeypatch
             {
                 "entity_id": 1,
                 "entity_name": "A Corp",
+                "category": "auto",
+                "root_category": "business",
                 "rank": 1,
                 "total_score": 12.3,
                 "platforms": {},
@@ -458,6 +460,8 @@ def test_data_get_interactions_ranking_not_found_and_success(client, monkeypatch
     assert response.status_code == 200
     assert captured["start_date"] == "2026-01-01"
     assert response.get_json()["data"][0]["entity_name"] == "A Corp"
+    assert response.get_json()["data"][0]["category"] == "auto"
+    assert response.get_json()["data"][0]["root_category"] == "business"
 
 
 def test_data_get_interactions_ranking_invalid_start_date_returns_400(client, monkeypatch):

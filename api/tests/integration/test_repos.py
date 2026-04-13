@@ -363,7 +363,7 @@ def test_page_history_repository_companies_interactions_summary_query_executes_w
     class _MappingsResult:
         @staticmethod
         def all():
-            return [{"entity_id": 1, "entity_name": "A Corp", "platform": "instagram"}]
+            return [{"entity_id": 1, "entity_name": "A Corp", "category": "auto", "root_category": "business", "platform": "instagram"}]
 
     class _Result:
         @staticmethod
@@ -377,10 +377,12 @@ def test_page_history_repository_companies_interactions_summary_query_executes_w
 
     result = PageHistoryRepository.get_companies_interactions_summary(date(2026, 3, 1))
 
-    assert result == [{"entity_id": 1, "entity_name": "A Corp", "platform": "instagram"}]
+    assert result == [{"entity_id": 1, "entity_name": "A Corp", "category": "auto", "root_category": "business", "platform": "instagram"}]
     assert len(calls) == 1
     stmt, params = calls[0]
     assert params == {"date_limit": date(2026, 3, 1)}
     assert "FROM posts_mv" in str(stmt)
+    assert "page_posts_metrics_mv" in str(stmt)
+    assert "entity_category_map" in str(stmt)
     assert "LOWER(COALESCE(e.type, '')) = 'company'" in str(stmt)
     assert "e.to_scrape" in str(stmt)

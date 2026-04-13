@@ -171,6 +171,8 @@ Return company interactions ranking using post materialized views.
     {
       "entity_id": 1,
       "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
       "window_start": "2026-03-14",
       "total_score": 1234.5,
       "total_posts": 42,

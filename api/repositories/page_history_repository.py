@@ -321,9 +321,28 @@ class PageHistoryRepository:
     @staticmethod
     def get_companies_interactions_summary(date_limit: date):
         query = text("""
+            WITH page_entity_map AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    to_scrape
+                FROM page_posts_metrics_mv
+                ORDER BY page_id, recorded_at DESC
+            ),
+            entity_category_map AS (
+                SELECT
+                    entity_id,
+                    MIN(category) AS category,
+                    MIN(root_category) AS root_category
+                FROM page_posts_metrics_mv
+                GROUP BY entity_id
+            )
             SELECT
-                e.id AS entity_id,
-                e.name AS entity_name,
+                pem.entity_id AS entity_id,
+                pem.entity_name AS entity_name,
+                ecm.category AS category,
+                ecm.root_category AS root_category,
                 pm.platform AS platform,
                 COUNT(pm.post_id) AS posts_count,
                 COALESCE(SUM(pm.likes), 0)::BIGINT AS total_likes,
@@ -331,14 +350,16 @@ class PageHistoryRepository:
                 COALESCE(SUM(pm.shares), 0)::BIGINT AS total_shares,
                 COALESCE(SUM(pm.views), 0)::BIGINT AS total_views
             FROM posts_mv pm
-            JOIN pages p ON p.uuid = pm.page_id
-            JOIN entities e ON e.id = p.entity_id
+            JOIN page_entity_map pem ON pem.page_id = pm.page_id
+            JOIN entities e ON e.id = pem.entity_id
+            LEFT JOIN entity_category_map ecm ON ecm.entity_id = pem.entity_id
             WHERE LOWER(COALESCE(e.type, '')) = 'company'
+              AND pem.to_scrape
               AND e.to_scrape
               AND pm.platform IN ('instagram','linkedin','tiktok','x','facebook')
               AND DATE(pm.created_at) >= :date_limit
-            GROUP BY e.id, e.name, pm.platform
-            ORDER BY e.name, pm.platform
+            GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform
+            ORDER BY pem.entity_name, pm.platform
         """)
 
         return db.session.execute(query, {'date_limit': date_limit}).mappings().all()

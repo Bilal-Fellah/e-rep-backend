@@ -163,6 +163,8 @@ class InfluenceHistoryService:
 
             entity_id = InfluenceHistoryService._row_value(row, "entity_id", None)
             entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            category = InfluenceHistoryService._row_value(row, "category", None)
+            root_category = InfluenceHistoryService._row_value(row, "root_category", None)
             if entity_id is None:
                 continue
 
@@ -186,6 +188,8 @@ class InfluenceHistoryService:
                 {
                     "entity_id": entity_id,
                     "entity_name": entity_name,
+                    "category": category,
+                    "root_category": root_category,
                     "window_start": date_limit.isoformat(),
                     "total_score": 0.0,
                     "total_posts": 0,
@@ -196,6 +200,11 @@ class InfluenceHistoryService:
                     "platforms": {},
                 },
             )
+
+            if entity.get("category") is None and category is not None:
+                entity["category"] = category
+            if entity.get("root_category") is None and root_category is not None:
+                entity["root_category"] = root_category
 
             entity["total_score"] += platform_score
             entity["total_posts"] += posts_count
