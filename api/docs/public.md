@@ -8,9 +8,8 @@ All routes in this document are prefixed with `/api/public`.
 
 Returns public ranking data.
 
-The response is split into:
+The response includes:
 - `top_global`: top 10 entities globally
-- `top_by_category`: top entity per category, excluding entities already in `top_global`
 
 ### Success Response (200)
 
@@ -24,14 +23,6 @@ The response is split into:
         "entity_name": "Tesla",
         "category": "automotive",
         "rank": 1
-      }
-    ],
-    "top_by_category": [
-      {
-        "entity_id": 7,
-        "entity_name": "Example Brand",
-        "category": "retail",
-        "rank": 14
       }
     ]
   }

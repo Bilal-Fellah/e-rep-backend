@@ -87,20 +87,17 @@ def test_auth_refresh_token_missing_returns_400(client):
     assert response.get_json()["error"] == "Missing refresh token"
 
 
-def test_public_ranking_formats_top_global_and_category_extras(client, monkeypatch):
-    ranking = [
-        {"entity_id": 1, "category": "tech", "rank": 1},
-        {"entity_id": 2, "category": "tech", "rank": 2},
-        {"entity_id": 3, "category": "food", "rank": 3},
-    ]
+def test_public_ranking_formats_top_global(client, monkeypatch):
+    ranking = [{"entity_id": i, "category": "tech", "rank": i} for i in range(1, 13)]
     monkeypatch.setattr("api.routes.public_routes.PageHistoryRepository.get_public_ranking", lambda: ranking)
 
     response = client.get("/api/public/ranking")
     assert response.status_code == 200
     payload = response.get_json()["data"]
-    assert len(payload["top_global"]) == 3
-    # food top entry is already in top_global, so no extra category record is appended.
-    assert payload["top_by_category"] == []
+    assert len(payload["top_global"]) == 10
+    assert payload["top_global"][0]["entity_id"] == 1
+    assert payload["top_global"][-1]["entity_id"] == 10
+    assert "top_by_category" not in payload
 
 
 def test_public_ranking_empty_returns_404(client, monkeypatch):
