@@ -318,6 +318,31 @@ class PageHistoryRepository:
         results = db.session.execute(query, {'date_limit': date_limit}).all()
         return results
 
+    @staticmethod
+    def get_companies_interactions_summary(date_limit: date):
+        query = text("""
+            SELECT
+                e.id AS entity_id,
+                e.name AS entity_name,
+                pm.platform AS platform,
+                COUNT(pm.post_id) AS posts_count,
+                COALESCE(SUM(pm.likes), 0)::BIGINT AS total_likes,
+                COALESCE(SUM(pm.comments), 0)::BIGINT AS total_comments,
+                COALESCE(SUM(pm.shares), 0)::BIGINT AS total_shares,
+                COALESCE(SUM(pm.views), 0)::BIGINT AS total_views
+            FROM posts_mv pm
+            JOIN pages p ON p.uuid = pm.page_id
+            JOIN entities e ON e.id = p.entity_id
+            WHERE LOWER(COALESCE(e.type, '')) = 'company'
+              AND e.to_scrape
+              AND pm.platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND DATE(pm.created_at) >= :date_limit
+            GROUP BY e.id, e.name, pm.platform
+            ORDER BY e.name, pm.platform
+        """)
+
+        return db.session.execute(query, {'date_limit': date_limit}).mappings().all()
+
 
 
     @staticmethod

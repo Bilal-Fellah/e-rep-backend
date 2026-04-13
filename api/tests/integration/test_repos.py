@@ -355,3 +355,32 @@ def test_page_history_repository_entities_comments_development_short_circuit_and
     stmt, params = calls[0]
     assert params == {"entity_ids": [1, 2], "date_limit": date(2026, 3, 1)}
     assert "entity_id IN" in str(stmt)
+
+
+def test_page_history_repository_companies_interactions_summary_query_executes_with_expected_params(monkeypatch):
+    calls = []
+
+    class _MappingsResult:
+        @staticmethod
+        def all():
+            return [{"entity_id": 1, "entity_name": "A Corp", "platform": "instagram"}]
+
+    class _Result:
+        @staticmethod
+        def mappings():
+            return _MappingsResult()
+
+    fake_session = SimpleNamespace(
+        execute=lambda stmt, params: calls.append((stmt, params)) or _Result(),
+    )
+    monkeypatch.setattr("api.repositories.page_history_repository.db", SimpleNamespace(session=fake_session))
+
+    result = PageHistoryRepository.get_companies_interactions_summary(date(2026, 3, 1))
+
+    assert result == [{"entity_id": 1, "entity_name": "A Corp", "platform": "instagram"}]
+    assert len(calls) == 1
+    stmt, params = calls[0]
+    assert params == {"date_limit": date(2026, 3, 1)}
+    assert "FROM posts_mv" in str(stmt)
+    assert "LOWER(COALESCE(e.type, '')) = 'company'" in str(stmt)
+    assert "e.to_scrape" in str(stmt)

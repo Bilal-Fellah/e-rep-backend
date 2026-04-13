@@ -9,6 +9,7 @@ from api.services.entity_service import EntityService
 from api.services.influence_history_service import InfluenceHistoryService
 from api.services.page_service import PageService
 from api.services.post_service import PostService
+from api.utils.data_keys import platform_metrics
 
 
 def test_auth_signup_raises_if_email_exists(monkeypatch):
@@ -150,8 +151,10 @@ def test_page_service_create_page_and_interaction_stats(monkeypatch):
     monkeypatch.setattr("api.services.page_service.PageHistoryRepository.get_page_posts", lambda page_id: [row])
 
     stats = PageService.get_page_interaction_stats("page-id")
+    ig_weights = {m["name"]: m["score"] for m in platform_metrics["instagram"]["metrics"]}
+    expected_score = 10 * ig_weights["comments"] + 5 * ig_weights["likes"]
     assert stats[0]["post_id"] == "p1"
-    assert stats[0]["score"] == pytest.approx(8.0)
+    assert stats[0]["score"] == pytest.approx(expected_score)
 
 
 def test_page_service_delegates_and_applies_start_date_filter(monkeypatch):
@@ -956,4 +959,112 @@ def test_influence_competitors_stats_skips_invalid_rows_and_respects_start_date(
     assert captured["max_posts"] == 10000
     assert captured["date_limit"].isoformat() == "2026-01-01"
     assert [s["post_id"] for s in stats] == ["ok"]
+
+
+def test_influence_interactions_ranking_default_window_and_weighted_scores(monkeypatch):
+    fixed_now = datetime(2026, 4, 12, 10, 0, tzinfo=timezone.utc)
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("api.services.influence_history_service.datetime", _FixedDateTime)
+
+    captured = {}
+    rows = [
+        {
+            "entity_id": 1,
+            "entity_name": "A Corp",
+            "platform": "instagram",
+            "posts_count": 2,
+            "total_likes": 100,
+            "total_comments": 10,
+            "total_shares": 0,
+            "total_views": 0,
+        },
+        {
+            "entity_id": 1,
+            "entity_name": "A Corp",
+            "platform": "x",
+            "posts_count": 1,
+            "total_likes": 20,
+            "total_comments": 8,
+            "total_shares": 6,
+            "total_views": 30,
+        },
+        {
+            "entity_id": 2,
+            "entity_name": "B Corp",
+            "platform": "linkedin",
+            "posts_count": 3,
+            "total_likes": 50,
+            "total_comments": 20,
+            "total_shares": 0,
+            "total_views": 0,
+        },
+        # Unsupported for scoring here because platform_metrics has no youtube.
+        {
+            "entity_id": 2,
+            "entity_name": "B Corp",
+            "platform": "youtube",
+            "posts_count": 9,
+            "total_likes": 999,
+            "total_comments": 999,
+            "total_shares": 999,
+            "total_views": 999,
+        },
+    ]
+
+    def _repo(date_limit):
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", _repo)
+
+    ranking = InfluenceHistoryService.get_interactions_ranking()
+
+    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert len(ranking) == 2
+    assert ranking[0]["entity_name"] == "A Corp"
+    assert ranking[0]["rank"] == 1
+    assert ranking[0]["total_posts"] == 3
+    ig_weights = {m["name"]: m["score"] for m in platform_metrics["instagram"]["metrics"]}
+    x_weights = {m["name"]: m["score"] for m in platform_metrics["x"]["metrics"]}
+    li_weights = {m["name"]: m["score"] for m in platform_metrics["linkedin"]["metrics"]}
+
+    expected_a_score = (
+        100 * ig_weights["likes"]
+        + 10 * ig_weights["comments"]
+        + 20 * x_weights["likes"]
+        + 8 * x_weights["replies"]
+        + 6 * x_weights["reposts"]
+    )
+    expected_b_score = 50 * li_weights["likes_count"] + 20 * li_weights["comments_count"]
+
+    assert ranking[0]["total_score"] == pytest.approx(expected_a_score)
+    assert "instagram" in ranking[0]["platforms"]
+    assert "x" in ranking[0]["platforms"]
+
+    assert ranking[1]["entity_name"] == "B Corp"
+    assert ranking[1]["rank"] == 2
+    assert ranking[1]["total_score"] == pytest.approx(expected_b_score)
+    assert "youtube" not in ranking[1]["platforms"]
+
+
+def test_influence_interactions_ranking_start_date_and_empty_result(monkeypatch):
+    captured = {}
+
+    def _repo(date_limit):
+        captured["date_limit"] = date_limit
+        return []
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", _repo)
+
+    ranking = InfluenceHistoryService.get_interactions_ranking(start_date="2026-01-01")
+
+    assert captured["date_limit"].isoformat() == "2026-01-01"
+    assert ranking == []
     

@@ -10,6 +10,31 @@ from api.utils.posts_utils import _to_number, ensure_datetime
 
 @instrument_service_class
 class InfluenceHistoryService:
+    _METRIC_TOTAL_GROUPS = {
+        "likes": {"likes", "likes_count", "favorites_count"},
+        "comments": {"comments", "comments_count", "commentcount", "replies", "num_comments"},
+        "shares": {"shares", "share_count", "reposts", "num_shares"},
+        "views": {"views", "playcount", "view_count", "video_view_count"},
+    }
+
+    @staticmethod
+    def _row_value(row, key, default=0):
+        if isinstance(row, dict):
+            return row.get(key, default)
+        if hasattr(row, key):
+            return getattr(row, key)
+        try:
+            return row[key]
+        except Exception:
+            return default
+
+    @staticmethod
+    def _metric_value_from_totals(metric_name, totals):
+        for total_key, names in InfluenceHistoryService._METRIC_TOTAL_GROUPS.items():
+            if metric_name in names:
+                return _to_number(totals.get(total_key, 0))
+        return 0
+
     @staticmethod
     def get_after_time(hour):
         return PageHistoryRepository.get_after_time(hour)
@@ -121,6 +146,81 @@ class InfluenceHistoryService:
             entity["rank"] = idx
 
         return entity_scores
+
+    @staticmethod
+    def get_interactions_ranking(start_date=None):
+        date_limit = parse_iso_date(start_date) if start_date else (datetime.now() - timedelta(days=30)).date()
+        rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit)
+        if not rows:
+            return []
+
+        entities = {}
+
+        for row in rows:
+            platform = InfluenceHistoryService._row_value(row, "platform", None)
+            if platform not in platform_metrics:
+                continue
+
+            entity_id = InfluenceHistoryService._row_value(row, "entity_id", None)
+            entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            if entity_id is None:
+                continue
+
+            totals = {
+                "likes": _to_number(InfluenceHistoryService._row_value(row, "total_likes", 0)),
+                "comments": _to_number(InfluenceHistoryService._row_value(row, "total_comments", 0)),
+                "shares": _to_number(InfluenceHistoryService._row_value(row, "total_shares", 0)),
+                "views": _to_number(InfluenceHistoryService._row_value(row, "total_views", 0)),
+            }
+            posts_count = _to_number(InfluenceHistoryService._row_value(row, "posts_count", 0))
+
+            metrics = platform_metrics.get(platform, {}).get("metrics", [])
+            platform_score = 0.0
+            for metric in metrics:
+                metric_name = metric["name"]
+                metric_weight = metric.get("score", 1.0)
+                platform_score += InfluenceHistoryService._metric_value_from_totals(metric_name, totals) * metric_weight
+
+            entity = entities.setdefault(
+                entity_id,
+                {
+                    "entity_id": entity_id,
+                    "entity_name": entity_name,
+                    "window_start": date_limit.isoformat(),
+                    "total_score": 0.0,
+                    "total_posts": 0,
+                    "total_likes": 0,
+                    "total_comments": 0,
+                    "total_shares": 0,
+                    "total_views": 0,
+                    "platforms": {},
+                },
+            )
+
+            entity["total_score"] += platform_score
+            entity["total_posts"] += posts_count
+            entity["total_likes"] += totals["likes"]
+            entity["total_comments"] += totals["comments"]
+            entity["total_shares"] += totals["shares"]
+            entity["total_views"] += totals["views"]
+            entity["platforms"][platform] = {
+                "posts_count": posts_count,
+                "likes": totals["likes"],
+                "comments": totals["comments"],
+                "shares": totals["shares"],
+                "views": totals["views"],
+                "score": round(platform_score, 4),
+            }
+
+        ranking = list(entities.values())
+        for row in ranking:
+            row["total_score"] = round(row["total_score"], 4)
+
+        ranking.sort(key=lambda x: x["total_score"], reverse=True)
+        for idx, row in enumerate(ranking, start=1):
+            row["rank"] = idx
+
+        return ranking
 
     @staticmethod
     def get_entity_interaction_stats(entity_id, start_date=None):

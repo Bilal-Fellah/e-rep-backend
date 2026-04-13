@@ -434,6 +434,43 @@ def test_data_get_competitors_interaction_stats_parsing_and_404(client, monkeypa
     assert captured["start_date"] is not None
 
 
+def test_data_get_interactions_ranking_not_found_and_success(client, monkeypatch):
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_interactions_ranking", lambda start_date=None: [])
+    response = client.get("/api/data/get_interactions_ranking")
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(start_date=None):
+        captured["start_date"] = start_date
+        return [
+            {
+                "entity_id": 1,
+                "entity_name": "A Corp",
+                "rank": 1,
+                "total_score": 12.3,
+                "platforms": {},
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_interactions_ranking", _service)
+    response = client.get("/api/data/get_interactions_ranking?start_date=2026-01-01")
+    assert response.status_code == 200
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"][0]["entity_name"] == "A Corp"
+
+
+def test_data_get_interactions_ranking_invalid_start_date_returns_400(client, monkeypatch):
+    monkeypatch.setattr(
+        "api.routes.data.influence_history.InfluenceHistoryService.get_interactions_ranking",
+        lambda start_date=None: (_ for _ in ()).throw(ValueError("Invalid date format")),
+    )
+
+    response = client.get("/api/data/get_interactions_ranking?start_date=bad-date")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid request data"
+
+
 def test_data_get_competitors_interaction_stats_invalid_payload_returns_400(client):
     response = client.post("/api/data/get_competitors_interaction_stats", json={"start_date": "2026-01-01T00:00:00Z"})
     assert response.status_code == 400

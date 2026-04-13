@@ -214,6 +214,21 @@ def entities_ranking():
     return success_response(InfluenceHistoryService.entities_ranking(), 200)
 
 
+@data_bp.route("/get_interactions_ranking", methods=["GET"])
+def get_interactions_ranking():
+    try:
+        start_date = request.args.get("start_date")
+
+        data = InfluenceHistoryService.get_interactions_ranking(start_date=start_date)
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No interactions ranking data found for companies.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
 @data_bp.route("/get_entity_interaction_stats", methods=["GET"])
 def get_entity_interaction_stats():
     try:

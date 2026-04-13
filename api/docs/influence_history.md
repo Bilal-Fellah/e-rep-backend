@@ -146,3 +146,60 @@ Return the computed 30-day ranking with platform/follower summary.
   ]
 }
 ```
+
+---
+
+## **GET /api/data/get_interactions_ranking**
+
+Return company interactions ranking using post materialized views.
+
+### Query Parameters
+
+- `start_date` (optional, ISO date/datetime; default = last 30 days)
+
+### Notes
+
+- Only entities where `type = company` and `to_scrape = true` are included.
+- Ranking is computed from `posts_mv` aggregates using platform metric weights.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "window_start": "2026-03-14",
+      "total_score": 1234.5,
+      "total_posts": 42,
+      "total_likes": 10000,
+      "total_comments": 800,
+      "total_shares": 250,
+      "total_views": 90000,
+      "rank": 1,
+      "platforms": {
+        "instagram": {
+          "posts_count": 12,
+          "likes": 3000,
+          "comments": 250,
+          "shares": 0,
+          "views": 0,
+          "score": 1350
+        }
+      }
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No interactions ranking data found for companies." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```

@@ -4,8 +4,8 @@ platform_metrics = {
         "date": "datetime",
         "weight": 1/5,
         "metrics": [
-            {"name": "comments", "score": 0.6},
-            {"name": "likes", "score": 0.4},
+            {"name": "comments", "score": 0.65},
+            {"name": "likes", "score": 0.35},
         ]
     },
     "linkedin": {
@@ -13,8 +13,8 @@ platform_metrics = {
         "date": "date",
         "weight": 1/5,
         "metrics": [
-            {"name": "comments_count", "score": 0.6},
-            {"name": "likes_count", "score": 0.4},
+            {"name": "comments_count", "score": 0.7},
+            {"name": "likes_count", "score": 0.3},
         ]
     },
     "x": {
@@ -23,8 +23,8 @@ platform_metrics = {
         "weight": 1/5,
         "metrics": [
             {"name": "reposts", "score": 0.5},
-            {"name": "likes", "score": 0.25},
-            {"name": "replies", "score": 0.25},
+            {"name": "likes", "score": 0.15},
+            {"name": "replies", "score": 0.35},
         ]
     },
     "tiktok": {
@@ -32,9 +32,9 @@ platform_metrics = {
         "date": "create_date",
         "weight": 1/5,
         "metrics": [
-            {"name": "commentcount", "score": 0.4},
-            {"name": "share_count", "score": 0.3},
-            {"name": "favorites_count", "score": 0.3},
+            {"name": "commentcount", "score": 0.45},
+            {"name": "share_count", "score": 0.35},
+            {"name": "favorites_count", "score": 0.2},
             # {"name": "playcount", "score": 0.1},
         ]
     }, 
@@ -44,8 +44,8 @@ platform_metrics = {
         "weight": 1/5,
         "metrics": [
             {"name": "num_comments", "score": 0.35},
-            {"name": "likes", "score": 0.25},
-            {"name": "num_shares", "score": 0.4},
+            {"name": "likes", "score": 0.2},
+            {"name": "num_shares", "score": 0.45},
         ]
     }
 }
