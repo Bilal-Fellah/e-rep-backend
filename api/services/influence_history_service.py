@@ -175,6 +175,10 @@ class InfluenceHistoryService:
                 "views": _to_number(InfluenceHistoryService._row_value(row, "total_views", 0)),
             }
             posts_count = _to_number(InfluenceHistoryService._row_value(row, "posts_count", 0))
+            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
+            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
+            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
+            profile_image_url = InfluenceHistoryService._row_value(row, "profile_image_url", None)
 
             metrics = platform_metrics.get(platform, {}).get("metrics", [])
             platform_score = 0.0
@@ -213,6 +217,10 @@ class InfluenceHistoryService:
             entity["total_shares"] += totals["shares"]
             entity["total_views"] += totals["views"]
             entity["platforms"][platform] = {
+                "page_name": page_name,
+                "page_id": page_id,
+                "page_url": page_url,
+                "profile_image_url": profile_image_url,
                 "posts_count": posts_count,
                 "likes": totals["likes"],
                 "comments": totals["comments"],

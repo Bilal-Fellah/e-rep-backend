@@ -54,6 +54,7 @@ def create_app():
 
     ALLOWED_ORIGINS = [
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://localhost:5000",
         "https://www.brendex.net",
         "https://www.app.brendex.net",

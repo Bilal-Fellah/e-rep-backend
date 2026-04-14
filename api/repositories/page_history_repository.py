@@ -326,6 +326,9 @@ class PageHistoryRepository:
                     page_id,
                     entity_id,
                     entity_name,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
                     to_scrape
                 FROM page_posts_metrics_mv
                 ORDER BY page_id, recorded_at DESC
@@ -344,6 +347,10 @@ class PageHistoryRepository:
                 ecm.category AS category,
                 ecm.root_category AS root_category,
                 pm.platform AS platform,
+                pm.page_id AS page_id,
+                pem.page_name AS page_name,
+                pem.page_url AS page_url,
+                pem.profile_image_url AS profile_image_url,
                 COUNT(pm.post_id) AS posts_count,
                 COALESCE(SUM(pm.likes), 0)::BIGINT AS total_likes,
                 COALESCE(SUM(pm.comments), 0)::BIGINT AS total_comments,
@@ -358,7 +365,7 @@ class PageHistoryRepository:
               AND e.to_scrape
               AND pm.platform IN ('instagram','linkedin','tiktok','x','facebook')
               AND DATE(pm.created_at) >= :date_limit
-            GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform
+                        GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform, pm.page_id, pem.page_name, pem.page_url, pem.profile_image_url
             ORDER BY pem.entity_name, pm.platform
         """)
 
