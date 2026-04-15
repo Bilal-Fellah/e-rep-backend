@@ -472,6 +472,85 @@ def test_data_get_interactions_ranking_invalid_start_date_returns_400(client, mo
     assert response.get_json()["error"] == "Invalid request data"
 
 
+def test_data_get_likes_ranking_not_found_and_success(client, monkeypatch):
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_likes_ranking", lambda start_date=None: [])
+    response = client.get("/api/data/get_likes_ranking")
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(start_date=None):
+        captured["start_date"] = start_date
+        return [
+            {
+                "entity_id": 1,
+                "entity_name": "A Corp",
+                "category": "auto",
+                "root_category": "business",
+                "rank": 1,
+                "total_likes": 120,
+                "platforms": {},
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_likes_ranking", _service)
+    response = client.get("/api/data/get_likes_ranking?start_date=2026-01-01")
+    assert response.status_code == 200
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"][0]["entity_name"] == "A Corp"
+    assert response.get_json()["data"][0]["category"] == "auto"
+    assert response.get_json()["data"][0]["root_category"] == "business"
+
+
+def test_data_get_comments_ranking_not_found_and_success(client, monkeypatch):
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_comments_ranking", lambda start_date=None: [])
+    response = client.get("/api/data/get_comments_ranking")
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(start_date=None):
+        captured["start_date"] = start_date
+        return [
+            {
+                "entity_id": 1,
+                "entity_name": "A Corp",
+                "category": "auto",
+                "root_category": "business",
+                "rank": 1,
+                "total_comments": 65,
+                "platforms": {},
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_comments_ranking", _service)
+    response = client.get("/api/data/get_comments_ranking?start_date=2026-01-01")
+    assert response.status_code == 200
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"][0]["entity_name"] == "A Corp"
+    assert response.get_json()["data"][0]["category"] == "auto"
+    assert response.get_json()["data"][0]["root_category"] == "business"
+
+
+def test_data_get_likes_and_comments_ranking_invalid_start_date_returns_400(client, monkeypatch):
+    monkeypatch.setattr(
+        "api.routes.data.influence_history.InfluenceHistoryService.get_likes_ranking",
+        lambda start_date=None: (_ for _ in ()).throw(ValueError("Invalid date format")),
+    )
+    monkeypatch.setattr(
+        "api.routes.data.influence_history.InfluenceHistoryService.get_comments_ranking",
+        lambda start_date=None: (_ for _ in ()).throw(ValueError("Invalid date format")),
+    )
+
+    likes_response = client.get("/api/data/get_likes_ranking?start_date=bad-date")
+    comments_response = client.get("/api/data/get_comments_ranking?start_date=bad-date")
+
+    assert likes_response.status_code == 400
+    assert likes_response.get_json()["error"] == "Invalid request data"
+    assert comments_response.status_code == 400
+    assert comments_response.get_json()["error"] == "Invalid request data"
+
+
 def test_data_get_competitors_interaction_stats_invalid_payload_returns_400(client):
     response = client.post("/api/data/get_competitors_interaction_stats", json={"start_date": "2026-01-01T00:00:00Z"})
     assert response.status_code == 400
@@ -480,3 +559,44 @@ def test_data_get_competitors_interaction_stats_invalid_payload_returns_400(clie
 def test_data_platform_history_missing_param_returns_400(client):
     response = client.get("/api/data/get_platform_history")
     assert response.status_code == 400
+
+
+def test_testing_entity_daily_raw_metrics_validation_and_success(client, monkeypatch):
+    response = client.get("/api/testing/entity_daily_raw_metrics")
+    assert response.status_code == 400
+
+    response = client.get("/api/testing/entity_daily_raw_metrics?entity_id=5&metric=shares")
+    assert response.status_code == 400
+
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug._fetch_entity_daily_raw_metrics",
+        lambda entity_id, metric="likes", start_date=None: [],
+    )
+    response = client.get("/api/testing/entity_daily_raw_metrics?entity_id=5&metric=likes")
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(entity_id, metric="likes", start_date=None):
+        captured["entity_id"] = entity_id
+        captured["metric"] = metric
+        captured["start_date"] = start_date
+        return [
+            {
+                "page_id": "p-1",
+                "platform": "instagram",
+                "date": "2026-01-10",
+                "likes_raw": 42,
+                "posts_count": 2,
+                "per_post": {"post-a": 30, "post-b": 12},
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.testing.entity_debug._fetch_entity_daily_raw_metrics", _service)
+    response = client.get("/api/testing/entity_daily_raw_metrics?entity_id=5&metric=likes&start_date=2026-01-01")
+
+    assert response.status_code == 200
+    assert captured["entity_id"] == 5
+    assert captured["metric"] == "likes"
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"][0]["likes_raw"] == 42

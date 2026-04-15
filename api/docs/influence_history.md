@@ -205,3 +205,121 @@ Return company interactions ranking using post materialized views.
 ```json
 { "success": false, "error": "Invalid request data" }
 ```
+
+---
+
+## **GET /api/data/get_likes_ranking**
+
+Return company ranking ordered by total likes in the selected window.
+
+### Query Parameters
+
+- `start_date` (optional, ISO date/datetime; default = last 30 days)
+
+### Notes
+
+- Uses the same response shape and data source as `get_interactions_ranking`.
+- Ranking order is based on `total_likes` (descending).
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "window_start": "2026-03-14",
+      "total_score": 1234.5,
+      "total_posts": 42,
+      "total_likes": 10000,
+      "total_comments": 800,
+      "total_shares": 250,
+      "total_views": 90000,
+      "rank": 1,
+      "platforms": {
+        "instagram": {
+          "posts_count": 12,
+          "likes": 3000,
+          "comments": 250,
+          "shares": 0,
+          "views": 0,
+          "score": 1350
+        }
+      }
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No likes ranking data found for companies." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **GET /api/data/get_comments_ranking**
+
+Return company ranking ordered by total comments in the selected window.
+
+### Query Parameters
+
+- `start_date` (optional, ISO date/datetime; default = last 30 days)
+
+### Notes
+
+- Uses the same response shape and data source as `get_interactions_ranking`.
+- Ranking order is based on `total_comments` (descending).
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "window_start": "2026-03-14",
+      "total_score": 1234.5,
+      "total_posts": 42,
+      "total_likes": 10000,
+      "total_comments": 800,
+      "total_shares": 250,
+      "total_views": 90000,
+      "rank": 1,
+      "platforms": {
+        "instagram": {
+          "posts_count": 12,
+          "likes": 3000,
+          "comments": 250,
+          "shares": 0,
+          "views": 0,
+          "score": 1350
+        }
+      }
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No comments ranking data found for companies." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```

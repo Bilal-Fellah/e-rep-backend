@@ -150,6 +150,18 @@ class InfluenceHistoryService:
 
     @staticmethod
     def get_interactions_ranking(start_date=None):
+        return InfluenceHistoryService._get_companies_ranking(start_date=start_date, order_by_key="total_score")
+
+    @staticmethod
+    def get_likes_ranking(start_date=None):
+        return InfluenceHistoryService._get_companies_ranking(start_date=start_date, order_by_key="total_likes")
+
+    @staticmethod
+    def get_comments_ranking(start_date=None):
+        return InfluenceHistoryService._get_companies_ranking(start_date=start_date, order_by_key="total_comments")
+
+    @staticmethod
+    def _get_companies_ranking(start_date=None, order_by_key="total_score"):
         date_limit = parse_iso_date(start_date) if start_date else (datetime.now() - timedelta(days=30)).date()
         rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit)
         if not rows:
@@ -234,7 +246,7 @@ class InfluenceHistoryService:
         for row in ranking:
             row["total_score"] = round(row["total_score"], 4)
 
-        ranking.sort(key=lambda x: x["total_score"], reverse=True)
+        ranking.sort(key=lambda x: x.get(order_by_key, 0), reverse=True)
         for idx, row in enumerate(ranking, start=1):
             row["rank"] = idx
 

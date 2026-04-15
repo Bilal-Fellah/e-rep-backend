@@ -230,6 +230,36 @@ def get_interactions_ranking():
         return error_response("Invalid request data", 400)
 
 
+@data_bp.route("/get_likes_ranking", methods=["GET"])
+def get_likes_ranking():
+    try:
+        start_date = request.args.get("start_date")
+
+        data = InfluenceHistoryService.get_likes_ranking(start_date=start_date)
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No likes ranking data found for companies.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
+@data_bp.route("/get_comments_ranking", methods=["GET"])
+def get_comments_ranking():
+    try:
+        start_date = request.args.get("start_date")
+
+        data = InfluenceHistoryService.get_comments_ranking(start_date=start_date)
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No comments ranking data found for companies.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
 @data_bp.route("/get_entity_interaction_stats", methods=["GET"])
 def get_entity_interaction_stats():
     try:

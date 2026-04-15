@@ -1079,4 +1079,84 @@ def test_influence_interactions_ranking_start_date_and_empty_result(monkeypatch)
 
     assert captured["date_limit"].isoformat() == "2026-01-01"
     assert ranking == []
+
+
+def test_influence_likes_ranking_orders_by_total_likes(monkeypatch):
+    rows = [
+        {
+            "entity_id": 1,
+            "entity_name": "A Corp",
+            "category": "auto",
+            "root_category": "business",
+            "platform": "instagram",
+            "posts_count": 2,
+            "total_likes": 100,
+            "total_comments": 10,
+            "total_shares": 0,
+            "total_views": 0,
+        },
+        {
+            "entity_id": 2,
+            "entity_name": "B Corp",
+            "category": "tech",
+            "root_category": "business",
+            "platform": "linkedin",
+            "posts_count": 3,
+            "total_likes": 150,
+            "total_comments": 5,
+            "total_shares": 0,
+            "total_views": 0,
+        },
+    ]
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", lambda date_limit: rows)
+
+    ranking = InfluenceHistoryService.get_likes_ranking(start_date="2026-01-01")
+
+    assert len(ranking) == 2
+    assert ranking[0]["entity_name"] == "B Corp"
+    assert ranking[0]["total_likes"] == 150
+    assert ranking[0]["rank"] == 1
+    assert ranking[1]["entity_name"] == "A Corp"
+    assert ranking[1]["rank"] == 2
+
+
+def test_influence_comments_ranking_orders_by_total_comments(monkeypatch):
+    rows = [
+        {
+            "entity_id": 1,
+            "entity_name": "A Corp",
+            "category": "auto",
+            "root_category": "business",
+            "platform": "instagram",
+            "posts_count": 2,
+            "total_likes": 100,
+            "total_comments": 50,
+            "total_shares": 0,
+            "total_views": 0,
+        },
+        {
+            "entity_id": 2,
+            "entity_name": "B Corp",
+            "category": "tech",
+            "root_category": "business",
+            "platform": "linkedin",
+            "posts_count": 3,
+            "total_likes": 200,
+            "total_comments": 20,
+            "total_shares": 0,
+            "total_views": 0,
+        },
+    ]
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", lambda date_limit: rows)
+
+    ranking = InfluenceHistoryService.get_comments_ranking(start_date="2026-01-01")
+
+    assert len(ranking) == 2
+    assert ranking[0]["entity_name"] == "A Corp"
+    assert ranking[0]["total_comments"] == 50
+    assert ranking[0]["rank"] == 1
+    assert ranking[1]["entity_name"] == "B Corp"
+    assert ranking[1]["rank"] == 2
     
