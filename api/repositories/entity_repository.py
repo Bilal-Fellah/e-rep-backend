@@ -1,3 +1,4 @@
+# Data-access methods for entity repository.
 from api import db
 from api.models import Entity
 from api.models.page_history_model import PageHistory

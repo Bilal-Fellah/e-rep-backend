@@ -1,3 +1,4 @@
+# Route wiring for google auth endpoints.
 from datetime import datetime, timedelta, timezone
 from flask import redirect, request, Blueprint, session
 import jwt

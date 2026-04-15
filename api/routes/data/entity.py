@@ -1,3 +1,4 @@
+# Data API endpoints for entity.
 import os
 
 from flask import request

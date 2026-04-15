@@ -1,3 +1,4 @@
+# Database model definitions for post model.
 from sqlalchemy import inspect
 from api import db
 from sqlalchemy.dialects.postgresql import UUID, JSONB

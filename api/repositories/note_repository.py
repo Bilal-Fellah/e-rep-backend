@@ -1,3 +1,4 @@
+# Data-access methods for note repository.
 from typing import List, Optional
 from sqlalchemy import or_
 from datetime import datetime, timezone

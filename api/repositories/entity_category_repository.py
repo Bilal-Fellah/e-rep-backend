@@ -1,3 +1,4 @@
+# Data-access methods for entity category repository.
 from api import db
 from api.models import EntityCategory
 from api.utils.logging_utils import instrument_repository_class

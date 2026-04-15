@@ -1,3 +1,4 @@
+# Data API endpoints for posts.
 from flask import request
 from . import data_bp
 from api.services.post_service import PostService

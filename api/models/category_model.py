@@ -1,3 +1,4 @@
+# Database model definitions for category model.
 from api import db
 from sqlalchemy.orm import relationship
 

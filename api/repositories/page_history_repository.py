@@ -1,3 +1,4 @@
+# Data-access methods for page history repository.
 from api import db
 from api.models import PageHistory
 from api.models.category_model import Category

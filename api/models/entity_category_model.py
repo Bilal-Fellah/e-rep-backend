@@ -1,3 +1,4 @@
+# Database model definitions for entity category model.
 
 from api import db
 

@@ -1,3 +1,4 @@
+# Data-access methods for user repository.
 # repositories/user_repo.py
 from datetime import datetime
 from api.models.user_model import User

@@ -1,3 +1,4 @@
+# Database model definitions for entity model.
 from api import db
 from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import relationship

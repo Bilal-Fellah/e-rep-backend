@@ -1,3 +1,4 @@
+# Shared helper functions for interaction stats.
 
 def interpolate_series(values):
     """

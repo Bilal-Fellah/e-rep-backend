@@ -1,3 +1,4 @@
+# Data API endpoints for note.
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.note_repository import NoteRepository
 from api.repositories.post_repository import PostRepository

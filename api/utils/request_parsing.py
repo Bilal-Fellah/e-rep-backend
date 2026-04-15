@@ -1,3 +1,4 @@
+# Shared helper functions for request parsing.
 from datetime import date
 
 from api.utils.posts_utils import ensure_datetime

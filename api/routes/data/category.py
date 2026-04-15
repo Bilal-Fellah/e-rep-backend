@@ -1,3 +1,4 @@
+# Data API endpoints for category.
 import os
 from flask import request
 from api.routes.main import error_response, success_response

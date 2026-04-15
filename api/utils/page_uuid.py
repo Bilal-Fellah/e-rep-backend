@@ -1,3 +1,4 @@
+# Shared helper functions for page uuid.
 import uuid
 
 

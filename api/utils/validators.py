@@ -1,3 +1,4 @@
+# Shared helper functions for validators.
 import re
 
 ALLOWED_ROLES = ["registered", "subscribed", "admin"]

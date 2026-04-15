@@ -1,3 +1,4 @@
+# Business workflows for post service.
 from api.repositories.post_repository import PostRepository
 from api.utils.logging_utils import instrument_service_class
 

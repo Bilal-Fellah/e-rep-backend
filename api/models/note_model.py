@@ -1,3 +1,4 @@
+# Database model definitions for note model.
 from datetime import datetime, timezone
 from sqlalchemy import inspect
 from sqlalchemy.dialects.postgresql import JSON

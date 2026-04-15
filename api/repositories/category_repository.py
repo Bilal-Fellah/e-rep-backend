@@ -1,3 +1,4 @@
+# Data-access methods for category repository.
 from api import db
 from api.models import Category
 from api.utils.logging_utils import instrument_repository_class

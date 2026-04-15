@@ -1,3 +1,4 @@
+# Shared helper functions for logging utils.
 import logging
 import os
 import json

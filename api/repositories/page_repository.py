@@ -1,3 +1,4 @@
+# Data-access methods for page repository.
 from api import db
 from api.models import Page
 from api.utils.logging_utils import instrument_repository_class

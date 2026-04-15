@@ -1,3 +1,4 @@
+# Data API endpoints for page.
 from flask import request
 from api.routes.main import error_response, success_response
 from api.services.page_service import PageService

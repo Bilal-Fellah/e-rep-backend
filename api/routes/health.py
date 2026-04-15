@@ -1,3 +1,4 @@
+# Route wiring for health endpoints.
 from flask import Blueprint, jsonify
 from api.routes.main import register_blueprint_error_handlers
 

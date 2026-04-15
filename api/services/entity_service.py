@@ -1,3 +1,4 @@
+# Business workflows for entity service.
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
@@ -17,6 +18,7 @@ class EntityService:
         if not points:
             return []
 
+        # Build a sparse map first, then fill gaps to produce a complete daily series.
         by_day = {}
         for day, followers in points:
             by_day[day] = followers
@@ -38,6 +40,7 @@ class EntityService:
                 i += 1
                 continue
 
+            # Find each contiguous run of missing values and fill it using nearest neighbors.
             run_start = i
             while i < n and _is_missing(values[i]):
                 i += 1
@@ -50,6 +53,7 @@ class EntityService:
             right_val = values[right_idx] if right_idx is not None and not _is_missing(values[right_idx]) else None
 
             if left_val is not None and right_val is not None:
+                # Interpolate linearly when both boundaries exist.
                 gap = right_idx - left_idx
                 for k in range(run_start, run_end + 1):
                     ratio = (k - left_idx) / gap
@@ -96,6 +100,7 @@ class EntityService:
         if not history:
             return []
 
+        # Normalize to per-page/platform daily points before gap filling.
         grouped = defaultdict(list)
         for row in history:
             grouped[(row.page_id, row.platform)].append((row.recorded_at.date(), row.followers))
@@ -122,6 +127,7 @@ class EntityService:
         if not raw_results:
             return None
 
+        # Group competition data by entity/platform so each line can be refined independently.
         data = defaultdict(lambda: {"entity_id": None, "records": []})
         grouped = defaultdict(list)
 
@@ -197,7 +203,7 @@ class EntityService:
         if not rows:
             return []
 
-        # Per page/platform, keep one likes snapshot per post for each recorded day.
+        # Per page/platform, keep one metric snapshot per post for each recorded day.
         daily_posts = defaultdict(lambda: defaultdict(dict))
 
         for row in rows:
@@ -246,6 +252,7 @@ class EntityService:
                 for post_id, likes_value in day_posts[day].items():
                     post_series[post_id].append((day, likes_value))
 
+            # Spread gain between two observed snapshots evenly across the day span.
             distributed_gains = defaultdict(float)
             for samples in post_series.values():
                 samples.sort(key=lambda x: x[0])
@@ -420,6 +427,7 @@ class EntityService:
                     continue
 
                 if platform == "youtube":
+                    # YouTube payloads may store relative text instead of ISO timestamps.
                     raw_date = parse_relative_time(raw_date)
                     if not raw_date:
                         continue
@@ -510,6 +518,7 @@ class EntityService:
             current_day_posts = daily_posts[day] or {}
             previous_day_posts = {}
             j = i - 1
+            # Compare against the nearest earlier day that has actual post data.
             while j >= 0:
                 candidate = daily_posts.get(sorted_days[j], {})
                 if candidate and candidate != {}:
@@ -540,6 +549,7 @@ class EntityService:
 
         day_gains = next((item for item in final_output if item["day"] == str(date)), None)
         if day_gains:
+            # Weighted score drives ordering for "top posts" of the target day.
             for post in day_gains["posts"]:
                 score = sum(
                     post.get(f"gained_{m['name']}", 0) * m.get("weight", 1)
