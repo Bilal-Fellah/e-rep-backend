@@ -74,7 +74,7 @@ def get_all_categories():
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403 )
 
-        categories = CategoryRepository.get_all()
+        categories = CategoryRepository.get_all_root()
         if not categories:
             return error_response("No categories found.", 404)
 

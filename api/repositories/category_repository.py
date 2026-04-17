@@ -15,6 +15,10 @@ class CategoryRepository:
         return Category.query.all()
 
     @staticmethod
+    def get_all_root() -> list[Category]:
+        return Category.query.filter(Category.parent_id.is_(None)).all()
+
+    @staticmethod
     def create(name: str, parent_id: int | None = None) -> Category:
         category = Category(name=name, parent_id=parent_id)
         db.session.add(category)

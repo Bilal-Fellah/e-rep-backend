@@ -85,7 +85,7 @@ Delete a category by id.
 
 ## **GET /api/data/get_all_categories**
 
-Fetch all categories.
+Fetch all root categories (categories with `parent_id = null`).
 
 ### Success Response (200)
 
