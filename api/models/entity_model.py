@@ -16,4 +16,4 @@ class Entity(db.Model):
     )
 
     pages = relationship("Page", back_populates="entity", cascade="all, delete-orphan")
-    categories = relationship("Category", secondary="entity_category", back_populates="entities")
+    categories = relationship("Category", secondary="entity_category", back_populates="entities", passive_deletes=True)

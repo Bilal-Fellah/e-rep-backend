@@ -42,10 +42,13 @@ class EntityRepository:
         return entity
 
     @staticmethod
-    def create(name: str, type_: str) -> Entity:
+    def create(name: str, type_: str, commit: bool = True) -> Entity:
         entity = Entity(name=name, type=type_)
         db.session.add(entity)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return entity
 
     @staticmethod

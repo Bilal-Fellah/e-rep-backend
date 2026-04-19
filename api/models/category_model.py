@@ -13,4 +13,4 @@ class Category(db.Model):
     parent = relationship("Category", remote_side=[id], backref="subcategories")
 
     # Many-to-many with Entity
-    entities = relationship("Entity", secondary="entity_category", back_populates="categories")
+    entities = relationship("Entity", secondary="entity_category", back_populates="categories", passive_deletes=True)

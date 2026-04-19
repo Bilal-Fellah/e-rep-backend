@@ -10,6 +10,7 @@ from api.utils.page_uuid import create_page_uuid
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
+ALLOWED_PAGE_PLATFORMS = {"facebook", "instagram", "x", "tiktok", "linkedin", "youtube"}
 
 
 @instrument_service_class
@@ -90,23 +91,32 @@ class AuthService:
         return create_page_uuid(link)
 
     @staticmethod
-    def create_entity_pages(entity, pages_data):
+    def create_entity_pages(entity, pages_data, commit=True):
         pages_response = []
         if isinstance(pages_data, list) and len(pages_data) > 0:
             for page in pages_data:
-                if "platform" not in page or "link" not in page:
+                if not isinstance(page, dict) or "platform" not in page or "link" not in page:
                     raise ValueError("Invalid page data, platform and link are required for every page")
 
-                platform = page["platform"]
-                link = page["link"]
+                platform = str(page["platform"]).strip()
+                link = str(page["link"]).strip()
+                if not platform or not link:
+                    raise ValueError("Invalid page data, platform and link must be non-empty")
+
+                normalized_platform = platform.lower()
+                if normalized_platform not in ALLOWED_PAGE_PLATFORMS:
+                    raise ValueError(
+                        f"Invalid page platform '{platform}'. Allowed platforms are: {sorted(ALLOWED_PAGE_PLATFORMS)}"
+                    )
 
                 page_uuid = AuthService.create_page_uuid(link)
                 created_page = PageRepository.create(
                     uuid=page_uuid,
                     name=entity.name,
-                    platform=platform,
+                    platform=normalized_platform,
                     link=link,
                     entity_id=entity.id,
+                    commit=commit,
                 )
 
                 pages_response.append(

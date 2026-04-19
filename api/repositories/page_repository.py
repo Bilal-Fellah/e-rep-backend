@@ -27,10 +27,13 @@ class PageRepository:
 
 
     @staticmethod
-    def create(uuid: str, name: str, link: str, platform: str, entity_id: int) -> Page:
+    def create(uuid: str, name: str, link: str, platform: str, entity_id: int, commit: bool = True) -> Page:
         page = Page(uuid= uuid, name=name, link=link, platform=platform, entity_id=entity_id)
         db.session.add(page)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return page
 
     @staticmethod

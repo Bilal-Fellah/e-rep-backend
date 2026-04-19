@@ -3,6 +3,8 @@ import json
 from api.services.auth_service import AuthService
 from api.utils.auth import validate_email, _extract_token
 from flask import Blueprint, request, jsonify, redirect, make_response
+from sqlalchemy.exc import SQLAlchemyError
+from api import db
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
@@ -17,13 +19,21 @@ from api.utils.validators import (
     ALLOWED_ROLES, ALLOWED_PROFESSIONS
 )
 
-from api.routes.main import error_response, success_response, register_blueprint_error_handlers
+from api.routes.main import (
+    error_response,
+    success_response,
+    register_blueprint_error_handlers,
+    log_route_error,
+    SEVERITY_LOW,
+    SEVERITY_HIGH,
+)
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
 FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
+ALLOWED_ENTITY_TYPES = ["company", "influencer", "small-business"]
 
 register_blueprint_error_handlers(auth_bp, include_token_errors=True)
 
@@ -157,41 +167,50 @@ def register_entity():
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
         
-        required_keys = ["entity_name","type", "category_id"]
-        data = request.json
-        
-        for key in required_keys:
-            if key not in data:
-                return error_response("Missing required parameters", 400)
-            
-        name = data["entity_name"]
-        entity_type = data["type"]
-        category_id = data["category_id"]
+        required_keys = ["entity_name", "type", "category_id"]
+        data = request.get_json(silent=True)
+        missing = validate_required_keys(data, required_keys)
+        if missing:
+            return error_response(f"missing required key: {missing}", 400)
+
+        name = sanitize_string(data["entity_name"], 120)
+        if not name:
+            return error_response("Invalid entity_name", 400)
+
+        entity_type = sanitize_string(data["type"], 20)
+        type_error = validate_enum(entity_type, ALLOWED_ENTITY_TYPES, "type")
+        if type_error:
+            return error_response(type_error, 400)
+
+        try:
+            category_id = int(data["category_id"])
+        except (TypeError, ValueError):
+            return error_response("category_id must be an integer", 400)
+
+        pages_data = data.get("pages")
+        if pages_data is not None and not isinstance(pages_data, list):
+            return error_response("pages must be a list", 400)
 
         if not CategoryRepository.get_by_id(category_id= category_id):
-            return error_response("wrong category_id", 400)
+            return error_response("Invalid category_id", 400)
 
         if EntityRepository.get_by_name(entity_name= name):
-            return error_response(f"entity name {name} already exists")
+            return error_response(f"entity name {name} already exists", 409)
 
-        # add the entity
+        # Persist entity, category mapping, and pages in a single commit
+        # to avoid partially inserted data when any downstream step fails.
         entity = EntityRepository.create(
             name=name,
-            type_=entity_type
+            type_=entity_type,
+            commit=False,
         )
-
-        if not entity:
-            return error_response("failed to insert entity data", 500)
-        entity_category = EntityCategoryRepository.add(entity_id=entity.id, category_id=category_id)
-
-        if not entity_category:
-            return error_response("failed to map entity to category", 500)
-
-        pages_data = data.get('pages')
-        try:
-            pages_response = AuthService.create_entity_pages(entity, pages_data)
-        except ValueError as ve:
-            return error_response(str(ve))
+        entity_category = EntityCategoryRepository.add(
+            entity_id=entity.id,
+            category_id=category_id,
+            commit=False,
+        )
+        pages_response = AuthService.create_entity_pages(entity, pages_data, commit=False)
+        db.session.commit()
 
         payload = {
                     "id": entity.id,
@@ -202,9 +221,22 @@ def register_entity():
                 }
         
         return success_response(payload, status_code=201)
-    
+
     except ValueError as ve:
+        db.session.rollback()
+        log_route_error(ve, SEVERITY_LOW, 400, "Entity registration validation failed")
         return error_response(str(ve), 400)
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        log_route_error(db_err, SEVERITY_HIGH, 500, "Entity registration database insertion failed")
+        return error_response(
+            "Failed to save entity data. Check entity uniqueness, category mapping, and page values.",
+            500,
+        )
+    except Exception as ex:
+        db.session.rollback()
+        log_route_error(ex, SEVERITY_HIGH, 500, "Entity registration failed unexpectedly")
+        return error_response("Entity registration failed unexpectedly", 500)
 
 
 @auth_bp.route("/login", methods=["POST"])

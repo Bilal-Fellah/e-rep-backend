@@ -7,10 +7,13 @@ from api.utils.logging_utils import instrument_repository_class
 @instrument_repository_class
 class EntityCategoryRepository:
     @staticmethod
-    def add(entity_id: int, category_id: int):
+    def add(entity_id: int, category_id: int, commit: bool = True):
         new_relation = EntityCategory(entity_id=entity_id, category_id=category_id)
         db.session.add(new_relation)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return new_relation
 
     @staticmethod
