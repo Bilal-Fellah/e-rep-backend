@@ -83,11 +83,12 @@ class InfluenceHistoryService:
 
         for row in data:
             entity = structured_entities[row.entity_id]
+            root_category = row.root_category if row.root_category is not None else row.category
 
             entity["entity_id"] = row.entity_id
             entity["entity_name"] = row.entity_name
             entity["category"] = row.category
-            entity["root_category"] = row.root_category
+            entity["root_category"] = root_category
 
             prev_ts = entity["_platform_ts"].get(row.platform)
             if prev_ts is None or row.recorded_at > prev_ts:
@@ -178,6 +179,8 @@ class InfluenceHistoryService:
             entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
             category = InfluenceHistoryService._row_value(row, "category", None)
             root_category = InfluenceHistoryService._row_value(row, "root_category", None)
+            if root_category is None and category is not None:
+                root_category = category
             if entity_id is None:
                 continue
 

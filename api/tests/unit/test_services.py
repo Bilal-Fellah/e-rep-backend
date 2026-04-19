@@ -815,7 +815,7 @@ def test_influence_service_ranking_and_interaction_summary(monkeypatch):
             entity_id=1,
             entity_name="Entity A",
             category="cat",
-            root_category="root",
+            root_category=None,
             platform="instagram",
             recorded_at=datetime(2026, 1, 20, 10, tzinfo=timezone.utc),
             page_id="pg1",
@@ -831,6 +831,7 @@ def test_influence_service_ranking_and_interaction_summary(monkeypatch):
 
     ranked = InfluenceHistoryService.entities_ranking()
     assert ranked[0]["entity_name"] == "Entity A"
+    assert ranked[0]["root_category"] == "cat"
     assert ranked[0]["rank"] == 1
     assert ranked[0]["total_followers"] == 500
 
@@ -1159,4 +1160,32 @@ def test_influence_comments_ranking_orders_by_total_comments(monkeypatch):
     assert ranking[0]["rank"] == 1
     assert ranking[1]["entity_name"] == "B Corp"
     assert ranking[1]["rank"] == 2
+
+
+def test_influence_interactions_ranking_falls_back_root_category_to_category(monkeypatch):
+    rows = [
+        {
+            "entity_id": 1,
+            "entity_name": "Root Corp",
+            "category": "business",
+            "root_category": None,
+            "platform": "instagram",
+            "posts_count": 1,
+            "total_likes": 10,
+            "total_comments": 2,
+            "total_shares": 0,
+            "total_views": 0,
+        }
+    ]
+
+    monkeypatch.setattr(
+        "api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary",
+        lambda date_limit: rows,
+    )
+
+    ranking = InfluenceHistoryService.get_interactions_ranking(start_date="2026-01-01")
+
+    assert len(ranking) == 1
+    assert ranking[0]["category"] == "business"
+    assert ranking[0]["root_category"] == "business"
     
