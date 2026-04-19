@@ -628,3 +628,71 @@ def test_testing_entity_daily_raw_metrics_validation_and_success(client, monkeyp
     assert captured["metric"] == "likes"
     assert captured["start_date"] == "2026-01-01"
     assert response.get_json()["data"][0]["likes_raw"] == 42
+
+
+def test_testing_update_entity_category_validation_and_success(client, monkeypatch):
+    response = client.post("/api/testing/update_entity_category", json={})
+    assert response.status_code == 400
+
+    response = client.post(
+        "/api/testing/update_entity_category",
+        json={"entity_id": "bad", "category_id": 2},
+    )
+    assert response.status_code == 400
+
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug.EntityRepository.get_by_id",
+        lambda entity_id: None,
+    )
+    response = client.post(
+        "/api/testing/update_entity_category",
+        json={"entity_id": 9, "category_id": 2},
+    )
+    assert response.status_code == 404
+
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug.EntityRepository.get_by_id",
+        lambda entity_id: {"id": entity_id},
+    )
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug.CategoryRepository.get_by_id",
+        lambda category_id: None,
+    )
+    response = client.post(
+        "/api/testing/update_entity_category",
+        json={"entity_id": 9, "category_id": 4},
+    )
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _replace_for_entity(entity_id, category_id):
+        captured["entity_id"] = entity_id
+        captured["category_id"] = category_id
+        return SimpleNamespace(entity_id=entity_id, category_id=category_id), [1, 3]
+
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug.EntityRepository.get_by_id",
+        lambda entity_id: {"id": entity_id},
+    )
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug.CategoryRepository.get_by_id",
+        lambda category_id: {"id": category_id},
+    )
+    monkeypatch.setattr(
+        "api.routes.testing.entity_debug._replace_entity_category_mapping",
+        _replace_for_entity,
+    )
+
+    response = client.post(
+        "/api/testing/update_entity_category",
+        json={"entity_id": 12, "category_id": 7},
+    )
+
+    assert response.status_code == 200
+    assert captured["entity_id"] == 12
+    assert captured["category_id"] == 7
+    payload = response.get_json()["data"]
+    assert payload["entity_id"] == 12
+    assert payload["previous_category_ids"] == [1, 3]
+    assert payload["updated_category_id"] == 7
