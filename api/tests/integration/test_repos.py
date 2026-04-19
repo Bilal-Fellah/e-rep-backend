@@ -131,8 +131,9 @@ def test_category_and_entity_category_create_delete(monkeypatch):
     class _Category:
         query = SimpleNamespace(get=lambda category_id: SimpleNamespace(id=category_id) if category_id == 1 else None)
 
-        def __init__(self, name, parent_id=None):
+        def __init__(self, name, name_french=None, parent_id=None):
             self.name = name
+            self.name_french = name_french
             self.parent_id = parent_id
 
     class _EntityCategory:
@@ -147,8 +148,9 @@ def test_category_and_entity_category_create_delete(monkeypatch):
     monkeypatch.setattr("api.repositories.category_repository.Category", _Category)
     monkeypatch.setattr("api.repositories.entity_category_repository.EntityCategory", _EntityCategory)
 
-    created_category = CategoryRepository.create("sports", parent_id=1)
+    created_category = CategoryRepository.create("sports", name_french="sports", parent_id=1)
     assert created_category.name == "sports"
+    assert created_category.name_french == "sports"
     assert created_category.parent_id == 1
 
     created_link = EntityCategoryRepository.add(7, 3)

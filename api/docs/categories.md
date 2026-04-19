@@ -15,6 +15,7 @@ Add a new category.
 ```json
 {
   "name": "Technology",
+  "name_french": "Technologie",
   "parent_id": 1
 }
 ```
@@ -27,6 +28,7 @@ Add a new category.
   "data": {
     "id": 5,
     "name": "technology",
+    "name_french": "technologie",
     "parent_id": 1
   }
 }
@@ -93,8 +95,8 @@ Fetch all root categories (categories with `parent_id = null`).
 {
   "success": true,
   "data": [
-    { "id": 1, "name": "technology", "parent_id": null },
-    { "id": 2, "name": "science", "parent_id": null }
+    { "id": 1, "name": "technology", "name_french": "technologie", "parent_id": null },
+    { "id": 2, "name": "science", "name_french": "science", "parent_id": null }
   ]
 }
 ```

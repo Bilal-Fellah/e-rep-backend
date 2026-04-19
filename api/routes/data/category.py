@@ -7,6 +7,15 @@ from . import data_bp
 
 SECRET = os.environ.get("SECRET_KEY")
 
+
+def _serialize_category(category):
+    return {
+        "id": category.id,
+        "name": category.name,
+        "name_french": category.name_french,
+        "parent_id": category.parent_id,
+    }
+
 @data_bp.route("/add_category", methods=["POST"])
 def add_category():
     try:
@@ -21,17 +30,16 @@ def add_category():
 
         data = request.get_json()
         name = data.get("name", "").strip().lower()
+        name_french = data.get("name_french")
+        if isinstance(name_french, str):
+            name_french = name_french.strip().lower() or None
         parent_id = data.get("parent_id")
 
         if not name:
             return error_response("Missing required field: 'name'.", 400)
 
-        category = CategoryRepository.create(name=name, parent_id=parent_id)
-        return success_response({
-            "id": category.id,
-            "name": category.name,
-            "parent_id": category.parent_id
-        }, 201)
+        category = CategoryRepository.create(name=name, name_french=name_french, parent_id=parent_id)
+        return success_response(_serialize_category(category), 201)
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
     
@@ -78,10 +86,7 @@ def get_all_categories():
         if not categories:
             return error_response("No categories found.", 404)
 
-        data = [
-            {"id": c.id, "name": c.name, "parent_id": c.parent_id}
-            for c in categories
-        ]
+        data = [_serialize_category(category) for category in categories]
         return success_response(data, 200)
     
     except (TypeError, KeyError, ValueError):

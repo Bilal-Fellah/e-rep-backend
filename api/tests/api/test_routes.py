@@ -133,6 +133,34 @@ def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
     assert payload["entity_category"]["category_id"] == 2
 
 
+def test_data_add_category_and_get_all_categories_include_french_name(client, monkeypatch):
+    created_category = SimpleNamespace(id=9, name="technology", name_french="technologie", parent_id=None)
+    captured = {}
+
+    def _create(name, name_french=None, parent_id=None):
+        captured.update({"name": name, "name_french": name_french, "parent_id": parent_id})
+        return created_category
+
+    monkeypatch.setattr("api.routes.data.category.CategoryRepository.create", _create)
+
+    response = client.post(
+        "/api/data/add_category",
+        json={"name": " Technology ", "name_french": " Technologie "},
+    )
+    assert response.status_code == 201
+    payload = response.get_json()["data"]
+    assert captured == {"name": "technology", "name_french": "technologie", "parent_id": None}
+    assert payload["name_french"] == "technologie"
+
+    categories = [SimpleNamespace(id=1, name="technology", name_french="technologie", parent_id=None)]
+    monkeypatch.setattr("api.routes.data.category.CategoryRepository.get_all_root", lambda: categories)
+
+    response = client.get("/api/data/get_all_categories")
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload[0]["name_french"] == "technologie"
+
+
 def test_data_get_entity_likes_history_validation_not_found_and_success(client, monkeypatch):
     response = client.get("/api/data/get_entity_likes_history")
     assert response.status_code == 400

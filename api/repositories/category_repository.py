@@ -19,8 +19,8 @@ class CategoryRepository:
         return Category.query.filter(Category.parent_id.is_(None)).all()
 
     @staticmethod
-    def create(name: str, parent_id: int | None = None) -> Category:
-        category = Category(name=name, parent_id=parent_id)
+    def create(name: str, name_french: str | None = None, parent_id: int | None = None) -> Category:
+        category = Category(name=name, name_french=name_french, parent_id=parent_id)
         db.session.add(category)
         db.session.commit()
         return category
