@@ -12,6 +12,7 @@ services:
     volumes:
       - ./instance:/app/instance
       - ./uploads:/app/uploads
+      - ./logs:/app/logs
       - /var/run/postgresql:/var/run/postgresql
   nginx:
     image: nginx:latest
