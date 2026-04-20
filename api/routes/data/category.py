@@ -14,6 +14,7 @@ def _serialize_category(category):
         "name": category.name,
         "name_french": category.name_french,
         "parent_id": category.parent_id,
+        "is_active": category.is_active,
     }
 
 @data_bp.route("/add_category", methods=["POST"])
@@ -85,6 +86,19 @@ def get_all_categories():
         categories = CategoryRepository.get_all()
         if not categories:
             return error_response("No categories found.", 404)
+
+        data = [_serialize_category(category) for category in categories]
+        return success_response(data, 200)
+    
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+@data_bp.route("/get_active_categories", methods=["GET"])
+def get_active_categories():
+    try:
+        categories = CategoryRepository.get_all_active()
+        if not categories:
+            return error_response("No active categories found.", 404)
 
         data = [_serialize_category(category) for category in categories]
         return success_response(data, 200)

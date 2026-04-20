@@ -29,7 +29,8 @@ Add a new category.
     "id": 5,
     "name": "technology",
     "name_french": "technologie",
-    "parent_id": 1
+    "parent_id": 1,
+    "is_active": true
   }
 }
 ```
@@ -87,7 +88,7 @@ Delete a category by id.
 
 ## **GET /api/data/get_all_categories**
 
-Fetch all root categories (categories with `parent_id = null`).
+Fetch all categories.
 
 ### Success Response (200)
 
@@ -95,8 +96,8 @@ Fetch all root categories (categories with `parent_id = null`).
 {
   "success": true,
   "data": [
-    { "id": 1, "name": "technology", "name_french": "technologie", "parent_id": null },
-    { "id": 2, "name": "science", "name_french": "science", "parent_id": null }
+    { "id": 1, "name": "technology", "name_french": "technologie", "parent_id": null, "is_active": true },
+    { "id": 2, "name": "science", "name_french": "science", "parent_id": null, "is_active": false }
   ]
 }
 ```
@@ -105,6 +106,33 @@ Fetch all root categories (categories with `parent_id = null`).
 
 ```json
 { "success": false, "error": "No categories found." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **GET /api/data/get_active_categories**
+
+Fetch all active categories.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    { "id": 1, "name": "technology", "name_french": "technologie", "parent_id": null, "is_active": true }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No active categories found." }
 ```
 
 ```json

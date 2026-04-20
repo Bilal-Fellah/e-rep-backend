@@ -15,6 +15,10 @@ class CategoryRepository:
         return Category.query.all()
 
     @staticmethod
+    def get_all_active() -> list[Category]:
+        return Category.query.filter_by(is_active=True).all()
+
+    @staticmethod
     def get_all_root() -> list[Category]:
         return Category.query.filter(Category.parent_id.is_(None)).all()
 
