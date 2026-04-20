@@ -15,3 +15,4 @@ class Category(db.Model):
 
     # Many-to-many with Entity
     entities = relationship("Entity", secondary="entity_category", back_populates="categories", passive_deletes=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
