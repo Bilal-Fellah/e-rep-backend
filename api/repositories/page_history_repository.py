@@ -274,7 +274,7 @@ class PageHistoryRepository:
     def get_all_entities_posts(date_limit):
         query = text("""
             SELECT * from page_posts_metrics_mv
-            where platform in ('instagram','linkedin','tiktok','youtube','x')
+            where platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
             and date(recorded_at) >= :date_limit
             and to_scrape
                     """)
@@ -295,7 +295,7 @@ class PageHistoryRepository:
                     page_id,
                     raw_followers AS current_followers
                 FROM page_posts_metrics_mv
-                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x')
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
                   AND to_scrape
                 ORDER BY page_id, recorded_at DESC
             ),
