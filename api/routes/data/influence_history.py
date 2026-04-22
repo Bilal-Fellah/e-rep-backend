@@ -165,54 +165,15 @@ def get_entity_history():
         return error_response("Invalid request data", 400)
     
 
-@data_bp.route("/get_entities_ranking", methods=["GET"])
-def get_entities_ranking():
-    # try:
-    #     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    #     payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-
-    # except Exception:
-    #     pass
-    
+@data_bp.route("/get_followers_ranking", methods=["GET"])
+def get_followers_ranking():
     try:
-
-        data = InfluenceHistoryService.get_entities_ranking()
-
-
-        if not data or (type(data) == list and len(data)<1):
-            return error_response("No data found for entities.", 404)
-        
-        # user = None
-        # if payload:
-        #     user = UserRepository.get_by_id(payload["user_id"])
-
-        # role = user.role if user else 'public'
-        
-        # if role == 'admin' or role=='subscribed' or role == 'registered':
-        return success_response(data, 200)    
-        
-        # elif role =='public':
-        #     # rank by category
-        #     filter_category = defaultdict(list)
-        #     for row in data:
-        #         filter_category[row['category']].append(row)
-
-        #     filtered_entities = data[:10]
-        #     for cat in filter_category.keys():
-        #         top_com_here = min(filter_category[cat], key= lambda e: e['rank'], default=None)
-        #         if top_com_here['entity_id'] not in [e['entity_id'] for e in filtered_entities]:
-        #             filtered_entities.append(top_com_here)
-
-        #     return success_response(filtered_entities, 200)
-       
-        # else:
-        #     return error_response("Role is not valid", 401)
+        data = InfluenceHistoryService.get_followers_ranking()
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No followers ranking data found for entities.", 404)
+        return success_response(data, 200)
     except (TypeError, KeyError, ValueError):
-        return error_response("Invalid request data", status_code=400)
-
-@data_bp.route("/entities_ranking", methods=['GET'])
-def entities_ranking():
-    return success_response(InfluenceHistoryService.entities_ranking(), 200)
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_interactions_ranking", methods=["GET"])

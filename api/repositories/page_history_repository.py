@@ -304,7 +304,7 @@ class PageHistoryRepository:
                     page_id,
                     raw_followers AS prev_followers
                 FROM page_posts_metrics_mv
-                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x')
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
                   AND to_scrape
                   AND date(recorded_at) >= :date_limit
                 ORDER BY page_id, recorded_at ASC
@@ -364,7 +364,7 @@ class PageHistoryRepository:
             WHERE LOWER(COALESCE(e.type, '')) = 'company'
               AND pem.to_scrape
               AND e.to_scrape
-              AND pm.platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND pm.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
               AND DATE(pm.created_at) >= :date_limit
                         GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform, pm.page_id, pem.page_name, pem.page_url, pem.profile_image_url
             ORDER BY pem.entity_name, pm.platform

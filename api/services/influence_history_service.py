@@ -59,95 +59,17 @@ class InfluenceHistoryService:
 
     @staticmethod
     def get_entities_ranking():
+        # Legacy alias kept for compatibility.
+        return InfluenceHistoryService.get_followers_ranking()
+
+    @staticmethod
+    def get_followers_ranking():
         return PageHistoryRepository.get_all_entities_ranking()
 
     @staticmethod
     def entities_ranking():
-        start_date = datetime.now() - timedelta(days=30)
-        data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
-        followers_snapshot = PageHistoryRepository.get_entities_followers_snapshot(date_limit=start_date)
-
-        followers_by_page = {
-            row.page_id: {
-                "current": row.current_followers or 0,
-                "prev": row.prev_followers or 0,
-            }
-            for row in followers_snapshot
-        }
-
-        structured_entities = defaultdict(lambda: {
-            "platforms": {},
-            "posts": [],
-            "_platform_ts": {}
-        })
-
-        for row in data:
-            entity = structured_entities[row.entity_id]
-            root_category = row.root_category if row.root_category is not None else row.category
-
-            entity["entity_id"] = row.entity_id
-            entity["entity_name"] = row.entity_name
-            entity["category"] = row.category
-            entity["root_category"] = root_category
-
-            prev_ts = entity["_platform_ts"].get(row.platform)
-            if prev_ts is None or row.recorded_at > prev_ts:
-                entity["_platform_ts"][row.platform] = row.recorded_at
-                snap = followers_by_page.get(row.page_id, {"current": 0, "prev": 0})
-                entity["platforms"][row.platform] = {
-                    "followers": snap["current"],
-                    "prev_followers": snap["prev"],
-                    "page_id": row.page_id,
-                    "page_name": row.page_name,
-                    "profile_url": row.page_url,
-                    "profile_image_url": row.profile_url,
-                }
-
-            if row.posts_metrics:
-                entity["posts"].append({"platform": row.platform, "metrics": row.posts_metrics})
-
-        entity_scores = []
-
-        for entity_id, entity_data in structured_entities.items():
-            total_score = 0
-            total_posts = 0
-
-            for post_block in entity_data["posts"]:
-                platform = post_block["platform"]
-                posts_metrics = post_block["metrics"]
-
-                if platform not in platform_metrics:
-                    continue
-
-                metrics_def = platform_metrics[platform]["metrics"]
-
-                for post in posts_metrics:
-                    for m in metrics_def:
-                        value = post.get(m["name"], 0) or 0
-                        total_score += value * m["score"]
-                    total_posts += 1
-
-            total_followers = sum(p["followers"] for p in entity_data["platforms"].values())
-            total_prev_followers = sum(p["prev_followers"] for p in entity_data["platforms"].values())
-
-            entity_scores.append({
-                "entity_id": entity_id,
-                "entity_name": entity_data["entity_name"],
-                "category": entity_data["category"],
-                "root_category": entity_data["root_category"],
-                "platforms": entity_data["platforms"],
-                "total_score": total_score,
-                "average_score": total_score / total_posts if total_posts else 0,
-                "total_followers": total_followers,
-                "total_prev_followers": total_prev_followers,
-            })
-
-        entity_scores.sort(key=lambda x: x["total_followers"], reverse=True)
-
-        for idx, entity in enumerate(entity_scores, start=1):
-            entity["rank"] = idx
-
-        return entity_scores
+        # Legacy alias kept for compatibility.
+        return InfluenceHistoryService.get_followers_ranking()
 
     @staticmethod
     def get_interactions_ranking(start_date=None):

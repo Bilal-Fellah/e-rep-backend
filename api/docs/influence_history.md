@@ -94,9 +94,14 @@ Return entity history by date (today by default).
 
 ---
 
-## **GET /api/data/get_entities_ranking**
+## **GET /api/data/get_followers_ranking**
 
-Return ranking data from the current ranking query.
+Return followers-based entity ranking data.
+
+### Notes
+
+- Uses followers snapshots only.
+- Does not compute post-based score fields.
 
 ### Success Response (200)
 
@@ -107,7 +112,17 @@ Return ranking data from the current ranking query.
     {
       "entity_id": 1,
       "entity_name": "Tesla",
-      "rank": 1
+      "total_followers": 100000,
+      "rank": 1,
+      "category": "business",
+      "platforms": {
+        "facebook": {
+          "page_id": "page_uuid",
+          "followers": 50000,
+          "profile_url": "https://example.com/profile.jpg",
+          "page_url": "https://facebook.com/example"
+        }
+      }
     }
   ]
 }
@@ -116,35 +131,11 @@ Return ranking data from the current ranking query.
 ### Error Responses
 
 ```json
-{ "success": false, "error": "No data found for entities." }
+{ "success": false, "error": "No followers ranking data found for entities." }
 ```
 
----
-
-## **GET /api/data/entities_ranking**
-
-Return the computed 30-day ranking with platform/follower summary.
-
-### Success Response (200)
-
 ```json
-{
-  "success": true,
-  "data": [
-    {
-      "entity_id": 1,
-      "entity_name": "Tesla",
-      "category": "automotive",
-      "root_category": "business",
-      "platforms": {},
-      "total_score": 1500,
-      "average_score": 120.5,
-      "total_followers": 100000,
-      "total_prev_followers": 98000,
-      "rank": 1
-    }
-  ]
-}
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
