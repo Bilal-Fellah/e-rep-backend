@@ -529,109 +529,86 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_all_entities_ranking():
-        raw_followers = PageHistoryRepository._followers_case()
-
-        # Step 2: Cast AFTER evaluating it's not NULL
-        followers_case = db.cast(raw_followers, db.Integer)
-
-        profile_url_case = PageHistoryRepository._profile_url_case()
-
-        latest_page_data = (
-            select(
-                PageHistory.page_id,
-                PageHistory.recorded_at,
-                followers_case.label("followers"),
-                profile_url_case.label("profile_url"),
+        query = text("""
+            WITH latest_page_data AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    category,
+                    raw_followers::BIGINT AS followers,
+                    DATE(recorded_at) AS snapshot_date
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+                ORDER BY page_id, recorded_at DESC
+            ),
+            entity_category_map AS (
+                SELECT
+                    entity_id,
+                    MIN(category) AS category
+                FROM latest_page_data
+                GROUP BY entity_id
+            ),
+            entity_totals AS (
+                SELECT
+                    entity_id,
+                    SUM(followers)::BIGINT AS total_followers,
+                    MIN(snapshot_date) AS window_start,
+                    RANK() OVER (ORDER BY SUM(followers) DESC) AS entity_rank
+                FROM latest_page_data
+                GROUP BY entity_id
             )
-            .join(Page, Page.uuid == PageHistory.page_id)
-            .where(
-                PageHistory.recorded_at
-                == (
-                    select(db.func.max(PageHistory.recorded_at))
-                    .where(PageHistory.page_id == Page.uuid)
-                    .where(raw_followers.isnot(None))
-                    .correlate(Page)
-                    .scalar_subquery()
-                )
-            )
-            .subquery()
-        )
+            SELECT
+                lpd.entity_id,
+                lpd.entity_name,
+                et.total_followers,
+                et.entity_rank,
+                et.window_start,
+                ecm.category,
+                lpd.platform,
+                lpd.page_name,
+                lpd.page_id,
+                lpd.page_url,
+                lpd.profile_image_url,
+                lpd.followers
+            FROM latest_page_data lpd
+            JOIN entity_totals et ON et.entity_id = lpd.entity_id
+            LEFT JOIN entity_category_map ecm ON ecm.entity_id = lpd.entity_id
+            ORDER BY et.entity_rank, lpd.platform
+        """)
 
-
-        # --- Step 2: Aggregate per entity ---
-
-        entity_totals = (
-            select(
-                Entity.id.label("entity_id"),
-                RootCategory.name.label("root_category_name"),
-                db.func.min(db.func.date(latest_page_data.c.recorded_at)).label("window_start"),
-                db.func.sum(latest_page_data.c.followers).label("total_followers"),
-                db.func.rank()
-                .over(order_by=db.func.sum(latest_page_data.c.followers).desc())
-                .label("entity_rank"),
-            )
-            .join(Page, Page.entity_id == Entity.id)
-            .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
-            .join(EntityCategory, EntityCategory.entity_id == Entity.id)
-            .join(Category, Category.id == EntityCategory.category_id)
-            .join(
-                RootCategory,
-                case(
-                    (Category.parent_id == None, Category.id),  # if no parent, use itself
-                    else_=Category.parent_id
-                ) == RootCategory.id   # <-- compare result to RootCategory.id
-            )
-            .group_by(Entity.id, RootCategory.name)
-            .subquery()
-        )
-
-        # --- Step 3: Final query (no second join to PageHistory needed) ---
-        stmt = (
-            select(
-                Entity.id.label("entity_id"),
-                Entity.name.label("entity_name"),
-                entity_totals.c.total_followers,
-                entity_totals.c.entity_rank,
-                entity_totals.c.window_start,
-                entity_totals.c.root_category_name,
-                Page.platform,
-                Page.name.label("page_name"),
-                Page.uuid.label("page_id"),
-                Page.link.label("page_url"),
-                latest_page_data.c.profile_url.label("profile_image_url"),
-                latest_page_data.c.followers,
-            )
-            .join(Page, Page.entity_id == Entity.id)
-            .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
-            .join(entity_totals, entity_totals.c.entity_id == Entity.id)
-            .order_by(entity_totals.c.entity_rank)
-        )
-
-        rows = db.session.execute(stmt).all()
+        rows = db.session.execute(query).mappings().all()
         if len(rows) < 1:
             return []
         
         # --- Step 4: Build result dict ---
         result = {}
         for row in rows:
-            if row.entity_id not in result:
-                result[row.entity_id] = {
-                    "entity_id": row.entity_id,
-                    "entity_name": row.entity_name,
-                    "total_followers": row.total_followers,
-                    "rank": row.entity_rank,
-                    "category": row.root_category_name,
-                    "root_category": row.root_category_name,
-                    "window_start": row.window_start.isoformat() if row.window_start else None,
+            entity_id = row["entity_id"]
+            if entity_id not in result:
+                result[entity_id] = {
+                    "entity_id": entity_id,
+                    "entity_name": row["entity_name"],
+                    "total_followers": row["total_followers"],
+                    "rank": row["entity_rank"],
+                    "category": row["category"],
+                    "root_category": row["category"],
+                    "window_start": row["window_start"].isoformat() if row["window_start"] else None,
                     "platforms": {}
                 }
 
-            result[row.entity_id]["platforms"][row.platform] = {
-                "page_name": row.page_name,
-                "page_id": row.page_id,
-                "followers": row.followers,
-                "profile_image_url": row.profile_image_url,
-                "page_url": row.page_url,
+            result[entity_id]["platforms"][row["platform"]] = {
+                "page_name": row["page_name"],
+                "page_id": row["page_id"],
+                "followers": row["followers"],
+                "profile_image_url": row["profile_image_url"],
+                "page_url": row["page_url"],
             }
 
         # return list sorted by rank
