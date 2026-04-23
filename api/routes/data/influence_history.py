@@ -165,6 +165,11 @@ def get_entity_history():
         return error_response("Invalid request data", 400)
     
 
+# @data_bp.route("/get_entities_ranking", methods=["GET"])
+# def get_entities_ranking():
+#     # Deprecated in favor of /get_followers_ranking.
+#     pass
+
 @data_bp.route("/get_followers_ranking", methods=["GET"])
 def get_followers_ranking():
     try:

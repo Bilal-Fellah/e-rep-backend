@@ -564,6 +564,7 @@ class PageHistoryRepository:
             select(
                 Entity.id.label("entity_id"),
                 RootCategory.name.label("root_category_name"),
+                db.func.min(db.func.date(latest_page_data.c.recorded_at)).label("window_start"),
                 db.func.sum(latest_page_data.c.followers).label("total_followers"),
                 db.func.rank()
                 .over(order_by=db.func.sum(latest_page_data.c.followers).desc())
@@ -591,11 +592,13 @@ class PageHistoryRepository:
                 Entity.name.label("entity_name"),
                 entity_totals.c.total_followers,
                 entity_totals.c.entity_rank,
+                entity_totals.c.window_start,
                 entity_totals.c.root_category_name,
                 Page.platform,
+                Page.name.label("page_name"),
                 Page.uuid.label("page_id"),
                 Page.link.label("page_url"),
-                latest_page_data.c.profile_url,
+                latest_page_data.c.profile_url.label("profile_image_url"),
                 latest_page_data.c.followers,
             )
             .join(Page, Page.entity_id == Entity.id)
@@ -618,13 +621,16 @@ class PageHistoryRepository:
                     "total_followers": row.total_followers,
                     "rank": row.entity_rank,
                     "category": row.root_category_name,
+                    "root_category": row.root_category_name,
+                    "window_start": row.window_start.isoformat() if row.window_start else None,
                     "platforms": {}
                 }
 
             result[row.entity_id]["platforms"][row.platform] = {
+                "page_name": row.page_name,
                 "page_id": row.page_id,
                 "followers": row.followers,
-                "profile_url": row.profile_url,
+                "profile_image_url": row.profile_image_url,
                 "page_url": row.page_url,
             }
 
