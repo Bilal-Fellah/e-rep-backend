@@ -249,6 +249,11 @@ Get interpolated daily likes development (gained likes) for each page under an e
 - `entity_id` (required, int)
 - `start_date` (optional, ISO date/datetime; default = last 30 days)
 
+### Notes
+
+- Gain calculations use one baseline day before `start_date` (or before the default 30-day window) so the first returned day has a real day-over-day value.
+- The baseline day is not returned in the response.
+
 ### Success Response (200)
 
 ```json
@@ -292,6 +297,8 @@ Compare interpolated daily likes development (gained likes) for multiple entitie
 
 `start_date` is optional. If omitted, the last 30 days are used.
 
+For each entity, the backend uses one baseline day before the requested window to compute the first returned day's gain accurately.
+
 ### Success Response (200)
 
 ```json
@@ -333,6 +340,11 @@ Get interpolated daily comments development (gained comments) for each page unde
 
 - `entity_id` (required, int)
 - `start_date` (optional, ISO date/datetime; default = last 30 days)
+
+### Notes
+
+- Gain calculations use one baseline day before `start_date` (or before the default 30-day window) so the first returned day has a real day-over-day value.
+- The baseline day is not returned in the response.
 
 ### Success Response (200)
 
@@ -376,6 +388,8 @@ Compare interpolated daily comments development (gained comments) for multiple e
 ```
 
 `start_date` is optional. If omitted, the last 30 days are used.
+
+For each entity, the backend uses one baseline day before the requested window to compute the first returned day's gain accurately.
 
 ### Success Response (200)
 

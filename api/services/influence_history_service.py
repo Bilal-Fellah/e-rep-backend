@@ -179,6 +179,10 @@ class InfluenceHistoryService:
 
     @staticmethod
     def get_entity_interaction_stats(entity_id, start_date=None):
+        normalized_start = ensure_datetime(start_date) if start_date else None
+        baseline_start = normalized_start - timedelta(days=1) if normalized_start else None
+        start_day = normalized_start.date() if normalized_start else None
+
         data = PageHistoryRepository.get_entity_posts__old(entity_id=entity_id)
         if not data:
             return []
@@ -217,7 +221,7 @@ class InfluenceHistoryService:
                     continue
 
                 post_date = post.get(date_key)
-                if start_date and post_date and ensure_datetime(post_date) < start_date:
+                if baseline_start and post_date and ensure_datetime(post_date) < baseline_start:
                     continue
 
                 daily_posts[day_key][post_id] = {
@@ -270,6 +274,9 @@ class InfluenceHistoryService:
 
         summary = []
         for day in all_days:
+            if start_day and day < start_day:
+                continue
+
             day_platform_scores = {}
             day_gains = {}
             day_total_score = 0.0

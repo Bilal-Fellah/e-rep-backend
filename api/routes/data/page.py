@@ -105,6 +105,9 @@ def get_pages_by_platform():
         #     return error_response("Access denied", 403)
         
         platform = request.args.get("platform")
+        if not platform:
+            return error_response("Missing required query param: 'platform'.", 400)
+
         pages = PageService.get_pages_by_platform(platform)
         if not pages:
             return error_response("No pages found.", status_code=404)

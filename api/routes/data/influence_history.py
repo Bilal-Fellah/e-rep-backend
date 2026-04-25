@@ -230,6 +230,9 @@ def get_comments_ranking():
 def get_entity_interaction_stats():
     try:
         entity_id = request.args.get("entity_id", type=int)
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
         start_date = request.args.get("start_date")
         if start_date:
             start_date = datetime.fromisoformat(start_date)
@@ -251,7 +254,7 @@ def get_competitors_interaction_stats():
 
         entity_ids = inputs.get("entity_ids")
         if not isinstance(entity_ids, list) or not entity_ids:
-            return error_response(f"wrong value for entity_ids")
+            return error_response("Invalid value for 'entity_ids'. Expected a non-empty list.", 400)
         
         start_date = inputs.get("start_date", None)
         # print(start_date)

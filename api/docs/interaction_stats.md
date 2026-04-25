@@ -54,6 +54,11 @@ Return day-level interaction gains/score summary for one entity.
 - `entity_id` (required, int)
 - `start_date` (optional, ISO datetime/date)
 
+### Notes
+
+- Gain calculations use one baseline day before `start_date` (or before the default 30-day window) so the first returned day has a real day-over-day gain.
+- The baseline day is used for calculation only and is not included in the response.
+
 ### Success Response (200)
 
 ```json
@@ -79,6 +84,10 @@ Return day-level interaction gains/score summary for one entity.
 ```
 
 ### Error Responses
+
+```json
+{ "success": false, "error": "Missing required query param: 'entity_id'." }
+```
 
 ```json
 { "success": false, "error": "No data found for entity <entity_id>." }
@@ -126,7 +135,7 @@ Return scored post interactions across multiple entities.
 ### Error Responses
 
 ```json
-{ "success": false, "error": "wrong value for entity_ids" }
+{ "success": false, "error": "Invalid value for 'entity_ids'. Expected a non-empty list." }
 ```
 
 ```json

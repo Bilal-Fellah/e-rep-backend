@@ -31,7 +31,7 @@ Return history records for a platform.
 ### Error Responses
 
 ```json
-{ "success": false, "error": "Missing platform parameter" }
+{ "success": false, "error": "Missing required query param: 'platform'." }
 ```
 
 ```json

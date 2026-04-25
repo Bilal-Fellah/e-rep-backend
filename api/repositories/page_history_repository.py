@@ -9,7 +9,7 @@ from sqlalchemy import case, select, and_, cast, text, bindparam
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from api.utils.logging_utils import instrument_repository_class
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import json
 import os
 from uuid import UUID
@@ -320,7 +320,10 @@ class PageHistoryRepository:
         return results
 
     @staticmethod
-    def get_companies_interactions_summary(date_limit: date):
+    def get_companies_interactions_summary(date_limit: date = None):
+        if date_limit is None:
+            date_limit = (datetime.now() - timedelta(days=30)).date()
+
         query = text("""
             WITH page_entity_map AS (
                 SELECT DISTINCT ON (page_id)

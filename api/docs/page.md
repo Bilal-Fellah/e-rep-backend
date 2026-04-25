@@ -138,6 +138,10 @@ Fetch pages for one platform.
 ### Error Responses
 
 ```json
+{ "success": false, "error": "Missing required query param: 'platform'." }
+```
+
+```json
 { "success": false, "error": "No pages found." }
 ```
 

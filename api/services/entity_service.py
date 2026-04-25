@@ -291,17 +291,23 @@ class EntityService:
 
     @staticmethod
     def get_entity_likes_history(entity_id, start_date=None):
-        date_limit = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
-        history = PageHistoryRepository().get_entity_likes_development(entity_id, date_limit=date_limit)
+        start_day = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
+        baseline_day = start_day - timedelta(days=1)
+
+        history = PageHistoryRepository().get_entity_likes_development(entity_id, date_limit=baseline_day)
         if not history:
             return []
 
-        return EntityService._build_likes_gains_rows(history)
+        records = EntityService._build_likes_gains_rows(history)
+        start_day_iso = start_day.isoformat()
+        return [row for row in records if row.get("date") >= start_day_iso]
 
     @staticmethod
     def compare_entities_likes(entity_ids, start_date=None):
-        date_limit = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
-        raw_results = PageHistoryRepository().get_entities_likes_development(entity_ids, date_limit=date_limit)
+        start_day = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
+        baseline_day = start_day - timedelta(days=1)
+
+        raw_results = PageHistoryRepository().get_entities_likes_development(entity_ids, date_limit=baseline_day)
         if not raw_results:
             return None
 
@@ -318,8 +324,12 @@ class EntityService:
             return None
 
         data = {}
+        start_day_iso = start_day.isoformat()
         for entity_name, rows in rows_by_entity.items():
-            records = EntityService._build_likes_gains_rows(rows)
+            records = [
+                row for row in EntityService._build_likes_gains_rows(rows)
+                if row.get("date") >= start_day_iso
+            ]
             if not records:
                 continue
 
@@ -335,17 +345,23 @@ class EntityService:
 
     @staticmethod
     def get_entity_comments_history(entity_id, start_date=None):
-        date_limit = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
-        history = PageHistoryRepository().get_entity_comments_development(entity_id, date_limit=date_limit)
+        start_day = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
+        baseline_day = start_day - timedelta(days=1)
+
+        history = PageHistoryRepository().get_entity_comments_development(entity_id, date_limit=baseline_day)
         if not history:
             return []
 
-        return EntityService._build_comments_gains_rows(history)
+        records = EntityService._build_comments_gains_rows(history)
+        start_day_iso = start_day.isoformat()
+        return [row for row in records if row.get("date") >= start_day_iso]
 
     @staticmethod
     def compare_entities_comments(entity_ids, start_date=None):
-        date_limit = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
-        raw_results = PageHistoryRepository().get_entities_comments_development(entity_ids, date_limit=date_limit)
+        start_day = parse_iso_date(start_date) if start_date else datetime.now(timezone.utc).date() - timedelta(days=30)
+        baseline_day = start_day - timedelta(days=1)
+
+        raw_results = PageHistoryRepository().get_entities_comments_development(entity_ids, date_limit=baseline_day)
         if not raw_results:
             return None
 
@@ -362,8 +378,12 @@ class EntityService:
             return None
 
         data = {}
+        start_day_iso = start_day.isoformat()
         for entity_name, rows in rows_by_entity.items():
-            records = EntityService._build_comments_gains_rows(rows)
+            records = [
+                row for row in EntityService._build_comments_gains_rows(rows)
+                if row.get("date") >= start_day_iso
+            ]
             if not records:
                 continue
 

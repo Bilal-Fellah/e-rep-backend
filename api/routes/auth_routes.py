@@ -40,7 +40,8 @@ register_blueprint_error_handlers(auth_bp, include_token_errors=True)
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
     try:
-        email = request.json.get("email")
+        payload = request.get_json(silent=True) or {}
+        email = payload.get("email")
         if not email or not validate_email(email):
             return error_response("Invalid email", 400)
         
@@ -128,7 +129,11 @@ def register_user():
 @auth_bp.route("/register_entity_name", methods=["POST"])
 def register_entity_name():
     try:
-        entity_name = request.json.get("entity_name")
+        payload = request.get_json(silent=True) or {}
+        entity_name = payload.get("entity_name")
+
+        if not entity_name or not isinstance(entity_name, str):
+            return error_response("Missing or invalid required field: 'entity_name'.", 400)
 
         if EntityRepository.get_by_name(entity_name= entity_name):
             return error_response(f"entity name {entity_name} already exists")
