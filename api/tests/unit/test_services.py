@@ -109,13 +109,13 @@ def test_auth_create_entity_pages_validates_and_creates(monkeypatch):
 
     pages = AuthService.create_entity_pages(
         entity,
-        [{"platform": "instagram", "link": "https://example.com/p"}],
+        [{"platform": "instagram", "link": " https://web.example.com/p/?ref=abc "}],
     )
 
     assert pages == [
         {
-            "page_id": "uuid:https://example.com/p",
-            "page_link": "https://example.com/p",
+            "page_id": "uuid:https://www.example.com/p",
+            "page_link": "https://www.example.com/p",
             "platform": "instagram",
         }
     ]
@@ -133,13 +133,13 @@ def test_page_service_create_page_and_interaction_stats(monkeypatch):
         lambda **kwargs: SimpleNamespace(**kwargs),
     )
     created_page, err = PageService.create_page(
-        {"platform": " Instagram ", "link": " HTTPS://A.B/C ", "entity_id": 9}
+        {"platform": " Instagram ", "link": " https://m.example.com/P/?en=1 ", "entity_id": 9}
     )
 
     assert err is None
     assert created_page.platform == "instagram"
-    assert created_page.link == "https://a.b/c"
-    assert created_page.name == "https://a.b/c"
+    assert created_page.link == "https://www.example.com/p"
+    assert created_page.name == "https://www.example.com/p"
 
     row = (
         uuid.uuid4(),

@@ -6,7 +6,7 @@ from api.models.user_model import User
 from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
 from api.utils.logging_utils import instrument_service_class
-from api.utils.page_uuid import create_page_uuid
+from api.utils.page_uuid import create_page_uuid, normalize_page_link
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
@@ -99,7 +99,7 @@ class AuthService:
                     raise ValueError("Invalid page data, platform and link are required for every page")
 
                 platform = str(page["platform"]).strip()
-                link = str(page["link"]).strip()
+                link = normalize_page_link(page["link"])
                 if not platform or not link:
                     raise ValueError("Invalid page data, platform and link must be non-empty")
 

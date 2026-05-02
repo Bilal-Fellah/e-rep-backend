@@ -3,7 +3,7 @@ from api.repositories.page_history_repository import PageHistoryRepository
 from api.repositories.page_repository import PageRepository
 from api.utils.data_keys import platform_metrics
 from api.utils.logging_utils import instrument_service_class
-from api.utils.page_uuid import create_page_uuid
+from api.utils.page_uuid import create_page_uuid, normalize_page_link
 from api.utils.posts_utils import ensure_datetime
 from api.utils.request_parsing import parse_iso_date
 
@@ -13,7 +13,7 @@ class PageService:
     @staticmethod
     def create_page(data):
         platform = data.get("platform", "").strip().lower()
-        link = data.get("link", "").strip().lower()
+        link = normalize_page_link(data.get("link", ""))
         entity_id = data.get("entity_id")
 
         if not platform or not link or not entity_id:

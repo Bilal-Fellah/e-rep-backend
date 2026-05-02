@@ -93,10 +93,10 @@ def test_interpolate_series_fills_gaps_with_neighbors_or_previous():
 
 
 def test_page_uuid_normalization_and_uuid_generation_are_stable():
-    link = "HTTPS://Example.com/Page/?ref=abc"
+    link = " HTTPS://m.Example.com/Page/?ref=abc "
     normalized = normalize_page_link(link)
 
-    assert normalized == "https://example.com/page"
+    assert normalized == "https://www.example.com/page"
 
     page_uuid = create_page_uuid(link)
     assert isinstance(page_uuid, uuid.UUID)
