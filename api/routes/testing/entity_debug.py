@@ -4,12 +4,15 @@ from datetime import datetime, timezone, timedelta
 
 from flask import request
 
+from api import db
+from api.models import Page
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.routes.main import error_response, success_response
 from api.utils.data_keys import platform_metrics
+from api.utils.page_uuid import normalize_page_link
 from api.utils.posts_utils import _to_number, ensure_datetime
 from api.utils.request_parsing import parse_iso_date
 from . import testing_bp
@@ -182,6 +185,83 @@ def update_entity_category():
                 "entity_id": relation.entity_id,
                 "previous_category_ids": previous_category_ids,
                 "updated_category_id": relation.category_id,
+            },
+            200,
+        )
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
+@testing_bp.route("/sanitize_page_urls", methods=["POST"])
+def sanitize_page_urls():
+    try:
+        pages = Page.query.all()
+        if not pages:
+            return error_response("No pages found.", 404)
+
+        normalized_by_uuid = {}
+        invalid_links = []
+
+        for page in pages:
+            normalized = normalize_page_link(page.link or "")
+            if not normalized:
+                invalid_links.append({"page_id": str(page.uuid), "link": page.link})
+            normalized_by_uuid[page.uuid] = normalized
+
+        normalized_groups = {}
+        for page in pages:
+            normalized = normalized_by_uuid[page.uuid]
+            if not normalized:
+                continue
+            normalized_groups.setdefault(normalized, []).append(page)
+
+        updated = []
+        conflicts = []
+        unchanged = 0
+
+        for normalized, group in normalized_groups.items():
+            if len(group) > 1:
+                for page in group:
+                    if page.link != normalized:
+                        conflicts.append(
+                            {
+                                "page_id": str(page.uuid),
+                                "original": page.link,
+                                "normalized": normalized,
+                            }
+                        )
+                    else:
+                        unchanged += 1
+                continue
+
+            page = group[0]
+            if page.link == normalized:
+                unchanged += 1
+                continue
+
+            original_link = page.link
+            page.link = normalized
+            updated.append(
+                {
+                    "page_id": str(page.uuid),
+                    "original": original_link,
+                    "normalized": normalized,
+                }
+            )
+
+        if updated:
+            db.session.commit()
+
+        return success_response(
+            {
+                "total": len(pages),
+                "updated": len(updated),
+                "unchanged": unchanged,
+                "invalid": len(invalid_links),
+                "conflicts": len(conflicts),
+                "invalid_links": invalid_links,
+                "conflict_links": conflicts,
             },
             200,
         )

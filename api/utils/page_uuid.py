@@ -13,7 +13,8 @@ def normalize_page_link(link: str) -> str:
 
     cleaned = cleaned.lower()
     cleaned = re.sub(r"^(https?://)?(web\.|m\.)", r"\1www.", cleaned)
-    cleaned = cleaned.split("?", 1)[0]
+    if "profile.php" not in cleaned:
+        cleaned = cleaned.split("?", 1)[0]
     cleaned = cleaned.rstrip("/")
     return cleaned
 
