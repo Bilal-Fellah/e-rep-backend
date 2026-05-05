@@ -14,6 +14,7 @@ class PageService:
     def create_page(data):
         platform = data.get("platform", "").strip().lower()
         link = normalize_page_link(data.get("link", ""))
+        link = link.rstrip("/")
         entity_id = data.get("entity_id")
 
         if not platform or not link or not entity_id:

@@ -100,6 +100,7 @@ class AuthService:
 
                 platform = str(page["platform"]).strip()
                 link = normalize_page_link(page["link"])
+                link = link.rstrip("/")
                 if not platform or not link:
                     raise ValueError("Invalid page data, platform and link must be non-empty")
 
