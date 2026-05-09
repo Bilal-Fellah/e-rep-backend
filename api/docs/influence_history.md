@@ -98,9 +98,20 @@ Return entity history by date (today by default).
 
 Return followers-based entity ranking data.
 
+### Query Parameters
+
+- `date` (required, string)
+  - Allowed values: `7d`, `1m`, `3m`
+  - `7d` = 7 days before today
+  - `1m` = 1 month before today (30-day window)
+  - `3m` = 3 months before today (90-day window)
+
 ### Notes
 
 - Uses followers snapshots only.
+- Ranking is computed as of the requested day (relative to today).
+- If a page has no data on the requested day, the nearest previous and next
+  snapshot days are averaged to estimate the followers count.
 - Does not compute post-based score fields.
 
 ### Success Response (200)
@@ -132,6 +143,14 @@ Return followers-based entity ranking data.
 
 ```json
 { "success": false, "error": "No followers ranking data found for entities." }
+```
+
+```json
+{ "success": false, "error": "Missing required query param: 'date'. Use one of: 7d, 1m, 3m." }
+```
+
+```json
+{ "success": false, "error": "Invalid date value. Use one of: 7d, 1m, 3m." }
 ```
 
 ```json

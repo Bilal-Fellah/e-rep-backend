@@ -11,6 +11,12 @@ from api.utils.posts_utils import _to_number, ensure_datetime
 
 @instrument_service_class
 class InfluenceHistoryService:
+    # Relative windows supported by the followers ranking API.
+    _FOLLOWERS_RANKING_WINDOWS = {
+        "7d": 7,
+        "1m": 30,
+        "3m": 90,
+    }
     _METRIC_TOTAL_GROUPS = {
         "likes": {"likes", "likes_count", "favorites_count"},
         "comments": {"comments", "comments_count", "commentcount", "replies", "num_comments"},
@@ -63,8 +69,23 @@ class InfluenceHistoryService:
         return InfluenceHistoryService.get_followers_ranking()
 
     @staticmethod
-    def get_followers_ranking():
-        return PageHistoryRepository.get_all_entities_ranking()
+    def _resolve_followers_ranking_date(date_window):
+        if not date_window:
+            return None
+
+        normalized = str(date_window).strip().lower()
+        days = InfluenceHistoryService._FOLLOWERS_RANKING_WINDOWS.get(normalized)
+        if days is None:
+            allowed = ", ".join(InfluenceHistoryService._FOLLOWERS_RANKING_WINDOWS.keys())
+            raise ValueError(f"Invalid date value. Use one of: {allowed}.")
+        return date.today() - timedelta(days=days)
+
+    @staticmethod
+    def get_followers_ranking(date_window=None):
+        target_date = InfluenceHistoryService._resolve_followers_ranking_date(date_window)
+        if target_date is None:
+            return PageHistoryRepository.get_all_entities_ranking()
+        return PageHistoryRepository.get_all_entities_ranking_by_date(target_date)
 
     @staticmethod
     def entities_ranking():

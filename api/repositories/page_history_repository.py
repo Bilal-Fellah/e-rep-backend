@@ -531,6 +531,146 @@ class PageHistoryRepository:
         return results
         
     @staticmethod
+    def get_all_entities_ranking_by_date(target_date: date):
+        # Build a per-page snapshot for the target date, interpolating when the day is missing.
+        query = text("""
+            WITH base AS (
+                SELECT
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    category,
+                    raw_followers::BIGINT AS followers,
+                    DATE(recorded_at) AS snapshot_date,
+                    recorded_at
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+            ),
+            prev_day AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_image_url,
+                    category,
+                    followers,
+                    snapshot_date
+                FROM base
+                WHERE snapshot_date <= :target_date
+                ORDER BY page_id, snapshot_date DESC, recorded_at DESC
+            ),
+            next_day AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_image_url,
+                    category,
+                    followers,
+                    snapshot_date
+                FROM base
+                WHERE snapshot_date >= :target_date
+                ORDER BY page_id, snapshot_date ASC, recorded_at ASC
+            ),
+            resolved_page_data AS (
+                SELECT
+                    COALESCE(prev_day.page_id, next_day.page_id) AS page_id,
+                    COALESCE(prev_day.entity_id, next_day.entity_id) AS entity_id,
+                    COALESCE(prev_day.entity_name, next_day.entity_name) AS entity_name,
+                    COALESCE(prev_day.platform, next_day.platform) AS platform,
+                    COALESCE(prev_day.page_name, next_day.page_name) AS page_name,
+                    COALESCE(prev_day.page_url, next_day.page_url) AS page_url,
+                    COALESCE(prev_day.profile_image_url, next_day.profile_image_url) AS profile_image_url,
+                    COALESCE(prev_day.category, next_day.category) AS category,
+                    CASE
+                        WHEN prev_day.snapshot_date = :target_date THEN prev_day.followers
+                        WHEN next_day.snapshot_date = :target_date THEN next_day.followers
+                        WHEN prev_day.followers IS NOT NULL AND next_day.followers IS NOT NULL
+                            THEN ROUND((prev_day.followers + next_day.followers) / 2.0)::BIGINT
+                        ELSE COALESCE(prev_day.followers, next_day.followers)
+                    END AS followers
+                FROM prev_day
+                FULL OUTER JOIN next_day ON next_day.page_id = prev_day.page_id
+            ),
+            entity_category_map AS (
+                SELECT
+                    entity_id,
+                    MIN(category) AS category
+                FROM resolved_page_data
+                GROUP BY entity_id
+            ),
+            entity_totals AS (
+                SELECT
+                    entity_id,
+                    SUM(followers)::BIGINT AS total_followers,
+                    CAST(:target_date AS DATE) AS window_start,
+                    RANK() OVER (ORDER BY SUM(followers) DESC) AS entity_rank
+                FROM resolved_page_data
+                WHERE followers IS NOT NULL
+                GROUP BY entity_id
+            )
+            SELECT
+                rpd.entity_id,
+                rpd.entity_name,
+                et.total_followers,
+                et.entity_rank,
+                et.window_start,
+                ecm.category,
+                rpd.platform,
+                rpd.page_name,
+                rpd.page_id,
+                rpd.page_url,
+                rpd.profile_image_url,
+                rpd.followers
+            FROM resolved_page_data rpd
+            JOIN entity_totals et ON et.entity_id = rpd.entity_id
+            LEFT JOIN entity_category_map ecm ON ecm.entity_id = rpd.entity_id
+            WHERE rpd.followers IS NOT NULL
+            ORDER BY et.entity_rank, rpd.platform
+        """)
+
+        rows = db.session.execute(query, {"target_date": target_date}).mappings().all()
+        if len(rows) < 1:
+            return []
+
+        result = {}
+        for row in rows:
+            entity_id = row["entity_id"]
+            if entity_id not in result:
+                result[entity_id] = {
+                    "entity_id": entity_id,
+                    "entity_name": row["entity_name"],
+                    "total_followers": row["total_followers"],
+                    "rank": row["entity_rank"],
+                    "category": row["category"],
+                    "root_category": row["category"],
+                    "window_start": row["window_start"].isoformat() if row["window_start"] else None,
+                    "platforms": {}
+                }
+
+            result[entity_id]["platforms"][row["platform"]] = {
+                "page_name": row["page_name"],
+                "page_id": row["page_id"],
+                "followers": row["followers"],
+                "profile_image_url": row["profile_image_url"],
+                "page_url": row["page_url"],
+            }
+
+        return sorted(result.values(), key=lambda x: x["rank"])
+
+    @staticmethod
     def get_all_entities_ranking():
         query = text("""
             WITH latest_page_data AS (

@@ -173,11 +173,18 @@ def get_entity_history():
 @data_bp.route("/get_followers_ranking", methods=["GET"])
 def get_followers_ranking():
     try:
-        data = InfluenceHistoryService.get_followers_ranking()
+        date_window = request.args.get("date")
+
+        if not date_window:
+            date_window = '1m'
+
+        data = InfluenceHistoryService.get_followers_ranking(date_window=date_window)
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No followers ranking data found for entities.", 404)
         return success_response(data, 200)
-    except (TypeError, KeyError, ValueError):
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    except (TypeError, KeyError):
         return error_response("Invalid request data", 400)
 
 
