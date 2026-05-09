@@ -24,6 +24,9 @@ COPY . .
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
+# Create the mounted log directory so file handlers can open it reliably.
+RUN mkdir -p /app/logs
+
 # Optional Gunicorn config
 COPY gunicorn.conf.py /app/gunicorn.conf.py
 
