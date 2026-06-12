@@ -2,22 +2,16 @@
 from flask import request
 from api.routes.main import error_response, success_response
 from api.services.page_service import PageService
+from api.utils.permissions import require_role
 from . import data_bp
 import os
 
 SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_page", methods=["POST"])
+@require_role("admin")
 def add_page():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         data = request.get_json()
         page, error_message = PageService.create_page(data)
         if error_message:
@@ -37,16 +31,9 @@ def add_page():
         return error_response("Invalid request data", 400)
 
 @data_bp.route("/delete_page", methods=["POST"])
+@require_role("admin")
 def delete_page():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         page_id = request.json.get("id")
         if not page_id:
             return error_response("Missing required field: 'id'.", status_code=400)
@@ -63,16 +50,9 @@ def delete_page():
 
 
 @data_bp.route("/get_all_pages", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_all_pages():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         pages = PageService.get_all_pages()
         if not pages:
             return error_response("No pages found.", status_code=404)
@@ -94,16 +74,9 @@ def get_all_pages():
         return error_response("Invalid request data", 400)
 
 @data_bp.route("/get_pages_by_platform", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_pages_by_platform():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         platform = request.args.get("platform")
         if not platform:
             return error_response("Missing required query param: 'platform'.", 400)

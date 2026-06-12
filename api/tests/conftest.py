@@ -15,6 +15,9 @@ def app():
         "DB_PWD": "test_pwd",
         "DB_NAME": "test_db",
         "SECRET_KEY": "test-secret",
+        "FRONTEND_REDIRECT_URL": "http://localhost:3000",
+        "FRONTEND_COOKIE_DOMAIN": "localhost",
+        "COOKIE_SECURE": "false",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
@@ -23,7 +26,13 @@ def app():
     app.config.update({
         "TESTING": True,
         "WTF_CSRF_ENABLED": False,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",  # Use in-memory SQLite for tests
+        "SQLALCHEMY_TRACK_MODIFICATIONS": False,
     })
+    
+    # Dispose old engine and create new one with SQLite config
+    _db.engine.dispose()
+    
     yield app
 
 
@@ -37,17 +46,21 @@ def db(app):
 
 
 @pytest.fixture(scope="function")
-def db_session(db):
+def db_session(db, app):
     """Wrap each test in a transaction that rolls back after."""
-    connection = db.engine.connect()
-    transaction = connection.begin()
-    session = db.session
+    with app.app_context():
+        connection = db.engine.connect()
+        transaction = connection.begin()
+        
+        # Use the session's connection with our transaction
+        session = db.session
+        session.begin_nested()
 
-    yield session
+        yield session
 
-    session.close()
-    transaction.rollback()
-    connection.close()
+        session.rollback()
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture()

@@ -27,6 +27,7 @@ from api.routes.main import (
     SEVERITY_LOW,
     SEVERITY_HIGH,
 )
+from api.utils.permissions import require_role
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
 FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
@@ -160,18 +161,9 @@ def register_entity_name():
 
 
 @auth_bp.route("/register_entity", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def register_entity():
-    allowed_roles = ["admin", "registered", "subscribed"]
-
     try:
-        # token = _extract_token("access_token")
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         required_keys = ["entity_name", "type", "category_id"]
         data = request.get_json(silent=True)
         missing = validate_required_keys(data, required_keys)
@@ -278,13 +270,11 @@ def login():
         return error_response("Invalid request data", 400)
 
 @auth_bp.route("/get_user_data", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def get_user_data():
-    
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        # Example: fetch the user from DB if needed
-        user = UserRepository.get_by_id(payload["user_id"])
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
 
@@ -346,6 +336,7 @@ def refresh():
 
 
 @auth_bp.route("/logout", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def logout():
     try:
         user_id = None
@@ -405,18 +396,15 @@ def logout():
 
 
 @auth_bp.route("/validate_user_role", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def validate_user_role():
 
     """ this route updates the user role, after signing from google auth"""
 
-
-    allowed_roles = ["admin", "registered", "subscribed"]
     required_keys = ["user_id", "role"]
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        # Example: fetch the user from DB if needed
-        user = UserRepository.get_by_id(payload["user_id"])
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         if not user:
             return error_response("User not found", 404)
         role = user.role
@@ -440,15 +428,15 @@ def validate_user_role():
 
 
 @auth_bp.route("/complete_profile", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def complete_profile():
     """
     After Google sign-up, allows the user to add phone_number and profession.
     Requires a valid access token.
     """
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        user = UserRepository.get_by_id(payload["user_id"])
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         if not user:
             return error_response("User not found", 404)
 
@@ -481,6 +469,7 @@ def complete_profile():
         return error_response("Invalid request data", 400)
 
 @auth_bp.route("/redirect_to_app", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def redirect_to_app():
 
     """ This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
@@ -488,22 +477,9 @@ def redirect_to_app():
         and redirects the user to the app subdomain after setting those tokens in cookies
     """
 
-    allowed_roles = ['admin', 'registered', 'subscribed']
-
     try:
-
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-
-        user_id = payload['user_id']
-        user = UserRepository.get_by_id(user_id)
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-        
-        # now we verify if the user has permitted role
-        user_role = payload["role"]
-        if user_role not in allowed_roles:
-            return error_response("User role doesnt has enough privilege", 401)
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(

@@ -4,22 +4,15 @@ import os
 from flask import request
 from api.routes.main import error_response, success_response
 from api.services.entity_service import EntityService
+from api.utils.permissions import require_role
 from . import data_bp
-
 
 SECRET = os.environ.get("SECRET_KEY")
 
 @data_bp.route("/add_entity", methods=["POST"])
+@require_role("admin")
 def add_entity():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:   
-        #     return error_response("Access denied", 403)
-        
         data = request.get_json()
         name = data.get("name", "").strip().lower()
         entity_type = data.get("type", "").strip().lower()
@@ -46,16 +39,9 @@ def add_entity():
         return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_all_entities", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_all_entities():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         entities = EntityService.get_all_entities()
         if not entities:
             return error_response("No entities found.", status_code=404)
@@ -70,16 +56,9 @@ def get_all_entities():
         return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_data_existing_entities", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_data_existing_entities():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         entities = EntityService.get_existing_entities()
         if not entities:
             return error_response("No entities found.", status_code=404)
@@ -94,16 +73,9 @@ def get_data_existing_entities():
         return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/delete_entity", methods=["POST"])
+@require_role("admin")
 def delete_entity():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         entity_id = request.json.get("id")
         if not entity_id:
             return error_response("Missing required field: 'id'.", status_code=400)
@@ -118,16 +90,9 @@ def delete_entity():
         return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_entity_profile_card", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_entity_profile_card():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         entity_id = request.args.get("entity_id")
         data = EntityService.get_entity_profile_card(entity_id)
         if type(data) != dict:
@@ -141,20 +106,13 @@ def get_entity_profile_card():
         return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_entity_followers_history", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_entity_followers_history():
     """
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         entity_id = request.args.get("entity_id", type=int)
 
         if not entity_id:
@@ -223,16 +181,9 @@ def get_entity_followers_history():
 #         return error_response(f"Unexpected error: {str(e)}", 500)
 
 @data_bp.route("/compare_entities_followers", methods=['POST'])
+@require_role("admin", "registered", "subscribed")
 def compare_entities_followers():
     try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
         data = request.get_json(silent=True) or {}
         entity_ids = data.get("entity_ids")
         if not isinstance(entity_ids, list) or not entity_ids:
