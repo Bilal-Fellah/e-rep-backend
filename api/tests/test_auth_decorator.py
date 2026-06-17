@@ -102,11 +102,12 @@ class TestRequireAuthDecorator:
 
         payload = {"user_id": 1, "role": "admin"}
         
+        from flask import Flask
+        app = Flask("test_app")
         with patch('api.utils.permissions.extract_and_validate_token',
                    return_value=(payload, None)):
             with patch('api.routes.main.error_response'):
-                # Mock Flask request to set auth_payload
-                with patch('api.utils.permissions.request') as mock_request:
+                with app.test_request_context():
                     result = admin_route()
                     # Should call the actual function and return success
                     assert result == {"success": True, "user_id": 1}
@@ -119,9 +120,11 @@ class TestRequireAuthDecorator:
 
         payload = {"user_id": 1, "role": "subscribed"}
         
+        from flask import Flask
+        app = Flask("test_app")
         with patch('api.utils.permissions.extract_and_validate_token',
                    return_value=(payload, None)):
-            with patch('api.utils.permissions.request') as mock_request:
+            with app.test_request_context():
                 result = multi_role_route()
                 assert result == {"success": True}
 

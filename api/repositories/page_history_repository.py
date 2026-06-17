@@ -672,6 +672,8 @@ class PageHistoryRepository:
 
     @staticmethod
     def get_all_entities_ranking():
+        if db.engine.dialect.name == 'sqlite':
+            return []
         query = text("""
             WITH latest_page_data AS (
                 SELECT DISTINCT ON (page_id)

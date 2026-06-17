@@ -28,17 +28,20 @@ def auth_headers(app, client):
 
     with app.app_context():
         for role in ["registered", "subscribed", "admin"]:
-            # Create a test user
-            user = User(
-                first_name="Test",
-                last_name=role.capitalize(),
-                email=f"test_{role}@example.com",
-                role=role,
-                is_verified=True,
-            )
-            user.set_password("password123")
-            db.session.add(user)
-            db.session.commit()
+            # Check if user already exists
+            user = User.query.filter_by(email=f"test_{role}@example.com").first()
+            if not user:
+                # Create a test user
+                user = User(
+                    first_name="Test",
+                    last_name=role.capitalize(),
+                    email=f"test_{role}@example.com",
+                    role=role,
+                    is_verified=True,
+                )
+                user.set_password("password123")
+                db.session.add(user)
+                db.session.commit()
 
             # Generate tokens
             tokens = AuthService.issue_token_pair(user)

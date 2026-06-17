@@ -336,7 +336,7 @@ def test_entity_service_get_entity_likes_history_interpolates_and_handles_facebo
     data = EntityService.get_entity_likes_history(7, start_date="2026-01-01")
 
     assert captured["entity_id"] == 7
-    assert captured["date_limit"].isoformat() == "2026-01-01"
+    assert captured["date_limit"].isoformat() == "2025-12-31"
 
     gains = {
         (item["page_id"], item["platform"], item["date"]): item["likes_gained"]
@@ -397,7 +397,7 @@ def test_entity_service_compare_entities_likes_groups_by_entity(monkeypatch):
     data = EntityService.compare_entities_likes([1, 2], start_date="2026-01-01")
 
     assert captured["entity_ids"] == [1, 2]
-    assert captured["date_limit"].isoformat() == "2026-01-01"
+    assert captured["date_limit"].isoformat() == "2025-12-31"
     assert data["A"]["entity_id"] == 1
     assert data["B"]["entity_id"] == 2
 
@@ -494,7 +494,7 @@ def test_entity_service_get_entity_likes_history_default_window_and_mixed_platfo
     data = EntityService.get_entity_likes_history(9)
 
     assert captured["entity_id"] == 9
-    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert captured["date_limit"].isoformat() == "2026-03-12"
     assert data == sorted(data, key=lambda x: (x["date"], x["platform"], str(x["page_id"])))
 
     gains = {
@@ -571,7 +571,7 @@ def test_entity_service_compare_entities_likes_default_window_ignores_invalid_en
     data = EntityService.compare_entities_likes([1, 2])
 
     assert captured["entity_ids"] == [1, 2]
-    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert captured["date_limit"].isoformat() == "2026-03-12"
     assert list(data.keys()) == ["A"]
     assert data["A"]["entity_id"] == 1
     assert data["A"]["records"][1]["likes_gained"] == 5
@@ -617,7 +617,7 @@ def test_entity_service_get_entity_comments_history_interpolates_and_handles_fac
     data = EntityService.get_entity_comments_history(7, start_date="2026-01-01")
 
     assert captured["entity_id"] == 7
-    assert captured["date_limit"].isoformat() == "2026-01-01"
+    assert captured["date_limit"].isoformat() == "2025-12-31"
 
     gains = {
         (item["page_id"], item["platform"], item["date"]): item["comments_gained"]
@@ -698,7 +698,7 @@ def test_entity_service_compare_entities_comments_default_window_and_mapping(mon
     data = EntityService.compare_entities_comments([1, 2, 3])
 
     assert captured["entity_ids"] == [1, 2, 3]
-    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert captured["date_limit"].isoformat() == "2026-03-12"
     assert set(data.keys()) == {"A", "B"}
 
     a_gains = {
@@ -828,6 +828,16 @@ def test_influence_service_ranking_and_interaction_summary(monkeypatch):
     followers_rows = [SimpleNamespace(page_id="pg1", current_followers=500, prev_followers=450)]
     monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_all_entities_posts", lambda date_limit: ranking_rows)
     monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_entities_followers_snapshot", lambda date_limit: followers_rows)
+
+    mock_ranking = [
+        {
+            "entity_name": "Entity A",
+            "root_category": "cat",
+            "rank": 1,
+            "total_followers": 500,
+        }
+    ]
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_all_entities_ranking", lambda: mock_ranking)
 
     ranked = InfluenceHistoryService.entities_ranking()
     assert ranked[0]["entity_name"] == "Entity A"

@@ -1,7 +1,6 @@
 # Database model definitions for post model.
 from sqlalchemy import inspect
 from api import db
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 
 class PostMV(db.Model):
@@ -12,7 +11,8 @@ class PostMV(db.Model):
     __tablename__ = "posts_mv"
 
     # Composite PK mirrors the unique index on the MV.
-    page_id     = db.Column(UUID(as_uuid=True), primary_key=True)
+    # Using String(36) for UUID — compatible with both PostgreSQL and SQLite.
+    page_id     = db.Column(db.String(36), primary_key=True)
     platform    = db.Column(db.String(20), primary_key=True)
     post_id     = db.Column(db.String(100), primary_key=True)
 
@@ -31,7 +31,8 @@ class PostMV(db.Model):
     video_url    = db.Column(db.Text)
     is_pinned    = db.Column(db.Boolean)
 
-    extra_data   = db.Column(JSONB)
+    # Using db.JSON — compatible with both PostgreSQL and SQLite.
+    extra_data   = db.Column(db.JSON)
 
     def to_dict(self):
         return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}
@@ -45,7 +46,7 @@ class PostHistoryMV(db.Model):
     __tablename__ = "posts_history_mv"
 
     # Composite PK mirrors the unique index on the MV.
-    page_id     = db.Column(UUID(as_uuid=True), primary_key=True)
+    page_id     = db.Column(db.String(36), primary_key=True)
     platform    = db.Column(db.String(20), primary_key=True)
     post_id     = db.Column(db.String(100), primary_key=True)
     recorded_at = db.Column(db.DateTime, primary_key=True)
@@ -64,7 +65,7 @@ class PostHistoryMV(db.Model):
     video_url    = db.Column(db.Text)
     is_pinned    = db.Column(db.Boolean)
 
-    extra_data   = db.Column(JSONB)
+    extra_data   = db.Column(db.JSON)
 
     def to_dict(self):
         return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}

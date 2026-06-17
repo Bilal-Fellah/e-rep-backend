@@ -5,6 +5,20 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB, JSON, UUID
+
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+@compiles(JSON, "sqlite")
+def compile_json_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+@compiles(UUID, "sqlite")
+def compile_uuid_sqlite(type_, compiler, **kw):
+    return "CHAR(36)"
 
 from .utils.logging_utils import configure_error_loggers
 
@@ -24,7 +38,9 @@ def create_app():
     environment = os.getenv("FLASK_ENV", "development").lower()
 
     # ---- Config ----
-    if environment == "production":
+    if os.getenv("TESTING") == "true" or environment == "testing":
+        app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
+    elif environment == "production":
         app.config["SQLALCHEMY_DATABASE_URI"] = (
             f"postgresql://{DB_USER}:{DB_PWD}@/{DB_NAME}"
             f"?host=/var/run/postgresql"

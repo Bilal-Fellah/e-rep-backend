@@ -114,6 +114,9 @@ def test_oauth_finalize_google_login_invalid_code(client, monkeypatch):
 
 
 def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
+    payload = {"user_id": 1, "role": "admin"}
+    monkeypatch.setattr("api.utils.permissions.extract_and_validate_token", lambda: (payload, None))
+
     response = client.post("/api/data/add_entity", json={"name": "x"})
     assert response.status_code == 400
 
@@ -134,7 +137,7 @@ def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
 
 
 def test_data_add_category_and_get_all_categories_include_french_name(client, monkeypatch):
-    created_category = SimpleNamespace(id=9, name="technology", name_french="technologie", parent_id=None)
+    created_category = SimpleNamespace(id=9, name="technology", name_french="technologie", parent_id=None, is_active=True)
     captured = {}
 
     def _create(name, name_french=None, parent_id=None):
@@ -152,8 +155,8 @@ def test_data_add_category_and_get_all_categories_include_french_name(client, mo
     assert captured == {"name": "technology", "name_french": "technologie", "parent_id": None}
     assert payload["name_french"] == "technologie"
 
-    categories = [SimpleNamespace(id=1, name="technology", name_french="technologie", parent_id=None)]
-    monkeypatch.setattr("api.routes.data.category.CategoryRepository.get_all_root", lambda: categories)
+    categories = [SimpleNamespace(id=1, name="technology", name_french="technologie", parent_id=None, is_active=True)]
+    monkeypatch.setattr("api.routes.data.category.CategoryRepository.get_all", lambda: categories)
 
     response = client.get("/api/data/get_all_categories")
     assert response.status_code == 200

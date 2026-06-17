@@ -1,8 +1,19 @@
+import api.tests.conftest_setup
 import pytest
 import os
 
 from api import create_app
 from api import db as _db  # adjust to your db import
+
+# Ensure all models are imported so SQLAlchemy metadata is populated
+import api.models.user_model
+import api.models.category_model
+import api.models.entity_model
+import api.models.entity_category_model
+import api.models.page_model
+import api.models.page_history_model
+import api.models.post_model
+import api.models.note_model
 
 
 @pytest.fixture(scope="session")
@@ -22,6 +33,8 @@ def app():
     for key, value in defaults.items():
         os.environ.setdefault(key, value)
 
+    os.environ["TESTING"] = "true"
+
     app = create_app()
     app.config.update({
         "TESTING": True,
@@ -31,12 +44,13 @@ def app():
     })
     
     # Dispose old engine and create new one with SQLite config
-    _db.engine.dispose()
+    with app.app_context():
+        _db.engine.dispose()
     
     yield app
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def db(app):
     """Create all tables once per session, drop after."""
     with app.app_context():

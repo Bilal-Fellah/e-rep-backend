@@ -2,7 +2,6 @@
 only public pages
 
 ## Registered
-View top 10 global brands
 Full Brands rankings
 Complete user profile data access
 Follower history & comparisons(last month only)
