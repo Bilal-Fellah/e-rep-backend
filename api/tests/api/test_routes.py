@@ -463,13 +463,13 @@ def test_data_get_competitors_interaction_stats_parsing_and_404(client, monkeypa
 
 
 def test_data_get_interactions_ranking_not_found_and_success(client, monkeypatch):
-    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_interactions_ranking", lambda start_date=None: [])
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_interactions_ranking", lambda period=None, start_date=None, end_date=None: [])
     response = client.get("/api/data/get_interactions_ranking")
     assert response.status_code == 404
 
     captured = {}
 
-    def _service(start_date=None):
+    def _service(period=None, start_date=None, end_date=None):
         captured["start_date"] = start_date
         return [
             {
@@ -504,13 +504,13 @@ def test_data_get_interactions_ranking_invalid_start_date_returns_400(client, mo
 
 
 def test_data_get_likes_ranking_not_found_and_success(client, monkeypatch):
-    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_likes_ranking", lambda start_date=None: [])
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_likes_ranking", lambda period=None, start_date=None, end_date=None: [])
     response = client.get("/api/data/get_likes_ranking")
     assert response.status_code == 404
 
     captured = {}
 
-    def _service(start_date=None):
+    def _service(period=None, start_date=None, end_date=None):
         captured["start_date"] = start_date
         return [
             {
@@ -534,13 +534,13 @@ def test_data_get_likes_ranking_not_found_and_success(client, monkeypatch):
 
 
 def test_data_get_comments_ranking_not_found_and_success(client, monkeypatch):
-    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_comments_ranking", lambda start_date=None: [])
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_comments_ranking", lambda period=None, start_date=None, end_date=None: [])
     response = client.get("/api/data/get_comments_ranking")
     assert response.status_code == 404
 
     captured = {}
 
-    def _service(start_date=None):
+    def _service(period=None, start_date=None, end_date=None):
         captured["start_date"] = start_date
         return [
             {
@@ -699,3 +699,112 @@ def test_testing_update_entity_category_validation_and_success(client, monkeypat
     assert payload["entity_id"] == 12
     assert payload["previous_category_ids"] == [1, 3]
     assert payload["updated_category_id"] == 7
+
+
+def test_data_get_followers_progress_ranking_not_found_and_success(client, monkeypatch):
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_followers_progress_ranking", lambda period=None, start_date=None, end_date=None: [])
+    response = client.get("/api/data/get_followers_progress_ranking")
+    assert response.status_code == 404
+
+    captured = {}
+
+    def _service(period=None, start_date=None, end_date=None):
+        captured["start_date"] = start_date
+        return [
+            {
+                "entity_id": 1,
+                "entity_name": "A Corp",
+                "category": "auto",
+                "root_category": "business",
+                "rank": 1,
+                "total_followers": 1000,
+                "total_prev_followers": 900,
+                "followers_progress": 100,
+                "platforms": {},
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_followers_progress_ranking", _service)
+    response = client.get("/api/data/get_followers_progress_ranking?start_date=2026-01-01")
+    assert response.status_code == 200
+    assert captured["start_date"] == "2026-01-01"
+    assert response.get_json()["data"][0]["entity_name"] == "A Corp"
+    assert response.get_json()["data"][0]["followers_progress"] == 100
+
+
+def test_data_get_followers_progress_ranking_invalid_start_date_returns_400(client, monkeypatch):
+    monkeypatch.setattr(
+        "api.routes.data.influence_history.InfluenceHistoryService.get_followers_progress_ranking",
+        lambda period=None, start_date=None, end_date=None: (_ for _ in ()).throw(ValueError("Invalid date format")),
+    )
+
+    response = client.get("/api/data/get_followers_progress_ranking?start_date=bad-date")
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid request data"
+
+
+def test_data_progress_ranking_endpoints_accept_period_and_end_date(client, monkeypatch):
+    captured = {}
+
+    def _service(period=None, start_date=None, end_date=None):
+        captured["period"] = period
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return [
+            {
+                "entity_id": 1,
+                "entity_name": "A Corp",
+                "category": "auto",
+                "root_category": "business",
+                "rank": 1,
+                "total_followers": 1000,
+                "total_prev_followers": 900,
+                "followers_progress": 100,
+                "platforms": {},
+            }
+        ]
+
+    monkeypatch.setattr("api.routes.data.influence_history.InfluenceHistoryService.get_followers_progress_ranking", _service)
+    
+    response = client.get("/api/data/get_followers_progress_ranking?period=yesterday")
+    assert response.status_code == 200
+    assert captured["period"] == "yesterday"
+
+    # Also test error formatting for invalid period
+    monkeypatch.setattr(
+        "api.routes.data.influence_history.InfluenceHistoryService.get_followers_progress_ranking",
+        lambda period=None, start_date=None, end_date=None: (_ for _ in ()).throw(ValueError("Invalid period value")),
+    )
+    response2 = client.get("/api/data/get_followers_progress_ranking?period=invalid")
+    assert response2.status_code == 400
+    assert "Invalid period value" in response2.get_json()["error"]
+
+
+def test_data_all_ranking_endpoints_accept_period_and_end_date(client, monkeypatch):
+    captured = {}
+
+    def _service(period=None, start_date=None, end_date=None):
+        captured["period"] = period
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        return [
+            {
+                "entity_id": 1,
+                "entity_name": "A Corp",
+                "category": "auto",
+                "root_category": "business",
+                "rank": 1,
+                "total_score": 100,
+                "platforms": {},
+            }
+        ]
+
+    for endpoint in ["get_interactions_ranking", "get_likes_ranking", "get_comments_ranking"]:
+        captured.clear()
+        monkeypatch.setattr(f"api.routes.data.influence_history.InfluenceHistoryService.{endpoint}", _service)
+        response = client.get(f"/api/data/{endpoint}?period=prev_7d&end_date=2026-06-01")
+        assert response.status_code == 200
+        assert captured["period"] == "prev_7d"
+        assert captured["end_date"] == "2026-06-01"
+
+

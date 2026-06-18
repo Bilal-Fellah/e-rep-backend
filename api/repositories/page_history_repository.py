@@ -320,7 +320,61 @@ class PageHistoryRepository:
         return results
 
     @staticmethod
-    def get_companies_interactions_summary(date_limit: date = None):
+    def get_followers_progress_snapshot(date_limit, end_date=None):
+        query = text("""
+            WITH latest AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    category,
+                    root_category,
+                    raw_followers AS current_followers
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+                  AND (:end_date IS NULL OR date(recorded_at) <= :end_date)
+                ORDER BY page_id, recorded_at DESC
+            ),
+            prev AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    raw_followers AS prev_followers
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+                  AND date(recorded_at) >= :date_limit
+                  AND (:end_date IS NULL OR date(recorded_at) <= :end_date)
+                ORDER BY page_id, recorded_at ASC
+            )
+            SELECT
+                l.page_id,
+                l.entity_id,
+                l.entity_name,
+                l.platform,
+                l.page_name,
+                l.page_url,
+                l.profile_image_url,
+                l.category,
+                l.root_category,
+                l.current_followers,
+                p.prev_followers
+            FROM latest l
+            LEFT JOIN prev p ON p.page_id = l.page_id
+        """)
+        results = db.session.execute(query, {'date_limit': date_limit, 'end_date': end_date}).mappings().all()
+        return results
+
+
+
+    @staticmethod
+    def get_companies_interactions_summary(date_limit: date = None, end_date: date = None):
         if date_limit is None:
             date_limit = (datetime.now() - timedelta(days=30)).date()
 
@@ -369,11 +423,13 @@ class PageHistoryRepository:
               AND e.to_scrape
               AND pm.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
               AND DATE(pm.created_at) >= :date_limit
+              AND (:end_date IS NULL OR DATE(pm.created_at) <= :end_date)
                         GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform, pm.page_id, pem.page_name, pem.page_url, pem.profile_image_url
             ORDER BY pem.entity_name, pm.platform
         """)
 
-        return db.session.execute(query, {'date_limit': date_limit}).mappings().all()
+        return db.session.execute(query, {'date_limit': date_limit, 'end_date': end_date}).mappings().all()
+
 
 
 

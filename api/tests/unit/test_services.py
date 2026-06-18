@@ -983,6 +983,7 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
             return fixed_now.astimezone(tz)
 
     monkeypatch.setattr("api.services.influence_history_service.datetime", _FixedDateTime)
+    monkeypatch.setattr("api.utils.period_resolver.datetime", _FixedDateTime)
 
     captured = {}
     rows = [
@@ -1037,7 +1038,7 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
         },
     ]
 
-    def _repo(date_limit):
+    def _repo(date_limit, end_date=None):
         captured["date_limit"] = date_limit
         return rows
 
@@ -1080,7 +1081,7 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
 def test_influence_interactions_ranking_start_date_and_empty_result(monkeypatch):
     captured = {}
 
-    def _repo(date_limit):
+    def _repo(date_limit, end_date=None):
         captured["date_limit"] = date_limit
         return []
 
@@ -1120,7 +1121,7 @@ def test_influence_likes_ranking_orders_by_total_likes(monkeypatch):
         },
     ]
 
-    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", lambda date_limit: rows)
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", lambda date_limit, end_date=None: rows)
 
     ranking = InfluenceHistoryService.get_likes_ranking(start_date="2026-01-01")
 
@@ -1160,7 +1161,7 @@ def test_influence_comments_ranking_orders_by_total_comments(monkeypatch):
         },
     ]
 
-    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", lambda date_limit: rows)
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", lambda date_limit, end_date=None: rows)
 
     ranking = InfluenceHistoryService.get_comments_ranking(start_date="2026-01-01")
 
@@ -1190,7 +1191,7 @@ def test_influence_interactions_ranking_falls_back_root_category_to_category(mon
 
     monkeypatch.setattr(
         "api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary",
-        lambda date_limit: rows,
+        lambda date_limit, end_date=None: rows,
     )
 
     ranking = InfluenceHistoryService.get_interactions_ranking(start_date="2026-01-01")
@@ -1198,4 +1199,127 @@ def test_influence_interactions_ranking_falls_back_root_category_to_category(mon
     assert len(ranking) == 1
     assert ranking[0]["category"] == "business"
     assert ranking[0]["root_category"] == "business"
+
+
+def test_influence_followers_progress_ranking_default_window_and_calculation(monkeypatch):
+    from datetime import timezone
+    fixed_now = datetime(2026, 4, 12, 10, 0, tzinfo=timezone.utc)
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    monkeypatch.setattr("api.services.influence_history_service.datetime", _FixedDateTime)
+    monkeypatch.setattr("api.utils.period_resolver.datetime", _FixedDateTime)
+
+    captured = {}
+    rows = [
+        {
+            "entity_id": 1,
+            "entity_name": "A Corp",
+            "category": "auto",
+            "root_category": "business",
+            "platform": "instagram",
+            "page_id": "pg1",
+            "page_name": "Page A",
+            "page_url": "https://example.com/a",
+            "profile_image_url": "https://img/a",
+            "current_followers": 1000,
+            "prev_followers": 900,
+        },
+        {
+            "entity_id": 2,
+            "entity_name": "B Corp",
+            "category": "tech",
+            "root_category": "business",
+            "platform": "linkedin",
+            "page_id": "pg2",
+            "page_name": "Page B",
+            "page_url": "https://example.com/b",
+            "profile_image_url": "https://img/b",
+            "current_followers": 500,
+            "prev_followers": 400,
+        },
+        {
+            "entity_id": 2,
+            "entity_name": "B Corp",
+            "category": "tech",
+            "root_category": "business",
+            "platform": "x",
+            "page_id": "pg3",
+            "page_name": "Page B2",
+            "page_url": "https://example.com/b2",
+            "profile_image_url": "https://img/b2",
+            "current_followers": 200,
+            "prev_followers": 150,
+        },
+    ]
+
+    def _repo(date_limit, end_date=None):
+        captured["date_limit"] = date_limit
+        return rows
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_followers_progress_snapshot", _repo)
+
+    ranking = InfluenceHistoryService.get_followers_progress_ranking()
+
+    assert captured["date_limit"].isoformat() == "2026-03-13"
+    assert len(ranking) == 2
+    assert ranking[0]["entity_name"] == "B Corp"
+    assert ranking[0]["followers_progress"] == 150
+    assert ranking[0]["total_followers"] == 700
+    assert ranking[0]["total_prev_followers"] == 550
+    assert ranking[0]["rank"] == 1
+
+    assert ranking[1]["entity_name"] == "A Corp"
+    assert ranking[1]["followers_progress"] == 100
+    assert ranking[1]["total_followers"] == 1000
+    assert ranking[1]["total_prev_followers"] == 900
+    assert ranking[1]["rank"] == 2
+
+
+def test_influence_followers_progress_ranking_with_custom_period(monkeypatch):
+    captured = {}
+    rows = []
+
+    def _repo(date_limit, end_date=None):
+        captured["date_limit"] = date_limit
+        captured["end_date"] = end_date
+        return rows
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_followers_progress_snapshot", _repo)
+
+    ranking = InfluenceHistoryService.get_followers_progress_ranking(period="yesterday")
+    
+    assert captured["date_limit"] is not None
+    assert captured["end_date"] is not None
+    from datetime import date, timedelta
+    assert captured["end_date"] == date.today() - timedelta(days=1)
+    assert ranking == []
+
+
+def test_influence_interactions_ranking_with_custom_period(monkeypatch):
+    captured = {}
+    rows = []
+
+    def _repo(date_limit=None, end_date=None):
+        captured["date_limit"] = date_limit
+        captured["end_date"] = end_date
+        return rows
+
+    monkeypatch.setattr("api.services.influence_history_service.PageHistoryRepository.get_companies_interactions_summary", _repo)
+
+    ranking = InfluenceHistoryService.get_interactions_ranking(period="prev_7d")
+    
+    assert captured["date_limit"] is not None
+    assert captured["end_date"] is not None
+    from datetime import date, timedelta
+    assert captured["date_limit"] == date.today() - timedelta(days=8)
+    assert captured["end_date"] == date.today() - timedelta(days=1)
+    assert ranking == []
+
+
     

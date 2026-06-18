@@ -377,14 +377,45 @@ def test_page_history_repository_companies_interactions_summary_query_executes_w
     )
     monkeypatch.setattr("api.repositories.page_history_repository.db", SimpleNamespace(session=fake_session))
 
-    result = PageHistoryRepository.get_companies_interactions_summary(date(2026, 3, 1))
+    result = PageHistoryRepository.get_companies_interactions_summary(date(2026, 3, 1), end_date=date(2026, 3, 5))
 
     assert result == [{"entity_id": 1, "entity_name": "A Corp", "category": "auto", "root_category": "business", "platform": "instagram"}]
     assert len(calls) == 1
     stmt, params = calls[0]
-    assert params == {"date_limit": date(2026, 3, 1)}
+    assert params == {"date_limit": date(2026, 3, 1), "end_date": date(2026, 3, 5)}
     assert "FROM posts_mv" in str(stmt)
     assert "page_posts_metrics_mv" in str(stmt)
     assert "entity_category_map" in str(stmt)
     assert "LOWER(COALESCE(e.type, '')) = 'company'" in str(stmt)
     assert "e.to_scrape" in str(stmt)
+    assert ":end_date IS NULL" in str(stmt)
+
+
+def test_page_history_repository_followers_progress_snapshot_query_executes_with_expected_params(monkeypatch):
+    calls = []
+
+    class _MappingsResult:
+        @staticmethod
+        def all():
+            return [{"page_id": "p1", "current_followers": 100, "prev_followers": 90}]
+
+    class _Result:
+        @staticmethod
+        def mappings():
+            return _MappingsResult()
+
+    fake_session = SimpleNamespace(
+        execute=lambda stmt, params: calls.append((stmt, params)) or _Result(),
+    )
+    monkeypatch.setattr("api.repositories.page_history_repository.db", SimpleNamespace(session=fake_session))
+
+    result = PageHistoryRepository.get_followers_progress_snapshot(date(2026, 3, 1), end_date=date(2026, 3, 5))
+
+    assert result == [{"page_id": "p1", "current_followers": 100, "prev_followers": 90}]
+    assert len(calls) == 1
+    stmt, params = calls[0]
+    assert params == {"date_limit": date(2026, 3, 1), "end_date": date(2026, 3, 5)}
+    assert "WITH latest AS" in str(stmt)
+    assert "prev AS" in str(stmt)
+    assert "LEFT JOIN prev" in str(stmt)
+    assert ":end_date IS NULL" in str(stmt)

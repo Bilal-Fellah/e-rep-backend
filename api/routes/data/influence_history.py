@@ -188,49 +188,81 @@ def get_followers_ranking():
         return error_response("Invalid request data", 400)
 
 
+@data_bp.route("/get_followers_progress_ranking", methods=["GET"])
+def get_followers_progress_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_followers_progress_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No followers progress ranking data found for entities.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400)
+
+
 @data_bp.route("/get_interactions_ranking", methods=["GET"])
 def get_interactions_ranking():
     try:
         start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
 
-        data = InfluenceHistoryService.get_interactions_ranking(start_date=start_date)
+        data = InfluenceHistoryService.get_interactions_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No interactions ranking data found for companies.", 404)
 
         return success_response(data, 200)
 
-    except (TypeError, KeyError, ValueError):
-        return error_response("Invalid request data", 400)
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400)
 
 
 @data_bp.route("/get_likes_ranking", methods=["GET"])
 def get_likes_ranking():
     try:
         start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
 
-        data = InfluenceHistoryService.get_likes_ranking(start_date=start_date)
+        data = InfluenceHistoryService.get_likes_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No likes ranking data found for companies.", 404)
 
         return success_response(data, 200)
 
-    except (TypeError, KeyError, ValueError):
-        return error_response("Invalid request data", 400)
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400)
 
 
 @data_bp.route("/get_comments_ranking", methods=["GET"])
 def get_comments_ranking():
     try:
         start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
 
-        data = InfluenceHistoryService.get_comments_ranking(start_date=start_date)
+        data = InfluenceHistoryService.get_comments_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No comments ranking data found for companies.", 404)
 
         return success_response(data, 200)
 
-    except (TypeError, KeyError, ValueError):
-        return error_response("Invalid request data", 400)
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400)
+
 
 
 @data_bp.route("/get_entity_interaction_stats", methods=["GET"])

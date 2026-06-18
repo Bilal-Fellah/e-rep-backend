@@ -7,6 +7,8 @@ from api.utils.data_keys import platform_metrics
 from api.utils.logging_utils import instrument_service_class
 from api.utils.request_parsing import parse_iso_date
 from api.utils.posts_utils import _to_number, ensure_datetime
+from api.utils.period_resolver import resolve_period_dates
+
 
 
 @instrument_service_class
@@ -93,23 +95,100 @@ class InfluenceHistoryService:
         return InfluenceHistoryService.get_followers_ranking()
 
     @staticmethod
-    def get_interactions_ranking(start_date=None):
-        return InfluenceHistoryService._get_companies_ranking(start_date=start_date, order_by_key="total_score")
-
-    @staticmethod
-    def get_likes_ranking(start_date=None):
-        return InfluenceHistoryService._get_companies_ranking(start_date=start_date, order_by_key="total_likes")
-
-    @staticmethod
-    def get_comments_ranking(start_date=None):
-        return InfluenceHistoryService._get_companies_ranking(start_date=start_date, order_by_key="total_comments")
-
-    @staticmethod
-    def _get_companies_ranking(start_date=None, order_by_key="total_score"):
-        date_limit = parse_iso_date(start_date) if start_date else (datetime.now() - timedelta(days=30)).date()
-        rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit)
+    def get_followers_progress_ranking(period=None, start_date=None, end_date=None):
+        date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
+        rows = PageHistoryRepository.get_followers_progress_snapshot(date_limit=date_limit, end_date=end_dt)
         if not rows:
             return []
+
+        entities = {}
+        for row in rows:
+            entity_id = InfluenceHistoryService._row_value(row, "entity_id", None)
+            if entity_id is None:
+                continue
+
+            entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            category = InfluenceHistoryService._row_value(row, "category", None)
+            root_category = InfluenceHistoryService._row_value(row, "root_category", None)
+            if root_category is None and category is not None:
+                root_category = category
+
+            platform = InfluenceHistoryService._row_value(row, "platform", None)
+            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
+            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
+            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
+            profile_image_url = InfluenceHistoryService._row_value(row, "profile_image_url", None)
+
+            current_followers = _to_number(InfluenceHistoryService._row_value(row, "current_followers", 0))
+            prev_followers = InfluenceHistoryService._row_value(row, "prev_followers", None)
+            if prev_followers is None:
+                prev_followers = current_followers
+            else:
+                prev_followers = _to_number(prev_followers)
+
+            progress = current_followers - prev_followers
+
+            entity = entities.setdefault(
+                entity_id,
+                {
+                    "entity_id": entity_id,
+                    "entity_name": entity_name,
+                    "category": category,
+                    "root_category": root_category,
+                    "window_start": date_limit.isoformat(),
+                    "total_followers": 0,
+                    "total_prev_followers": 0,
+                    "followers_progress": 0,
+                    "platforms": {},
+                },
+            )
+
+            if entity.get("category") is None and category is not None:
+                entity["category"] = category
+            if entity.get("root_category") is None and root_category is not None:
+                entity["root_category"] = root_category
+
+            entity["total_followers"] += current_followers
+            entity["total_prev_followers"] += prev_followers
+            entity["followers_progress"] += progress
+
+            if platform:
+                entity["platforms"][platform] = {
+                    "page_name": page_name,
+                    "page_id": page_id,
+                    "page_url": page_url,
+                    "profile_image_url": profile_image_url,
+                    "followers": current_followers,
+                    "previous_followers": prev_followers,
+                    "followers_progress": progress,
+                }
+
+        ranking = list(entities.values())
+        ranking.sort(key=lambda x: x.get("followers_progress", 0), reverse=True)
+        for idx, row in enumerate(ranking, start=1):
+            row["rank"] = idx
+
+        return ranking
+
+    @staticmethod
+    def get_interactions_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_score")
+
+    @staticmethod
+    def get_likes_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_likes")
+
+    @staticmethod
+    def get_comments_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_comments")
+
+    @staticmethod
+    def _get_companies_ranking(period=None, start_date=None, end_date=None, order_by_key="total_score"):
+        date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
+        rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit, end_date=end_dt)
+        if not rows:
+            return []
+
 
         entities = {}
 

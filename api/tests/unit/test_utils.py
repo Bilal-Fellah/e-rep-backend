@@ -187,3 +187,35 @@ def test_request_parsing_helpers(monkeypatch):
     from api.utils import request_parsing as rp
     monkeypatch.setattr(rp, "date", _FakeDate)
     assert today_date().isoformat() == "2030-01-02"
+
+
+def test_resolve_period_dates():
+    from api.utils.period_resolver import resolve_period_dates
+    from datetime import date, timedelta
+
+    # Test predefined periods
+    yesterday_start, yesterday_end = resolve_period_dates(period="yesterday")
+    assert yesterday_start == date.today() - timedelta(days=2)
+    assert yesterday_end == date.today() - timedelta(days=1)
+
+    prev_7d_start, prev_7d_end = resolve_period_dates(period="prev_7d")
+    assert prev_7d_start == date.today() - timedelta(days=8)
+    assert prev_7d_end == date.today() - timedelta(days=1)
+
+    prev_month_start, prev_month_end = resolve_period_dates(period="previous_month")
+    assert prev_month_start == date.today() - timedelta(days=31)
+    assert prev_month_end == date.today() - timedelta(days=1)
+
+    # Test fallback to start_date and end_date
+    start, end = resolve_period_dates(start_date="2026-01-01", end_date="2026-01-10")
+    assert start == date(2026, 1, 1)
+    assert end == date(2026, 1, 10)
+
+    # Test defaults
+    start_def, end_def = resolve_period_dates()
+    assert start_def is not None
+    assert end_def is None
+
+    # Test error
+    with pytest.raises(ValueError, match="Invalid period value"):
+        resolve_period_dates(period="invalid_period")
