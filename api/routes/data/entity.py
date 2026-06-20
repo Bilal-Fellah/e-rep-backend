@@ -34,7 +34,7 @@ def add_entity():
                 "category_id": entity_category.category_id,
             }
         }, status_code=201)
-    
+
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", status_code=400)
 
@@ -51,7 +51,7 @@ def get_all_entities():
             for e in entities
         ]
         return success_response(data, 200)
-    
+
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", status_code=400)
 
@@ -85,7 +85,7 @@ def delete_entity():
             return error_response(f"No entity found with id {entity_id} or already deleted.", status_code=404)
 
         return success_response({"deleted_id": entity_id}, 200)
-    
+
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", status_code=400)
 
@@ -98,10 +98,10 @@ def get_entity_profile_card():
         if type(data) != dict:
             if type(data) == list and len(data) < 1:
                 message = "no data found for this entity"
-                return error_response(message, status_code=404) 
-            
+                return error_response(message, status_code=404)
+
         return success_response(data, status_code=200)
-    
+
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", status_code=400)
 
@@ -125,7 +125,7 @@ def get_entity_followers_history():
 
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
-   
+
 # @data_bp.route("/get_entity_followers_comparison", methods=["GET"])
 # def get_entity_followers_comparison():
 #     allowed_roles = ["admin", "subscribed", "registered"]
@@ -138,7 +138,7 @@ def get_entity_followers_history():
 #         # role = payload['role']
 #         # if role not in allowed_roles:
 #         #     return error_response("Access denied", 403)
-        
+
 #         entity_id = request.args.get("entity_id")
 #         if not entity_id:
 #             return error_response("Missing required query param: 'entity_id'.", 400)
@@ -194,12 +194,13 @@ def compare_entities_followers():
             return error_response("No data for this entities", 404)
         return success_response(data, 200)
         # we get the entities or category
-    
+
     except (TypeError, KeyError, ValueError):
-        return error_response("Invalid request data", 400)  
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_entity_likes_history", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_entity_likes_history():
     try:
         entity_id = request.args.get("entity_id", type=int)
@@ -219,6 +220,7 @@ def get_entity_likes_history():
 
 
 @data_bp.route("/compare_entities_likes", methods=['POST'])
+@require_role("admin", "registered", "subscribed")
 def compare_entities_likes():
     try:
         payload = request.get_json(silent=True) or {}
@@ -239,6 +241,7 @@ def compare_entities_likes():
 
 
 @data_bp.route("/get_entity_comments_history", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_entity_comments_history():
     try:
         entity_id = request.args.get("entity_id", type=int)
@@ -258,6 +261,7 @@ def get_entity_comments_history():
 
 
 @data_bp.route("/compare_entities_comments", methods=['POST'])
+@require_role("admin", "registered", "subscribed")
 def compare_entities_comments():
     try:
         payload = request.get_json(silent=True) or {}
@@ -277,6 +281,7 @@ def compare_entities_comments():
         return error_response("Invalid request data", 400)
 
 @data_bp.route("/get_entity_posts_timeline", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_entity_posts_timeline():
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -286,14 +291,14 @@ def get_entity_posts_timeline():
         # role = payload['role']
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
-        
+
         entity_id = request.args.get("entity_id", type=int)
         date_str = request.args.get("date")
         max_posts = request.args.get("max_posts", type=int)
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
-        
+
         try:
             all_posts = EntityService.get_entity_posts_timeline(entity_id, date_str=date_str, max_posts=max_posts)
         except ValueError:
@@ -307,9 +312,10 @@ def get_entity_posts_timeline():
 
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
-    
+
 
 @data_bp.route("/mark_entity_to_scrape", methods=["GET"])
+@require_role("admin")
 def mark_entity_to_scrape():
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -331,23 +337,22 @@ def mark_entity_to_scrape():
 
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
-        
+
 # a route that returns top k performing posts for an entity
 @data_bp.route("/get_entity_top_posts", methods=["GET"])
+@require_role("admin", "registered", "subscribed")
 def get_entity_top_posts():
-    try:    
+    try:
         entity_id = request.args.get("entity_id", type=int)
         k = request.args.get("top_posts", type=int, default=5)
-        date = request.args.get("date") 
+        date = request.args.get("date")
 
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
-        
+
         day_gains, _posts_num, _skipped = EntityService.get_entity_top_posts(entity_id, date, k)
 
         return success_response(day_gains, 200)
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
-
-

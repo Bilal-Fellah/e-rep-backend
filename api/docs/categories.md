@@ -2,7 +2,7 @@
 
 All routes in this document are prefixed with `/api/data`.
 
-Note: role checks are currently commented out in these handlers.
+Note: `add_category` and `delete_category` currently have no authentication guard. `get_all_categories` and `get_active_categories` are also publicly accessible without a token. Authentication enforcement for write operations is planned.
 
 ---
 

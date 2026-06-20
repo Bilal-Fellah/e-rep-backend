@@ -2,7 +2,10 @@
 
 All routes in this document are prefixed with `/api/data`.
 
-Note: role checks are currently commented out in these handlers.
+All endpoints require a valid JWT (`Authorization: Bearer <token>` or `access_token` cookie).
+
+- `add_entity`, `delete_entity`, `mark_entity_to_scrape`: `admin` only.
+- All other entity endpoints: `registered`, `subscribed`, or `admin`.
 
 ---
 

@@ -1,42 +1,51 @@
 # routes/auth_routes.py
 import json
-from api.services.auth_service import AuthService
-from api.utils.auth import validate_email, _extract_token
-from flask import Blueprint, request, jsonify, redirect, make_response
+import os
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from flask import Blueprint, jsonify, make_response, redirect, request
 from sqlalchemy.exc import SQLAlchemyError
+
 from api import db
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.user_repository import UserRepository
-import jwt
-from datetime import datetime, timedelta, timezone
-import os
-from api.utils.auth import MAILS_FILE, ENTITIES_FILE
-from api.utils.validators import (
-    validate_required_keys, validate_enum, sanitize_string,
-    validate_email as v_email, validate_phone, validate_password,
-    ALLOWED_ROLES, ALLOWED_PROFESSIONS
-)
-
 from api.routes.main import (
-    error_response,
-    success_response,
-    register_blueprint_error_handlers,
-    log_route_error,
-    SEVERITY_LOW,
     SEVERITY_HIGH,
+    SEVERITY_LOW,
+    error_response,
+    log_route_error,
+    register_blueprint_error_handlers,
+    success_response,
 )
+from api.services.auth_service import AuthService
+from api.utils.auth import ENTITIES_FILE, MAILS_FILE, _extract_token, validate_email
 from api.utils.permissions import require_role
+from api.utils.validators import (
+    ALLOWED_PROFESSIONS,
+    ALLOWED_ROLES,
+    sanitize_string,
+    validate_enum,
+    validate_password,
+    validate_phone,
+    validate_required_keys,
+)
+from api.utils.validators import validate_email as v_email
+
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
-FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
+FRONTEND_REDIRECT_URL = os.environ.get(
+    "FRONTEND_REDIRECT_URL", "https://www.brendex.net"
+)
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
 ALLOWED_ENTITY_TYPES = ["company", "influencer", "small-business"]
 
 register_blueprint_error_handlers(auth_bp, include_token_errors=True)
+
 
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
@@ -45,15 +54,15 @@ def register_mail():
         email = payload.get("email")
         if not email or not validate_email(email):
             return error_response("Invalid email", 400)
-        
+
         if UserRepository.find_by_email(email):
             return error_response("Email already exists", 400)
-        
+
         init_status = "unverified"
         email_object = {
             "email": email,
             "status": init_status,
-            "registered_at": datetime.now(timezone.utc).isoformat()
+            "registered_at": datetime.now(timezone.utc).isoformat(),
         }
         with open(MAILS_FILE, "r+") as f:
             mails = json.load(f)
@@ -61,51 +70,56 @@ def register_mail():
             mails.append(email_object)
             f.seek(0)
             json.dump(mails, f, indent=4)
-            
-        return success_response(data={"message": f"Email {email} registered for temporary access"})
+
+        return success_response(
+            data={"message": f"Email {email} registered for temporary access"}
+        )
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
+
 
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
     try:
         data = request.json
-        required_keys = ['full_name','email', 'password', 'phone_number', 'profession']
+        required_keys = ["full_name", "email", "password", "phone_number", "profession"]
         missing = validate_required_keys(data, required_keys)
         if missing:
             return error_response(f"missing required key: {missing}", 400)
 
-        if not v_email(data['email']):
+        if not v_email(data["email"]):
             return error_response("Invalid email format", 400)
 
-        if not validate_password(data['password']):
+        if not validate_password(data["password"]):
             return error_response("Password must be at least 8 characters", 400)
-        
-        if not validate_phone(data['phone_number']):
+
+        if not validate_phone(data["phone_number"]):
             return error_response("Invalid phone number format", 400)
 
-        role = data.get('role', 'registered')
-        err = validate_enum(role, ALLOWED_ROLES, 'role')
-        if err:
-            return error_response(err, 400)
-        
-        err = validate_enum(data['profession'], ALLOWED_PROFESSIONS, 'profession')
+        role = data.get("role", "registered")
+        err = validate_enum(role, ALLOWED_ROLES, "role")
         if err:
             return error_response(err, 400)
 
-        full_name = sanitize_string(data['full_name'], 100)
+        err = validate_enum(data["profession"], ALLOWED_PROFESSIONS, "profession")
+        if err:
+            return error_response(err, 400)
+
+        full_name = sanitize_string(data["full_name"], 100)
         if not full_name:
             return error_response("Invalid full_name", 400)
-        
+
         user = AuthService.signup(
             first_name=full_name.split()[0],
-            last_name=" ".join(full_name.split()[1:]) if len(full_name.split()) > 1 else "",
+            last_name=" ".join(full_name.split()[1:])
+            if len(full_name.split()) > 1
+            else "",
             email=data["email"].strip().lower(),
             password=data["password"],
             phone_number=data["phone_number"].strip(),
             role=role,
-            profession=data['profession'],
-            is_verified=True
+            profession=data["profession"],
+            is_verified=True,
         )
 
         tokens = AuthService.issue_token_pair(user)
@@ -122,7 +136,7 @@ def register_user():
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
 
-        return success_response(data=response )
+        return success_response(data=response)
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
 
@@ -134,30 +148,32 @@ def register_entity_name():
         entity_name = payload.get("entity_name")
 
         if not entity_name or not isinstance(entity_name, str):
-            return error_response("Missing or invalid required field: 'entity_name'.", 400)
+            return error_response(
+                "Missing or invalid required field: 'entity_name'.", 400
+            )
 
-        if EntityRepository.get_by_name(entity_name= entity_name):
+        if EntityRepository.get_by_name(entity_name=entity_name):
             return error_response(f"entity name {entity_name} already exists")
-        
-        
+
         init_status = "unverified"
         entity_object = {
             "entity_name": entity_name,
             "status": init_status,
-            "registered_at": datetime.now(timezone.utc).isoformat()
+            "registered_at": datetime.now(timezone.utc).isoformat(),
         }
-        
+
         with open(ENTITIES_FILE, "r+") as f:
             entities = json.load(f)
 
             entities.append(entity_object)
             f.seek(0)
             json.dump(entities, f, indent=4)
-            
-        return success_response(data={"message": f"Entity {entity_name} registered for temporary access"})
+
+        return success_response(
+            data={"message": f"Entity {entity_name} registered for temporary access"}
+        )
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
-
 
 
 @auth_bp.route("/register_entity", methods=["POST"])
@@ -175,6 +191,8 @@ def register_entity():
             return error_response("Invalid entity_name", 400)
 
         entity_type = sanitize_string(data["type"], 20)
+        if not entity_type:
+            return error_response("Invalid type", 400)
         type_error = validate_enum(entity_type, ALLOWED_ENTITY_TYPES, "type")
         if type_error:
             return error_response(type_error, 400)
@@ -188,10 +206,10 @@ def register_entity():
         if pages_data is not None and not isinstance(pages_data, list):
             return error_response("pages must be a list", 400)
 
-        if not CategoryRepository.get_by_id(category_id= category_id):
+        if not CategoryRepository.get_by_id(category_id=category_id):
             return error_response("Invalid category_id", 400)
 
-        if EntityRepository.get_by_name(entity_name= name):
+        if EntityRepository.get_by_name(entity_name=name):
             return error_response(f"entity name {name} already exists", 409)
 
         # Persist entity, category mapping, and pages in a single commit
@@ -206,17 +224,19 @@ def register_entity():
             category_id=category_id,
             commit=False,
         )
-        pages_response = AuthService.create_entity_pages(entity, pages_data, commit=False)
+        pages_response = AuthService.create_entity_pages(
+            entity, pages_data, commit=False
+        )
         db.session.commit()
 
         payload = {
-                    "id": entity.id,
-                    "name": entity.name,
-                    "type": entity.type,
-                    "category_id": entity_category.category_id,
-                    "pages": pages_response 
-                }
-        
+            "id": entity.id,
+            "name": entity.name,
+            "type": entity.type,
+            "category_id": entity_category.category_id,
+            "pages": pages_response,
+        }
+
         return success_response(payload, status_code=201)
 
     except ValueError as ve:
@@ -225,14 +245,18 @@ def register_entity():
         return error_response(str(ve), 400)
     except SQLAlchemyError as db_err:
         db.session.rollback()
-        log_route_error(db_err, SEVERITY_HIGH, 500, "Entity registration database insertion failed")
+        log_route_error(
+            db_err, SEVERITY_HIGH, 500, "Entity registration database insertion failed"
+        )
         return error_response(
             "Failed to save entity data. Check entity uniqueness, category mapping, and page values.",
             500,
         )
     except Exception as ex:
         db.session.rollback()
-        log_route_error(ex, SEVERITY_HIGH, 500, "Entity registration failed unexpectedly")
+        log_route_error(
+            ex, SEVERITY_HIGH, 500, "Entity registration failed unexpectedly"
+        )
         return error_response("Entity registration failed unexpectedly", 500)
 
 
@@ -240,17 +264,17 @@ def register_entity():
 def login():
     try:
         data = request.json
-        missing = validate_required_keys(data, ['email', 'password'])
+        missing = validate_required_keys(data, ["email", "password"])
         if missing:
             return error_response(f"missing required key: {missing}", 400)
 
-        if not v_email(data['email']):
+        if not v_email(data["email"]):
             return error_response("Invalid email format", 400)
 
         user = UserRepository.find_by_email(data["email"].strip().lower())
         if not user or not user.check_password(data["password"]):
             return error_response("Invalid credentials", status_code=401)
-        
+
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(
             user.id,
@@ -265,9 +289,10 @@ def login():
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
 
-        return success_response(response,status_code=200)
+        return success_response(response, status_code=200)
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
+
 
 @auth_bp.route("/get_user_data", methods=["POST"])
 @require_role("admin", "registered", "subscribed")
@@ -278,16 +303,18 @@ def get_user_data():
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        return success_response(data={
-            "email": user.email,
-            "user_id": user.id,
-            "role": user.role,
-            "is_verified": bool(getattr(user, "is_verified", False)),
-            "profession": user.profession,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        })
+        return success_response(
+            data={
+                "email": user.email,
+                "user_id": user.id,
+                "role": user.role,
+                "is_verified": bool(getattr(user, "is_verified", False)),
+                "profession": user.profession,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+            }
+        )
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
 
@@ -314,9 +341,7 @@ def refresh():
         new_access = tokens["access_token"]
         access_exp = tokens["access_token_exp"]
 
-        response = {
-            "access_token": new_access
-        }
+        response = {"access_token": new_access}
         flask_response = make_response(success_response(response))
         flask_response.set_cookie(
             "access_token",
@@ -326,7 +351,7 @@ def refresh():
             secure=COOKIE_SECURE,
             samesite="None",
             domain=FRONTEND_COOKIE_DOMAIN or None,
-            path="/"
+            path="/",
         )
         return flask_response
     except jwt.ExpiredSignatureError:
@@ -344,7 +369,9 @@ def logout():
         refresh_token = _extract_token("refresh_token")
         if refresh_token:
             try:
-                refresh_payload = jwt.decode(refresh_token, SECRET, algorithms=["HS256"])
+                refresh_payload = jwt.decode(
+                    refresh_token, SECRET, algorithms=["HS256"]
+                )
                 user_id = refresh_payload.get("user_id")
             except jwt.InvalidTokenError:
                 user_id = None
@@ -353,7 +380,9 @@ def logout():
             access_token = _extract_token("access_token")
             if access_token:
                 try:
-                    access_payload = jwt.decode(access_token, SECRET, algorithms=["HS256"])
+                    access_payload = jwt.decode(
+                        access_token, SECRET, algorithms=["HS256"]
+                    )
                     user_id = access_payload.get("user_id")
                 except jwt.InvalidTokenError:
                     user_id = None
@@ -368,7 +397,9 @@ def logout():
                 )
 
         cookie_domain = FRONTEND_COOKIE_DOMAIN or None
-        response = make_response(success_response(data={"message": "Logged out successfully"}))
+        response = make_response(
+            success_response(data={"message": "Logged out successfully"})
+        )
         response.set_cookie(
             "access_token",
             "",
@@ -377,7 +408,7 @@ def logout():
             secure=COOKIE_SECURE,
             samesite="None",
             domain=cookie_domain,
-            path="/"
+            path="/",
         )
         response.set_cookie(
             "refresh_token",
@@ -387,7 +418,7 @@ def logout():
             secure=COOKIE_SECURE,
             samesite="None",
             domain=cookie_domain,
-            path="/"
+            path="/",
         )
 
         return response
@@ -398,17 +429,15 @@ def logout():
 @auth_bp.route("/validate_user_role", methods=["POST"])
 @require_role("admin", "registered", "subscribed")
 def validate_user_role():
-
-    """ this route updates the user role, after signing from google auth"""
+    """this route updates the user role, after signing from google auth"""
 
     required_keys = ["user_id", "role"]
     try:
         # Auth payload is already validated by @require_role decorator
-        user = UserRepository.get_by_id(request.user_id)
-        if not user:
+        caller = UserRepository.get_by_id(request.user_id)
+        if not caller:
             return error_response("User not found", 404)
-        role = user.role
-        if role not in allowed_roles:
+        if caller.role != "admin":
             return error_response("Access denied", 403)
 
         data = request.get_json()
@@ -416,11 +445,15 @@ def validate_user_role():
             if key not in data:
                 return error_response(f"Missing required key {key}", 400)
 
-        user_id = data['user_id']
-        role = data['role']
+        user_id = data["user_id"]
+        role = data["role"]
 
-        user = UserRepository.update_role(user_id=user_id, role= role, is_verified=True)
-        response = {"user_id": user.id, 'role': user.role, "is_verified": bool(getattr(user, "is_verified", False))}
+        user = UserRepository.update_role(user_id=user_id, role=role, is_verified=True)
+        response = {
+            "user_id": user.id,
+            "role": user.role,
+            "is_verified": bool(getattr(user, "is_verified", False)),
+        }
         return success_response(data=response)
 
     except (TypeError, KeyError, ValueError):
@@ -455,32 +488,36 @@ def complete_profile():
         user = UserRepository.update_profile(
             user_id=user.id,
             phone_number=data["phone_number"].strip(),
-            profession=data["profession"]
+            profession=data["profession"],
         )
 
-        return success_response(data={
-            "user_id": user.id,
-            "phone_number": user.phone_number,
-            "profession": user.profession,
-            "is_verified": bool(getattr(user, "is_verified", False)),
-        })
+        return success_response(
+            data={
+                "user_id": user.id,
+                "phone_number": user.phone_number,
+                "profession": user.profession,
+                "is_verified": bool(getattr(user, "is_verified", False)),
+            }
+        )
 
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
 
+
 @auth_bp.route("/redirect_to_app", methods=["POST"])
 @require_role("admin", "registered", "subscribed")
 def redirect_to_app():
-
-    """ This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
-        It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens 
-        and redirects the user to the app subdomain after setting those tokens in cookies
+    """This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
+    It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens
+    and redirects the user to the app subdomain after setting those tokens in cookies
     """
 
     try:
         # Auth payload is already validated by @require_role decorator
         user = UserRepository.get_by_id(request.user_id)
-        
+        if not user:
+            return error_response("User not found", 404)
+
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(
             user.id,
@@ -498,7 +535,7 @@ def redirect_to_app():
             secure=COOKIE_SECURE,
             samesite="None",
             domain=cookie_domain,
-            path="/"
+            path="/",
         )
         response.set_cookie(
             "refresh_token",
@@ -508,12 +545,10 @@ def redirect_to_app():
             secure=COOKIE_SECURE,
             samesite="None",
             domain=cookie_domain,
-            path="/"
+            path="/",
         )
 
         return response
-
-        
 
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)

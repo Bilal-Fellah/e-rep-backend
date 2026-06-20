@@ -2,7 +2,9 @@
 
 All routes in this document are prefixed with `/api/data`.
 
-Note: role checks are currently commented out in these handlers.
+Supported platform values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`.
+
+`add_page` and `delete_page` require `admin` role. All read endpoints require authentication with role `registered`, `subscribed`, or `admin`.
 
 ---
 
@@ -14,8 +16,8 @@ Create a page for an entity.
 
 ```json
 {
-  "platform": "twitter",
-  "link": "https://twitter.com/example",
+  "platform": "x",
+  "link": "https://x.com/example",
   "entity_id": 3,
   "name": "Example Page"
 }
@@ -31,8 +33,8 @@ Create a page for an entity.
   "data": {
     "uuid": "3f5d7c6a-8b10-54c3-a2b5-1c77d33f9e31",
     "name": "Example Page",
-    "link": "https://twitter.com/example",
-    "platform": "twitter",
+    "link": "https://x.com/example",
+    "platform": "x",
     "entity_id": 3
   }
 }
@@ -94,8 +96,8 @@ Fetch all pages.
     {
       "uuid": "123e4567-e89b-12d3-a456-426614174000",
       "name": "Example Page",
-      "link": "https://twitter.com/example",
-      "platform": "twitter",
+      "link": "https://x.com/example",
+      "platform": "x",
       "entity_id": 3
     }
   ]
@@ -127,8 +129,8 @@ Fetch pages for one platform.
     {
       "uuid": "123e4567-e89b-12d3-a456-426614174000",
       "name": "Example Page",
-      "link": "https://twitter.com/example",
-      "platform": "twitter",
+      "link": "https://x.com/example",
+      "platform": "x",
       "entity_id": 3
     }
   ]

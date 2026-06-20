@@ -19,8 +19,8 @@ def resolve_period_dates(period=None, start_date=None, end_date=None):
             end = date.today() - timedelta(days=1)
             return start, end
         elif normalized in ("prev_month", "previous_month", "prev_30d", "previous_30d"):
-            start = date.today() - timedelta(days=31)
-            end = date.today() - timedelta(days=1)
+            start = date.today() - timedelta(days=60)
+            end = date.today() - timedelta(days=30)
             return start, end
         else:
             raise ValueError(f"Invalid period value: '{period}'. Supported values: yesterday, prev_7d, previous_month.")

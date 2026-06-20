@@ -145,7 +145,7 @@ Creates a new entity and maps it to a category. Requires authenticated user with
 ```json
 {
   "entity_name": "MyEntity",
-  "type": "business",
+  "type": "company",
   "category_id": 2,
   "pages": [
     {
@@ -156,6 +156,12 @@ Creates a new entity and maps it to a category. Requires authenticated user with
 }
 ```
 
+`type` must be one of: `company`, `influencer`, `small-business`.
+
+Supported `platform` values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`.
+
+`pages` is optional.
+
 ### Success Response (201)
 
 ```json
@@ -164,7 +170,7 @@ Creates a new entity and maps it to a category. Requires authenticated user with
   "data": {
     "id": 5,
     "name": "MyEntity",
-    "type": "business",
+    "type": "company",
     "category_id": 2,
     "pages": [
       {
@@ -180,15 +186,31 @@ Creates a new entity and maps it to a category. Requires authenticated user with
 ### Error Responses
 
 ```json
-{ "success": false, "error": "No valid token has been sent" }
+{ "success": false, "error": "No valid token provided" }
 ```
 
 ```json
-{ "success": false, "error": "Access denied" }
+{ "success": false, "error": "Insufficient permissions for this action" }
 ```
 
 ```json
-{ "success": false, "error": "Missing required parameters" }
+{ "success": false, "error": "missing required key: entity_name" }
+```
+
+```json
+{ "success": false, "error": "Invalid entity_name" }
+```
+
+```json
+{ "success": false, "error": "type must be one of ['company', 'influencer', 'small-business']" }
+```
+
+```json
+{ "success": false, "error": "Invalid category_id" }
+```
+
+```json
+{ "success": false, "error": "entity name MyEntity already exists" }
 ```
 
 ---
@@ -327,7 +349,7 @@ No request body is required.
 
 ## **POST /api/auth/validate_user_role**
 
-Updates the target user's role and sets them as verified. Caller must be authenticated and have role in `admin`, `registered`, `subscribed`.
+Updates the target user's role and sets them as verified. Caller must be authenticated with role `admin` (non-admin callers receive 403).
 
 ### Request
 
@@ -354,11 +376,19 @@ Updates the target user's role and sets them as verified. Caller must be authent
 ### Error Responses
 
 ```json
-{ "success": false, "error": "Missing required key user_id" }
+{ "success": false, "error": "User not found" }
 ```
 
 ```json
 { "success": false, "error": "Access denied" }
+```
+
+```json
+{ "success": false, "error": "Missing required key user_id" }
+```
+
+```json
+{ "success": false, "error": "Missing required key role" }
 ```
 
 ---

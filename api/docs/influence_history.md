@@ -51,8 +51,7 @@ Return entity history by date (today by default).
 
 ### Notes
 
-- This route decodes `access_token` and currently expects a valid token.
-- Token errors are handled by shared blueprint handlers.
+- This route no longer requires a token. The previous JWT check has been removed.
 
 ### Success Response (200)
 
@@ -100,7 +99,7 @@ Return followers-based entity ranking data.
 
 ### Query Parameters
 
-- `date` (required, string)
+- `date` (optional, string; default `1m`)
   - Allowed values: `7d`, `1m`, `3m`
   - `7d` = 7 days before today
   - `1m` = 1 month before today (30-day window)
@@ -146,11 +145,41 @@ Return followers-based entity ranking data.
 ```
 
 ```json
-{ "success": false, "error": "Missing required query param: 'date'. Use one of: 7d, 1m, 3m." }
+{ "success": false, "error": "Invalid request data" }
 ```
 
+---
+
+## **GET /api/data/get_followers_progress_ranking**
+
+Return followers progress (gain) ranking for entities over a time window.
+
+### Query Parameters
+
+- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `start_date` (optional, ISO date/datetime)
+- `end_date` (optional, ISO date/datetime)
+
+### Success Response (200)
+
 ```json
-{ "success": false, "error": "Invalid date value. Use one of: 7d, 1m, 3m." }
+{
+  "success": true,
+  "data": [
+    {
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "followers_gained": 5000,
+      "rank": 1
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No followers progress ranking data found for entities." }
 ```
 
 ```json
