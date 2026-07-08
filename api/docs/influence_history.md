@@ -150,6 +150,201 @@ Return followers-based entity ranking data.
 
 ---
 
+## **GET /api/data/get_posts_followers_ranking**
+
+Return globally ranked posts ordered by the followers of the page that published them.
+
+### Query Parameters
+
+- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `start_date` (optional, ISO date/datetime)
+- `end_date` (optional, ISO date/datetime)
+
+### Notes
+
+- Uses the latest post snapshot found inside the selected window.
+- `total_followers` reflects the publisher page followers for that post snapshot.
+- Response shape follows the entity-ranking style: ranked list with `rank`, entity metadata, page metadata, and metric totals.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "post_id": "post_123",
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "window_start": "2026-03-14",
+      "page_id": "page_uuid",
+      "page_name": "Tesla Official",
+      "platform": "instagram",
+      "caption": "Launch day update",
+      "total_followers": 100000,
+      "rank": 1
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No followers ranking data found for posts." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **GET /api/data/get_posts_interactions_ranking**
+
+Return globally ranked posts ordered by weighted interaction score.
+
+### Query Parameters
+
+- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `start_date` (optional, ISO date/datetime)
+- `end_date` (optional, ISO date/datetime)
+
+### Notes
+
+- Uses the same scoring idea as the entity interactions ranking.
+- `total_score` is the weighted sum of the post's interaction metrics for its platform.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "post_id": "post_123",
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "window_start": "2026-03-14",
+      "page_id": "page_uuid",
+      "page_name": "Tesla Official",
+      "platform": "instagram",
+      "caption": "Launch day update",
+      "total_score": 1234.5,
+      "rank": 1
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No interactions ranking data found for posts." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **GET /api/data/get_posts_likes_ranking**
+
+Return globally ranked posts ordered by total likes.
+
+### Query Parameters
+
+- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `start_date` (optional, ISO date/datetime)
+- `end_date` (optional, ISO date/datetime)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "post_id": "post_123",
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "window_start": "2026-03-14",
+      "page_id": "page_uuid",
+      "page_name": "Tesla Official",
+      "platform": "instagram",
+      "caption": "Launch day update",
+      "total_likes": 5000,
+      "rank": 1
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No likes ranking data found for posts." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **GET /api/data/get_posts_comments_ranking**
+
+Return globally ranked posts ordered by total comments.
+
+### Query Parameters
+
+- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `start_date` (optional, ISO date/datetime)
+- `end_date` (optional, ISO date/datetime)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "post_id": "post_123",
+      "entity_id": 1,
+      "entity_name": "Tesla",
+      "category": "automotive",
+      "root_category": "business",
+      "window_start": "2026-03-14",
+      "page_id": "page_uuid",
+      "page_name": "Tesla Official",
+      "platform": "instagram",
+      "caption": "Launch day update",
+      "total_comments": 900,
+      "rank": 1
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "No comments ranking data found for posts." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
 ## **GET /api/data/get_followers_progress_ranking**
 
 Return followers progress (gain) ranking for entities over a time window.

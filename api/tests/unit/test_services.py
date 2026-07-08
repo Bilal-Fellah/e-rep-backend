@@ -1057,11 +1057,11 @@ def test_influence_interactions_ranking_default_window_and_weighted_scores(monke
     x_weights = {m["name"]: m["score"] for m in platform_metrics["x"]["metrics"]}
     li_weights = {m["name"]: m["score"] for m in platform_metrics["linkedin"]["metrics"]}
 
+    # X platform only has reposts and likes in platform_metrics (replies is commented out)
     expected_a_score = (
         100 * ig_weights["likes"]
         + 10 * ig_weights["comments"]
         + 20 * x_weights["likes"]
-        + 8 * x_weights["replies"]
         + 6 * x_weights["reposts"]
     )
     expected_b_score = 50 * li_weights["likes_count"] + 20 * li_weights["comments_count"]

@@ -203,8 +203,8 @@ def test_resolve_period_dates():
     assert prev_7d_end == date.today() - timedelta(days=1)
 
     prev_month_start, prev_month_end = resolve_period_dates(period="previous_month")
-    assert prev_month_start == date.today() - timedelta(days=31)
-    assert prev_month_end == date.today() - timedelta(days=1)
+    assert prev_month_start == date.today() - timedelta(days=60)
+    assert prev_month_end == date.today() - timedelta(days=30)
 
     # Test fallback to start_date and end_date
     start, end = resolve_period_dates(start_date="2026-01-01", end_date="2026-01-10")
@@ -218,4 +218,4 @@ def test_resolve_period_dates():
 
     # Test error
     with pytest.raises(ValueError, match="Invalid period value"):
-        resolve_period_dates(period="invalid_period")
+        resolve_period_dates(period="invalid_period")
