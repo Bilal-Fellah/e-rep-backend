@@ -5,8 +5,8 @@ platform_metrics = {
         "date": "datetime",
         "weight": 1/5,
         "metrics": [
-            {"name": "comments", "score": 0.65},
-            {"name": "likes", "score": 0.35},
+            {"name": "comments", "score": 1},
+            {"name": "likes", "score": 1},
         ]
     },
     "linkedin": {
@@ -14,8 +14,8 @@ platform_metrics = {
         "date": "date",
         "weight": 1/5,
         "metrics": [
-            {"name": "comments_count", "score": 0.7},
-            {"name": "likes_count", "score": 0.3},
+            {"name": "comments_count", "score": 1},
+            {"name": "likes_count", "score": 1},
         ]
     },
     "x": {
@@ -23,9 +23,9 @@ platform_metrics = {
         "date": "date_posted",
         "weight": 1/5,
         "metrics": [
-            {"name": "reposts", "score": 0.5},
-            {"name": "likes", "score": 0.15},
-            {"name": "replies", "score": 0.35},
+            {"name": "reposts", "score": 1},
+            {"name": "likes", "score": 1},
+            {"name": "replies", "score": 1},
         ]
     },
     "tiktok": {
@@ -33,10 +33,10 @@ platform_metrics = {
         "date": "create_date",
         "weight": 1/5,
         "metrics": [
-            {"name": "commentcount", "score": 0.45},
-            {"name": "share_count", "score": 0.35},
-            {"name": "favorites_count", "score": 0.2},
-            # {"name": "playcount", "score": 0.1},
+            {"name": "commentcount", "score": 1},
+            {"name": "share_count", "score": 1},
+            {"name": "favorites_count", "score": 1},
+            # {"name": "playcount", "score": 1},
         ]
     }, 
     "facebook":{
@@ -44,9 +44,9 @@ platform_metrics = {
         "date": "date_posted",
         "weight": 1/5,
         "metrics": [
-            {"name": "num_comments", "score": 0.35},
-            {"name": "likes", "score": 0.2},
-            {"name": "num_shares", "score": 0.45},
+            {"name": "num_comments", "score": 1},
+            {"name": "likes", "score": 1},
+            {"name": "num_shares", "score": 1},
         ]
     }
 }
