@@ -25,7 +25,7 @@ platform_metrics = {
         "metrics": [
             {"name": "reposts", "score": 1},
             {"name": "likes", "score": 1},
-            {"name": "replies", "score": 1},
+            # {"name": "replies", "score": 1},
         ]
     },
     "tiktok": {
@@ -35,7 +35,7 @@ platform_metrics = {
         "metrics": [
             {"name": "commentcount", "score": 1},
             {"name": "share_count", "score": 1},
-            {"name": "favorites_count", "score": 1},
+            # {"name": "favorites_count", "score": 1},
             # {"name": "playcount", "score": 1},
         ]
     }, 
@@ -46,7 +46,7 @@ platform_metrics = {
         "metrics": [
             {"name": "num_comments", "score": 1},
             {"name": "likes", "score": 1},
-            {"name": "num_shares", "score": 1},
+            # {"name": "num_shares", "score": 1},
         ]
     }
 }
