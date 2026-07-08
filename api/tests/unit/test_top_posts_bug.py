@@ -1,6 +1,6 @@
 """
-Tests to expose the bug in get_entity_top_posts.
-These tests demonstrate why posts might not be returned when they should be.
+Tests to verify correct behavior of get_entity_top_posts.
+These tests ensure that first-time posts are included with their current metrics as gains.
 """
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
@@ -10,23 +10,17 @@ import pytest
 from api.services.entity_service import EntityService
 
 
-class TestTopPostsBugFirstTimePosts:
+class TestTopPostsFirstTimePosts:
     """
-    BUG: Posts appearing for the first time on the requested date are NOT included.
-    
-    The get_entity_top_posts method only adds posts to the output if they have
-    a previous snapshot to compare against. This means new posts (first appearance)
-    are silently dropped.
+    Tests for first-time posts appearing on the target date.
+    These posts should be included with their current metric values as gains (baseline = 0).
     """
 
-    def test_first_time_post_on_target_date_is_not_included(self, monkeypatch):
+    def test_first_time_post_on_target_date_is_included(self, monkeypatch):
         """
-        This test demonstrates the BUG:
-        A post that appears for the first time on the target date should be included,
-        but it's not because there's no previous snapshot to compare against.
+        A post that appears for the first time on the target date should be included.
+        Its current metrics are treated as gains (as if baseline was 0).
         """
-        # A post appears for the first time on 2026-01-20
-        # There's no previous data for this post
         rows = [
             SimpleNamespace(
                 platform="instagram",
@@ -41,32 +35,26 @@ class TestTopPostsBugFirstTimePosts:
 
         day_gains, posts_num, skipped = EntityService.get_entity_top_posts(1, date_value="2026-01-20", top_posts=5)
 
-        # EXPECTED: The post should be included (it exists on the target date)
-        # ACTUAL: day_gains["posts"] is empty because there's no previous snapshot
-        # This demonstrates the bug!
         assert posts_num == 1, "Post should have been processed"
         assert day_gains is not None, "Should return data for the target date"
+        assert day_gains["day"] == "2026-01-20"
         
-        # THIS ASSERTION WILL FAIL - demonstrating the bug
-        # Posts on the first day have no "gains" because there's no previous day,
-        # so they're not added to day_output["posts"]
-        assert len(day_gains.get("posts", [])) > 0, (
-            "BUG: First-time posts should be included in results! "
-            "Currently they're dropped because there's no previous snapshot to compare against."
-        )
+        # First-time post is now included with gains = current values
+        assert len(day_gains["posts"]) == 1, "First-time post should be included"
+        assert day_gains["posts"][0]["gained_comments"] == 10
+        assert day_gains["posts"][0]["gained_likes"] == 50
+        assert day_gains["posts"][0]["post_id"] == "new_post"
 
-    def test_post_with_previous_day_is_included(self, monkeypatch):
+    def test_post_with_previous_day_computes_gains(self, monkeypatch):
         """
-        This test shows that posts WITH a previous snapshot ARE included correctly.
+        Posts with a previous snapshot should compute gains as the difference.
         """
         rows = [
-            # Day 1 - post appears with some metrics
             SimpleNamespace(
                 platform="instagram",
                 recorded_at=datetime(2026, 1, 19, tzinfo=timezone.utc),
                 posts_metrics=[[{"id": "existing_post", "datetime": "2026-01-19T00:00:00Z", "comments": 5, "likes": 20}]],
             ),
-            # Day 2 - same post with increased metrics
             SimpleNamespace(
                 platform="instagram",
                 recorded_at=datetime(2026, 1, 20, tzinfo=timezone.utc),
@@ -88,7 +76,7 @@ class TestTopPostsBugFirstTimePosts:
     def test_mixed_posts_first_time_and_existing(self, monkeypatch):
         """
         Test with mixed scenario: some posts are new, some have previous data.
-        Shows that only posts with previous data are returned.
+        Both should be included with correct gains.
         """
         rows = [
             # Day 1 - only post_a exists
@@ -115,25 +103,34 @@ class TestTopPostsBugFirstTimePosts:
         day_gains, posts_num, skipped = EntityService.get_entity_top_posts(1, date_value="2026-01-20", top_posts=5)
 
         assert day_gains is not None
-        assert posts_num == 2, "Both posts should be processed"
+        # posts_num counts all posts processed across all days (1 from day 1 + 2 from day 2 = 3)
+        assert posts_num == 3, "All posts should be processed"
         
-        # BUG: Only post_a is returned, post_b (new post) is dropped
-        # Expected: 2 posts, Actual: 1 post
-        assert len(day_gains["posts"]) == 1, "BUG CONFIRMED: New post (post_b) was dropped!"
+        # Both posts should be included
+        assert len(day_gains["posts"]) == 2, "Both posts should be in results"
         
-        # Only post_a is included because it has previous data
-        assert day_gains["posts"][0]["post_id"] == "post_a"
+        # post_a has gains from previous day
+        post_a = next((p for p in day_gains["posts"] if p["post_id"] == "post_a"), None)
+        assert post_a is not None
+        assert post_a["gained_comments"] == 5
+        assert post_a["gained_likes"] == 10
+        
+        # post_b is new, gains = current values
+        post_b = next((p for p in day_gains["posts"] if p["post_id"] == "post_b"), None)
+        assert post_b is not None
+        assert post_b["gained_comments"] == 100
+        assert post_b["gained_likes"] == 200
 
 
-class TestTopPostsNoPreviousDay:
+class TestTopPostsFirstDayOfData:
     """
     Tests for the edge case when the target date is the first day of data.
     """
 
-    def test_target_date_is_first_day_of_data_returns_empty(self, monkeypatch):
+    def test_target_date_is_first_day_of_data_returns_posts(self, monkeypatch):
         """
-        When requesting data for the first day available, no posts are returned
-        because there's no previous day to compare against.
+        When requesting data for the first day available, posts should be returned
+        with their current metrics as gains.
         """
         rows = [
             SimpleNamespace(
@@ -149,19 +146,18 @@ class TestTopPostsNoPreviousDay:
 
         day_gains, posts_num, skipped = EntityService.get_entity_top_posts(1, date_value="2026-01-20", top_posts=5)
 
-        # day_gains exists but posts is empty
         assert day_gains is not None, "Should return data for target date"
         assert day_gains["day"] == "2026-01-20"
         
-        # BUG: posts is empty even though data exists
-        assert len(day_gains.get("posts", [])) == 0, (
-            "BUG CONFIRMED: No posts returned for first day of data"
-        )
+        # Posts are now included on first day
+        assert len(day_gains["posts"]) == 1
+        assert day_gains["posts"][0]["gained_comments"] == 50
+        assert day_gains["posts"][0]["gained_likes"] == 100
 
 
 class TestTopPostsGainsComputation:
     """
-    Tests to verify gains are computed correctly for posts that ARE included.
+    Tests to verify gains are computed correctly for posts.
     """
 
     def test_negative_gains_are_included(self, monkeypatch):

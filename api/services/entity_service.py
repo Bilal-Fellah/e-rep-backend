@@ -556,14 +556,21 @@ class EntityService:
 
                 gains = {}
                 if previous_post and previous_post != {}:
+                    # Post has previous snapshot - compute gains
                     for m in metrics:
                         name = m["name"]
                         cur_val = _to_number(post_data.get(name, 0))
                         prev_val = _to_number(previous_post.get(name, 0))
 
                         gains[f"gained_{name}"] = cur_val - prev_val
+                else:
+                    # New post (first appearance) - treat current values as gains (baseline = 0)
+                    for m in metrics:
+                        name = m["name"]
+                        cur_val = _to_number(post_data.get(name, 0))
+                        gains[f"gained_{name}"] = cur_val
 
-                    day_output["posts"].append({**post_data, **gains})
+                day_output["posts"].append({**post_data, **gains})
 
             final_output.append(day_output)
 
