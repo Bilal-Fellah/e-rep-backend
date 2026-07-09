@@ -3,7 +3,7 @@ platform_metrics = {
     "instagram": {
         "id_key": "id",
         "date": "datetime",
-        "weight": 1/5,
+        "weight": 1,
         "metrics": [
             {"name": "comments", "score": 1},
             {"name": "likes", "score": 1},
@@ -12,7 +12,7 @@ platform_metrics = {
     "linkedin": {
         "id_key": "post_id",
         "date": "date",
-        "weight": 1/5,
+        "weight": 1,
         "metrics": [
             {"name": "comments_count", "score": 1},
             {"name": "likes_count", "score": 1},
@@ -21,7 +21,7 @@ platform_metrics = {
     "x": {
         "id_key": "post_id",
         "date": "date_posted",
-        "weight": 1/5,
+        "weight": 1,
         "metrics": [
             {"name": "reposts", "score": 1},
             {"name": "likes", "score": 1},
@@ -31,7 +31,7 @@ platform_metrics = {
     "tiktok": {
         "id_key": "video_id",
         "date": "create_date",
-        "weight": 1/5,
+        "weight": 1,
         "metrics": [
             {"name": "commentcount", "score": 1},
             {"name": "share_count", "score": 1},
@@ -42,7 +42,7 @@ platform_metrics = {
     "facebook":{
         "id_key": "post_id",
         "date": "date_posted",
-        "weight": 1/5,
+        "weight": 1,
         "metrics": [
             {"name": "num_comments", "score": 1},
             {"name": "likes", "score": 1},
