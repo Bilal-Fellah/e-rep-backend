@@ -156,15 +156,17 @@ Return globally ranked posts ordered by the followers of the page that published
 
 ### Query Parameters
 
-- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
 
 ### Notes
 
-- Uses the latest post snapshot found inside the selected window.
-- `total_followers` reflects the publisher page followers for that post snapshot.
-- Response shape follows the entity-ranking style: ranked list with `rank`, entity metadata, page metadata, and metric totals.
+- Posts are ranked based on the **growth in metrics** between the earliest and latest snapshot in the date window.
+- Growth is calculated as: `latest_value - earliest_value` for each metric.
+- Multiple snapshots per post are tracked across the time window.
+- `page_followers` reflects the publisher page's follower count.
+- `window_start` and `window_end` define the time period for growth calculation.
 
 ### Success Response (200)
 
@@ -173,18 +175,29 @@ Return globally ranked posts ordered by the followers of the page that published
   "success": true,
   "data": [
     {
-      "post_id": "post_123",
+      "rank": 1,
       "entity_id": 1,
       "entity_name": "Tesla",
       "category": "automotive",
       "root_category": "business",
-      "window_start": "2026-03-14",
       "page_id": "page_uuid",
       "page_name": "Tesla Official",
+      "page_url": "https://instagram.com/tesla",
+      "profile_image_url": "https://example.com/profile.jpg",
       "platform": "instagram",
+      "post_id": "post_123",
       "caption": "Launch day update",
-      "total_followers": 100000,
-      "rank": 1
+      "post_url": "https://instagram.com/p/post_123",
+      "created_at": "2026-03-20T10:00:00Z",
+      "window_start": "2026-03-14",
+      "window_end": "2026-04-14",
+      "snapshots_count": 5,
+      "gained_likes": 4850,
+      "gained_comments": 215,
+      "gained_shares": 0,
+      "gained_views": 0,
+      "gained_score": 5065.0,
+      "page_followers": 100000
     }
   ]
 }
@@ -204,18 +217,20 @@ Return globally ranked posts ordered by the followers of the page that published
 
 ## **GET /api/data/get_posts_interactions_ranking**
 
-Return globally ranked posts ordered by weighted interaction score.
+Return globally ranked posts ordered by weighted interaction score growth.
 
 ### Query Parameters
 
-- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
 
 ### Notes
 
-- Uses the same scoring idea as the entity interactions ranking.
-- `total_score` is the weighted sum of the post's interaction metrics for its platform.
+- Posts are ranked by **growth in interaction score** (gained_score).
+- `gained_score` = weighted sum of metric gains based on platform configuration.
+- Each platform has different metrics and weights (e.g., Instagram tracks likes & comments, X tracks likes & reposts).
+- Multiple snapshots per post are tracked to calculate accurate growth.
 
 ### Success Response (200)
 
@@ -224,18 +239,29 @@ Return globally ranked posts ordered by weighted interaction score.
   "success": true,
   "data": [
     {
-      "post_id": "post_123",
+      "rank": 1,
       "entity_id": 1,
       "entity_name": "Tesla",
       "category": "automotive",
       "root_category": "business",
-      "window_start": "2026-03-14",
       "page_id": "page_uuid",
       "page_name": "Tesla Official",
+      "page_url": "https://instagram.com/tesla",
+      "profile_image_url": "https://example.com/profile.jpg",
       "platform": "instagram",
+      "post_id": "post_123",
       "caption": "Launch day update",
-      "total_score": 1234.5,
-      "rank": 1
+      "post_url": "https://instagram.com/p/post_123",
+      "created_at": "2026-03-20T10:00:00Z",
+      "window_start": "2026-03-14",
+      "window_end": "2026-04-14",
+      "snapshots_count": 5,
+      "gained_likes": 4850,
+      "gained_comments": 215,
+      "gained_shares": 0,
+      "gained_views": 0,
+      "gained_score": 5065.0,
+      "page_followers": 100000
     }
   ]
 }
@@ -255,13 +281,19 @@ Return globally ranked posts ordered by weighted interaction score.
 
 ## **GET /api/data/get_posts_likes_ranking**
 
-Return globally ranked posts ordered by total likes.
+Return globally ranked posts ordered by likes growth.
 
 ### Query Parameters
 
-- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+
+### Notes
+
+- Posts are ranked by **likes growth** (gained_likes).
+- Growth calculated between earliest and latest snapshot in the window.
+- Handles platform-specific like metric names (likes, likes_count, favorites_count).
 
 ### Success Response (200)
 
@@ -270,18 +302,29 @@ Return globally ranked posts ordered by total likes.
   "success": true,
   "data": [
     {
-      "post_id": "post_123",
+      "rank": 1,
       "entity_id": 1,
       "entity_name": "Tesla",
       "category": "automotive",
       "root_category": "business",
-      "window_start": "2026-03-14",
       "page_id": "page_uuid",
       "page_name": "Tesla Official",
+      "page_url": "https://instagram.com/tesla",
+      "profile_image_url": "https://example.com/profile.jpg",
       "platform": "instagram",
+      "post_id": "post_123",
       "caption": "Launch day update",
-      "total_likes": 5000,
-      "rank": 1
+      "post_url": "https://instagram.com/p/post_123",
+      "created_at": "2026-03-20T10:00:00Z",
+      "window_start": "2026-03-14",
+      "window_end": "2026-04-14",
+      "snapshots_count": 5,
+      "gained_likes": 4850,
+      "gained_comments": 215,
+      "gained_shares": 0,
+      "gained_views": 0,
+      "gained_score": 5065.0,
+      "page_followers": 100000
     }
   ]
 }
@@ -301,13 +344,19 @@ Return globally ranked posts ordered by total likes.
 
 ## **GET /api/data/get_posts_comments_ranking**
 
-Return globally ranked posts ordered by total comments.
+Return globally ranked posts ordered by comments growth.
 
 ### Query Parameters
 
-- `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
+- `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+
+### Notes
+
+- Posts are ranked by **comments growth** (gained_comments).
+- Growth calculated between earliest and latest snapshot in the window.
+- Handles platform-specific comment metric names (comments, comments_count, commentcount, replies, num_comments).
 
 ### Success Response (200)
 
@@ -316,18 +365,29 @@ Return globally ranked posts ordered by total comments.
   "success": true,
   "data": [
     {
-      "post_id": "post_123",
+      "rank": 1,
       "entity_id": 1,
       "entity_name": "Tesla",
       "category": "automotive",
       "root_category": "business",
-      "window_start": "2026-03-14",
       "page_id": "page_uuid",
       "page_name": "Tesla Official",
+      "page_url": "https://instagram.com/tesla",
+      "profile_image_url": "https://example.com/profile.jpg",
       "platform": "instagram",
+      "post_id": "post_123",
       "caption": "Launch day update",
-      "total_comments": 900,
-      "rank": 1
+      "post_url": "https://instagram.com/p/post_123",
+      "created_at": "2026-03-20T10:00:00Z",
+      "window_start": "2026-03-14",
+      "window_end": "2026-04-14",
+      "snapshots_count": 5,
+      "gained_likes": 4850,
+      "gained_comments": 215,
+      "gained_shares": 0,
+      "gained_views": 0,
+      "gained_score": 5065.0,
+      "page_followers": 100000
     }
   ]
 }

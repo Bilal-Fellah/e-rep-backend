@@ -1,6 +1,6 @@
 # Business workflows for influence history service.
 from collections import defaultdict
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.utils.data_keys import platform_metrics
@@ -330,19 +330,30 @@ class InfluenceHistoryService:
         return ranking
 
     @staticmethod
-    def _get_posts_ranking(period=None, start_date=None, end_date=None, order_by_key="total_score"):
+    def _get_posts_ranking(period=None, start_date=None, end_date=None, order_by_key="gained_score"):
+        """
+        Calculate posts ranking based on metric growth (difference between snapshots).
+        
+        Posts are tracked across multiple snapshots within the date window.
+        Growth is calculated as: latest_snapshot_value - earliest_snapshot_value.
+        This matches the behavior of company/entity interaction rankings.
+        """
         date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
         rows = PageHistoryRepository.get_all_entities_posts(date_limit=date_limit)
 
         if not rows:
             return []
 
-        ranked_posts = {}
+        # Track post snapshots across time: {post_key: {snapshot_data}}
+        post_snapshots = defaultdict(list)
+        
+        # Metadata for each post (entity info, page info, etc.)
+        post_metadata = {}
+
         sorted_rows = sorted(
             rows,
             key=lambda row: InfluenceHistoryService._row_value(row, "recorded_at", datetime.min),
-            reverse=True,
-        )
+        )  # Sort ascending to process oldest first
 
         for row in sorted_rows:
             platform = InfluenceHistoryService._row_value(row, "platform", None)
@@ -395,45 +406,114 @@ class InfluenceHistoryService:
                     continue
 
                 post_key = (page_id, platform, str(post_id))
-                if post_key in ranked_posts:
-                    continue
+                
+                # Store metadata once per post
+                if post_key not in post_metadata:
+                    post_metadata[post_key] = {
+                        "entity_id": entity_id,
+                        "entity_name": entity_name,
+                        "category": category,
+                        "root_category": root_category,
+                        "page_id": page_id,
+                        "page_name": page_name,
+                        "page_url": page_url,
+                        "profile_image_url": profile_image_url,
+                        "platform": platform,
+                        "post_id": post_id,
+                        "caption": post.get("caption"),
+                        "post_url": post.get("url") or post.get("link"),
+                        "created_at": post_dt.isoformat(),
+                        "page_followers": page_followers,
+                    }
 
-                total_likes = InfluenceHistoryService._post_metric_value(post, "likes")
-                total_comments = InfluenceHistoryService._post_metric_value(post, "comments")
-                total_shares = InfluenceHistoryService._post_metric_value(post, "shares")
-                total_views = InfluenceHistoryService._post_metric_value(post, "views")
-
-                total_score = 0.0
+                # Extract metric values for this snapshot
+                likes = InfluenceHistoryService._post_metric_value(post, "likes")
+                comments = InfluenceHistoryService._post_metric_value(post, "comments")
+                shares = InfluenceHistoryService._post_metric_value(post, "shares")
+                views = InfluenceHistoryService._post_metric_value(post, "views")
+                
+                # Calculate platform-specific score for this snapshot
+                snapshot_score = 0.0
                 for metric in metrics:
                     metric_name = metric["name"]
                     metric_weight = metric.get("score", 1.0)
-                    total_score += _to_number(post.get(metric_name, 0)) * metric_weight
+                    snapshot_score += _to_number(post.get(metric_name, 0)) * metric_weight
 
-                ranked_posts[post_key] = {
-                    "entity_id": entity_id,
-                    "entity_name": entity_name,
-                    "category": category,
-                    "root_category": root_category,
-                    "window_start": date_limit.isoformat(),
-                    "page_id": page_id,
-                    "page_name": page_name,
-                    "page_url": page_url,
-                    "profile_image_url": profile_image_url,
-                    "platform": platform,
-                    "post_id": post_id,
-                    "caption": post.get("caption"),
-                    "post_url": post.get("url") or post.get("link"),
-                    "created_at": post_dt.isoformat(),
-                    "total_followers": page_followers,
-                    "total_likes": total_likes,
-                    "total_comments": total_comments,
-                    "total_shares": total_shares,
-                    "total_views": total_views,
-                    "total_score": round(total_score, 4),
-                }
+                post_snapshots[post_key].append({
+                    "recorded_at": recorded_at,
+                    "likes": likes,
+                    "comments": comments,
+                    "shares": shares,
+                    "views": views,
+                    "score": snapshot_score,
+                })
+
+        # Calculate growth for each post
+        ranked_posts = {}
+        window_end = end_dt.isoformat() if end_dt else datetime.now(timezone.utc).date().isoformat()
+        
+        for post_key, snapshots in post_snapshots.items():
+            if len(snapshots) < 1:
+                continue
+
+            metadata = post_metadata[post_key]
+            
+            # Sort snapshots by recorded_at to get earliest and latest
+            snapshots.sort(key=lambda x: x["recorded_at"] or datetime.min)
+            
+            earliest = snapshots[0]
+            latest = snapshots[-1]
+            
+            # Calculate gains (growth) between earliest and latest snapshot
+            gained_likes = latest["likes"] - earliest["likes"]
+            gained_comments = latest["comments"] - earliest["comments"]
+            gained_shares = latest["shares"] - earliest["shares"]
+            gained_views = latest["views"] - earliest["views"]
+            gained_score = latest["score"] - earliest["score"]
+
+            ranked_posts[post_key] = {
+                # Entity & Page info
+                "entity_id": metadata["entity_id"],
+                "entity_name": metadata["entity_name"],
+                "category": metadata["category"],
+                "root_category": metadata["root_category"],
+                "page_id": metadata["page_id"],
+                "page_name": metadata["page_name"],
+                "page_url": metadata["page_url"],
+                "profile_image_url": metadata["profile_image_url"],
+                # Post info
+                "platform": metadata["platform"],
+                "post_id": metadata["post_id"],
+                "caption": metadata["caption"],
+                "post_url": metadata["post_url"],
+                "created_at": metadata["created_at"],
+                # Window info
+                "window_start": date_limit.isoformat(),
+                "window_end": window_end,
+                "snapshots_count": len(snapshots),
+                # Growth metrics (used for ranking)
+                "gained_likes": gained_likes,
+                "gained_comments": gained_comments,
+                "gained_shares": gained_shares,
+                "gained_views": gained_views,
+                "gained_score": round(gained_score, 4),
+                # Page followers
+                "page_followers": metadata["page_followers"],
+            }
+
+        # Map order_by_key to growth-based keys
+        order_key_mapping = {
+            "total_score": "gained_score",
+            "total_likes": "gained_likes",
+            "total_comments": "gained_comments",
+            "total_shares": "gained_shares",
+            "total_views": "gained_views",
+            "total_followers": "page_followers",
+        }
+        sort_key = order_key_mapping.get(order_by_key, order_by_key)
 
         ranking = list(ranked_posts.values())
-        ranking.sort(key=lambda x: x.get(order_by_key, 0), reverse=True)
+        ranking.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
 
         for idx, row in enumerate(ranking, start=1):
             row["rank"] = idx
