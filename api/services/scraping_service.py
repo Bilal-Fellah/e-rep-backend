@@ -16,7 +16,8 @@ class ScrapingService:
                                   end_date: str = None) -> dict:
         """
         Fetch posts matching filters and create scraping session.
-        Only returns posts that were recorded in yesterday's snapshot.
+        Only returns posts that were recorded in yesterday's snapshot
+        and have not already been scraped today (i.e., no comments inserted today).
         
         Args:
             platform: Optional platform filter
@@ -27,11 +28,14 @@ class ScrapingService:
             dict: {
                 "session_id": str,
                 "posts": list[dict],
-                "count": int
+                "count": int,
+                "total_available": int
             }
         """
         from datetime import date, timedelta
         from api.models.post_model import PostMV
+        from api.models.comment_model import Comment
+        from api import db
         
         # Calculate yesterday's date range (midnight to midnight)
         today = date.today()
@@ -59,6 +63,44 @@ class ScrapingService:
             end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
             query = query.filter(PostMV.created_at <= end_dt)
         
+        # Get total count before applying the scraped-today filter
+        total_available = query.count()
+        
+        # Filter out posts that already have comments inserted today
+        # A post is considered "scraped today" if it has at least one comment
+        # with recorded_at within today's date range
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
+        
+        # Exclude posts that are in the scraped_today subquery
+        # Using ~exists() for better performance with large datasets
+        # Note: Cast page_id to String to handle UUID vs VARCHAR type mismatch
+        from sqlalchemy import exists, and_, cast, String
+        
+        exists_clause = exists().where(
+            and_(
+                cast(Comment.page_id, String) == cast(PostMV.page_id, String),
+                Comment.platform == PostMV.platform,
+                Comment.post_id == PostMV.post_id,
+                Comment.recorded_at >= today_start,
+                Comment.recorded_at < today_end
+            )
+        )
+        
+        if platform:
+            exists_clause = exists().where(
+                and_(
+                    cast(Comment.page_id, String) == cast(PostMV.page_id, String),
+                    Comment.platform == PostMV.platform,
+                    Comment.post_id == PostMV.post_id,
+                    Comment.recorded_at >= today_start,
+                    Comment.recorded_at < today_end,
+                    Comment.platform == platform
+                )
+            )
+        
+        query = query.filter(~exists_clause)
+        
         # Fetch posts
         posts = query.all()
         posts_data = [post.to_scraping_dict() for post in posts]
@@ -69,7 +111,8 @@ class ScrapingService:
         return {
             "session_id": session.session_id,
             "posts": posts_data,
-            "count": len(posts_data)
+            "count": len(posts_data),
+            "total_available": total_available
         }
     
     @staticmethod
@@ -209,3 +252,79 @@ class ScrapingService:
             "status": session.status,
             "error_message": session.error_message
         }
+    
+    @staticmethod
+    def get_daily_summary(target_date: str = None, platform: str = None) -> dict:
+        """
+        Get aggregated scraping summary for a specific date.
+        
+        Args:
+            target_date: Date in ISO format (YYYY-MM-DD). Defaults to today.
+            platform: Optional platform filter
+            
+        Returns:
+            dict: {
+                "date": str,
+                "platform_filter": str | None,
+                "total_sessions": int,
+                "sessions_by_status": dict,
+                "total_posts_fetched": int,
+                "total_comments_inserted": int,
+                "total_expected_comments": int,
+                "comments_ratio": float | None,
+                "duration_stats": dict | None,
+                "errors": list
+            }
+        """
+        from datetime import date as date_type
+        
+        # Parse date or default to today
+        if target_date:
+            parsed_date = date_type.fromisoformat(target_date)
+        else:
+            parsed_date = date_type.today()
+        
+        return ScrapingSessionRepository.get_daily_summary(parsed_date, platform)
+    
+    @staticmethod
+    def get_sessions_for_date(target_date: str = None, platform: str = None) -> list[dict]:
+        """
+        Get all scraping sessions for a specific date.
+        
+        Args:
+            target_date: Date in ISO format (YYYY-MM-DD). Defaults to today.
+            platform: Optional platform filter
+            
+        Returns:
+            list[dict]: List of session details
+        """
+        from datetime import date as date_type
+        
+        # Parse date or default to today
+        if target_date:
+            parsed_date = date_type.fromisoformat(target_date)
+        else:
+            parsed_date = date_type.today()
+        
+        sessions = ScrapingSessionRepository.get_by_date(parsed_date, platform)
+        
+        result = []
+        for session in sessions:
+            session_dict = {
+                "session_id": session.session_id,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+                "posts_fetched": session.posts_fetched,
+                "comments_inserted": session.comments_inserted,
+                "status": session.status,
+                "error_message": session.error_message
+            }
+            
+            # Calculate duration for completed sessions
+            if session.status == "completed" and session.created_at and session.completed_at:
+                duration_seconds = (session.completed_at - session.created_at).total_seconds()
+                session_dict["duration_seconds"] = round(duration_seconds, 2)
+            
+            result.append(session_dict)
+        
+        return result

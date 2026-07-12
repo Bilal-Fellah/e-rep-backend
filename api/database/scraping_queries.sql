@@ -49,6 +49,78 @@ ORDER BY date DESC;
 
 
 -- ============================================================================
+-- DAILY STATUS QUERIES (for status API)
+-- ============================================================================
+
+-- Daily summary for a specific date
+SELECT 
+    DATE(created_at) as date,
+    COUNT(*) as total_sessions,
+    COUNT(*) FILTER (WHERE status = 'pending') as pending_sessions,
+    COUNT(*) FILTER (WHERE status = 'completed') as completed_sessions,
+    COUNT(*) FILTER (WHERE status = 'failed') as failed_sessions,
+    SUM(posts_fetched) as total_posts_fetched,
+    SUM(comments_inserted) as total_comments_inserted,
+    ROUND(
+        EXTRACT(EPOCH FROM AVG(completed_at - created_at)), 
+        2
+    ) as avg_duration_seconds
+FROM scraping_sessions
+WHERE DATE(created_at) = CURRENT_DATE
+GROUP BY DATE(created_at);
+
+-- Sessions for today with duration
+SELECT 
+    session_id,
+    created_at,
+    completed_at,
+    posts_fetched,
+    comments_inserted,
+    status,
+    error_message,
+    CASE 
+        WHEN completed_at IS NOT NULL 
+        THEN ROUND(EXTRACT(EPOCH FROM (completed_at - created_at)), 2)
+        ELSE NULL 
+    END as duration_seconds
+FROM scraping_sessions
+WHERE DATE(created_at) = CURRENT_DATE
+ORDER BY created_at DESC;
+
+-- Expected vs actual comments for today's sessions
+WITH session_posts AS (
+    SELECT DISTINCT 
+        c.scraping_session_id,
+        c.page_id,
+        c.platform,
+        c.post_id
+    FROM comments c
+    WHERE c.scraping_session_id IN (
+        SELECT session_id 
+        FROM scraping_sessions 
+        WHERE DATE(created_at) = CURRENT_DATE
+    )
+)
+SELECT 
+    s.session_id,
+    s.comments_inserted as actual_comments,
+    COALESCE(SUM(pm.comments), 0) as expected_comments,
+    CASE 
+        WHEN SUM(pm.comments) > 0 
+        THEN ROUND(s.comments_inserted::numeric / SUM(pm.comments), 4)
+        ELSE NULL 
+    END as ratio
+FROM scraping_sessions s
+LEFT JOIN session_posts sp ON s.session_id = sp.scraping_session_id
+LEFT JOIN posts_mv pm ON sp.page_id = pm.page_id 
+    AND sp.platform = pm.platform 
+    AND sp.post_id = pm.post_id
+WHERE DATE(s.created_at) = CURRENT_DATE
+GROUP BY s.session_id, s.comments_inserted
+ORDER BY s.created_at DESC;
+
+
+-- ============================================================================
 -- COMMENTS
 -- ============================================================================
 

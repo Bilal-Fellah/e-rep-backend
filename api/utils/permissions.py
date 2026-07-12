@@ -77,6 +77,10 @@ ROLE_PERMISSIONS = {
     "data.get_note": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.get_notes_for_target": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.get_notes_by_author": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+
+    # SCRAPING STATUS ENDPOINTS (admin only)
+    "scraping.get_scraping_summary": [UserRole.ADMIN.value],
+    "scraping.get_scraping_sessions": [UserRole.ADMIN.value],
 }
 
 # ============================================================================

@@ -16,6 +16,7 @@ from api.routes.main import (
 from api.services.scraping_service import ScrapingService
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.utils.api_key_auth import require_api_key
+from api.utils.permissions import require_auth
 from api.models.comment_model import db
 
 
@@ -28,6 +29,8 @@ register_blueprint_error_handlers(scraping_bp)
 def fetch_posts():
     """
     Fetch posts for scraping with optional filters.
+    Only returns posts that have not already been scraped today
+    (i.e., posts with no comments inserted today).
     
     Query Parameters:
         - platform (optional): Filter by platform
@@ -40,7 +43,8 @@ def fetch_posts():
             "data": {
                 "session_id": str,
                 "posts": list[dict],
-                "count": int
+                "count": int,
+                "total_available": int
             }
         }
         400: Invalid query parameters
@@ -193,6 +197,177 @@ def insert_comments():
         db.session.rollback()
         
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during comment insertion")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/status/summary", methods=["GET"])
+@require_auth("admin")
+def get_scraping_summary():
+    """
+    Get aggregated scraping status summary for a specific date (admin only).
+    
+    Query Parameters:
+        - date (optional): Date in ISO format (YYYY-MM-DD). Defaults to today.
+        - platform (optional): Filter by platform (facebook, instagram, x, tiktok, linkedin, youtube)
+    
+    Returns:
+        200: {
+            "success": true,
+            "data": {
+                "date": str,
+                "platform_filter": str | null,
+                "total_sessions": int,
+                "sessions_by_status": {"pending": int, "completed": int, "failed": int},
+                "total_posts_fetched": int,
+                "total_comments_inserted": int,
+                "total_expected_comments": int,
+                "comments_ratio": float | null,
+                "duration_stats": {
+                    "min_seconds": float,
+                    "max_seconds": float,
+                    "avg_seconds": float,
+                    "min_formatted": str,
+                    "max_formatted": str,
+                    "avg_formatted": str
+                } | null,
+                "errors": [{"session_id": str, "error": str}]
+            }
+        }
+        400: Invalid query parameters
+        401: Missing or invalid token
+        403: Insufficient permissions
+        500: Database error
+    """
+    try:
+        # Extract query parameters
+        target_date = request.args.get("date")
+        platform = request.args.get("platform")
+        
+        # Validate platform if provided
+        valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
+        if platform and platform not in valid_platforms:
+            log_route_error(
+                ValueError(f"Invalid platform: {platform}"),
+                SEVERITY_LOW,
+                400,
+                "Invalid query parameters"
+            )
+            return error_response(f"Invalid platform. Must be one of: {', '.join(valid_platforms)}", 400)
+        
+        # Validate date format if provided
+        if target_date:
+            try:
+                from datetime import date
+                date.fromisoformat(target_date)
+            except ValueError:
+                log_route_error(
+                    ValueError(f"Invalid date format: {target_date}"),
+                    SEVERITY_LOW,
+                    400,
+                    "Invalid query parameters"
+                )
+                return error_response("Invalid date format. Use ISO format (YYYY-MM-DD)", 400)
+        
+        # Get summary
+        result = ScrapingService.get_daily_summary(
+            target_date=target_date,
+            platform=platform
+        )
+        
+        return success_response(result, 200)
+    
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid query parameters")
+        return error_response(str(e), 400)
+    
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during summary fetch")
+        return db_error_response(500)
+    
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during summary fetch")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/status/sessions", methods=["GET"])
+@require_auth("admin")
+def get_scraping_sessions():
+    """
+    Get all scraping sessions for a specific date (admin only).
+    
+    Query Parameters:
+        - date (optional): Date in ISO format (YYYY-MM-DD). Defaults to today.
+        - platform (optional): Filter by platform (facebook, instagram, x, tiktok, linkedin, youtube)
+    
+    Returns:
+        200: {
+            "success": true,
+            "data": [
+                {
+                    "session_id": str,
+                    "created_at": str,
+                    "completed_at": str | null,
+                    "posts_fetched": int,
+                    "comments_inserted": int,
+                    "status": str,
+                    "error_message": str | null,
+                    "duration_seconds": float (only for completed sessions)
+                }
+            ]
+        }
+        400: Invalid query parameters
+        401: Missing or invalid token
+        403: Insufficient permissions
+        500: Database error
+    """
+    try:
+        # Extract query parameters
+        target_date = request.args.get("date")
+        platform = request.args.get("platform")
+        
+        # Validate platform if provided
+        valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
+        if platform and platform not in valid_platforms:
+            log_route_error(
+                ValueError(f"Invalid platform: {platform}"),
+                SEVERITY_LOW,
+                400,
+                "Invalid query parameters"
+            )
+            return error_response(f"Invalid platform. Must be one of: {', '.join(valid_platforms)}", 400)
+        
+        # Validate date format if provided
+        if target_date:
+            try:
+                from datetime import date
+                date.fromisoformat(target_date)
+            except ValueError:
+                log_route_error(
+                    ValueError(f"Invalid date format: {target_date}"),
+                    SEVERITY_LOW,
+                    400,
+                    "Invalid query parameters"
+                )
+                return error_response("Invalid date format. Use ISO format (YYYY-MM-DD)", 400)
+        
+        # Get sessions
+        result = ScrapingService.get_sessions_for_date(
+            target_date=target_date,
+            platform=platform
+        )
+        
+        return success_response(result, 200)
+    
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid query parameters")
+        return error_response(str(e), 400)
+    
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during sessions fetch")
+        return db_error_response(500)
+    
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during sessions fetch")
         return server_error_response(500)
 
 
