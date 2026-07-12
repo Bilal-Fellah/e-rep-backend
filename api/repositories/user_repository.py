@@ -1,8 +1,12 @@
+# Data-access methods for user repository.
 # repositories/user_repo.py
 from datetime import datetime
 from api.models.user_model import User
 from api import db
+from api.utils.logging_utils import instrument_repository_class
 
+
+@instrument_repository_class
 class UserRepository:
     @staticmethod
     def get_by_id(user_id: int) -> User | None:
@@ -41,13 +45,14 @@ class UserRepository:
 
         
     @staticmethod
-    def update_role(user_id: int, role: str) -> User:
+    def update_role(user_id: int, role: str, is_verified: bool = True) -> User:
        
         user = db.session.get(User, user_id)
         if not user:
             raise ValueError("User not found")
 
         user.role = role
+        user.is_verified = is_verified
         db.session.commit()
         return user
 

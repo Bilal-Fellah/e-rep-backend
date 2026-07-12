@@ -1,11 +1,14 @@
+# Data-access methods for note repository.
 from typing import List, Optional
 from sqlalchemy import or_
 from datetime import datetime, timezone
 
 from api import db
 from api.models.note_model import Note
+from api.utils.logging_utils import instrument_repository_class
 
 
+@instrument_repository_class
 class NoteRepository:
     """Repository for Notes"""
 

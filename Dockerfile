@@ -22,10 +22,14 @@ COPY . .
 
 # Non-root user
 RUN useradd -m appuser && chown -R appuser:appuser /app
-USER appuser
+
+# Create the directories the container writes to so they exist before the bind mounts.
+RUN mkdir -p /app/logs /app/instance /app/uploads && chown -R appuser:appuser /app
 
 # Optional Gunicorn config
 COPY gunicorn.conf.py /app/gunicorn.conf.py
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8000
 
@@ -35,4 +39,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health/check').status==200 else sys.exit(1)"
 
 # If you don't use a gunicorn.conf.py, see command below for inline flags
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]

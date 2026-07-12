@@ -1,16 +1,15 @@
-from requests import Session
+# Data-access methods for page history repository.
 from api import db
 from api.models import PageHistory
 from api.models.category_model import Category
 from api.models.entity_category_model import EntityCategory
 from api.models.entity_model import Entity
 from api.models.page_model import Page
-from sqlalchemy import case, literal_column, select, and_, cast, text, func, column
+from sqlalchemy import case, select, and_, cast, text, bindparam
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
-from datetime import date, datetime, time
-from api.utils.data_keys import platform_metrics
-from api.utils.posts_utils import jsonb_projection, jsonb_projection_from_alias
+from api.utils.logging_utils import instrument_repository_class
+from datetime import date, datetime, time, timedelta
 import json
 import os
 from uuid import UUID
@@ -27,7 +26,59 @@ class _UUIDEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+@instrument_repository_class
 class PageHistoryRepository:
+    @staticmethod
+    def _followers_case(page_alias=Page, history_alias=PageHistory):
+        return case(
+            (page_alias.platform == "youtube", history_alias.data["subscribers"].astext),
+            (page_alias.platform == "facebook", history_alias.data["page_followers"].astext),
+            else_=history_alias.data["followers"].astext,
+        )
+
+    @staticmethod
+    def _profile_url_case(page_alias=Page, history_alias=PageHistory):
+        return case(
+            (page_alias.platform == "youtube", history_alias.data["profile_image"]),
+            (page_alias.platform == "x", history_alias.data["profile_image_link"]),
+            (page_alias.platform == "tiktok", history_alias.data["profile_pic_url"]),
+            (page_alias.platform == "linkedin", history_alias.data["logo"]),
+            (page_alias.platform == "instagram", history_alias.data["profile_image_link"]),
+        )
+
+    @staticmethod
+    def _description_case(page_alias=Page, history_alias=PageHistory):
+        return case(
+            (page_alias.platform == "youtube", history_alias.data["Description"]),
+            (page_alias.platform == "x", history_alias.data["biography"]),
+            (page_alias.platform == "tiktok", history_alias.data["biography"]),
+            (page_alias.platform == "linkedin", history_alias.data["about"]),
+            (page_alias.platform == "instagram", history_alias.data["biography"]),
+        )
+
+    @staticmethod
+    def _posts_case(page_alias=Page, history_alias=PageHistory):
+        empty_json_array = cast(text("'[]'"), JSONB)
+        return case(
+            (page_alias.platform == "instagram", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.posts'), empty_json_array)),
+            (page_alias.platform == "linkedin", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.updates'), empty_json_array)),
+            (page_alias.platform == "tiktok", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.top_videos'), empty_json_array)),
+            (page_alias.platform == "youtube", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.top_videos'), empty_json_array)),
+            (page_alias.platform == "x", db.func.coalesce(db.func.jsonb_path_query_array(history_alias.data, '$.posts'), empty_json_array)),
+            else_=empty_json_array,
+        )
+
+    @staticmethod
+    def _latest_history_subquery():
+        return (
+            select(
+                PageHistory.page_id,
+                db.func.max(PageHistory.recorded_at).label("latest_recorded_at"),
+            )
+            .group_by(PageHistory.page_id)
+            .subquery()
+        )
+
     @staticmethod
     def get_by_id(history_id: int) -> PageHistory | None:
         return PageHistory.query.get(history_id)
@@ -61,11 +112,7 @@ class PageHistoryRepository:
     
     @staticmethod
     def get_followers_history_by_entity(entity_id: int):
-        followers_case = case(
-            (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
-            (Page.platform == "facebook", PageHistory.data["page_followers"].astext),
-            else_=PageHistory.data["followers"].astext
-        ).cast(db.Integer).label("followers")
+        followers_case = PageHistoryRepository._followers_case().cast(db.Integer).label("followers")
 
         stmt = (
             select(
@@ -80,11 +127,93 @@ class PageHistoryRepository:
         )
 
         return db.session.execute(stmt).all()
+
+    @staticmethod
+    def get_entity_likes_development(entity_id: int, date_limit: date):
+        query = text("""
+            SELECT
+                entity_id,
+                entity_name,
+                page_id,
+                platform,
+                recorded_at,
+                posts_metrics
+            FROM page_posts_metrics_mv
+            WHERE entity_id = :entity_id
+              AND platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND date(recorded_at) >= :date_limit
+              AND to_scrape
+            ORDER BY page_id, platform, recorded_at ASC
+        """)
+        return db.session.execute(query, {"entity_id": entity_id, "date_limit": date_limit}).all()
+
+    @staticmethod
+    def get_entities_likes_development(entity_ids: list[int], date_limit: date):
+        if not entity_ids:
+            return []
+
+        query = text("""
+            SELECT
+                entity_id,
+                entity_name,
+                page_id,
+                platform,
+                recorded_at,
+                posts_metrics
+            FROM page_posts_metrics_mv
+            WHERE entity_id IN :entity_ids
+              AND platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND date(recorded_at) >= :date_limit
+              AND to_scrape
+            ORDER BY entity_name, page_id, platform, recorded_at ASC
+        """).bindparams(bindparam("entity_ids", expanding=True))
+
+        return db.session.execute(query, {"entity_ids": entity_ids, "date_limit": date_limit}).all()
+
+    @staticmethod
+    def get_entity_comments_development(entity_id: int, date_limit: date):
+        query = text("""
+            SELECT
+                entity_id,
+                entity_name,
+                page_id,
+                platform,
+                recorded_at,
+                posts_metrics
+            FROM page_posts_metrics_mv
+            WHERE entity_id = :entity_id
+              AND platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND date(recorded_at) >= :date_limit
+              AND to_scrape
+            ORDER BY page_id, platform, recorded_at ASC
+        """)
+        return db.session.execute(query, {"entity_id": entity_id, "date_limit": date_limit}).all()
+
+    @staticmethod
+    def get_entities_comments_development(entity_ids: list[int], date_limit: date):
+        if not entity_ids:
+            return []
+
+        query = text("""
+            SELECT
+                entity_id,
+                entity_name,
+                page_id,
+                platform,
+                recorded_at,
+                posts_metrics
+            FROM page_posts_metrics_mv
+            WHERE entity_id IN :entity_ids
+              AND platform IN ('instagram','linkedin','tiktok','x','facebook')
+              AND date(recorded_at) >= :date_limit
+              AND to_scrape
+            ORDER BY entity_name, page_id, platform, recorded_at ASC
+        """).bindparams(bindparam("entity_ids", expanding=True))
+
+        return db.session.execute(query, {"entity_ids": entity_ids, "date_limit": date_limit}).all()
     
     @staticmethod
     def get_entity_posts__old(entity_id: int):
-
-        empty_json_array = cast(text("'[]'"), JSONB)
 
         subq = (
             select(
@@ -113,34 +242,7 @@ class PageHistoryRepository:
                 Page.name.label("page_name"),
                 Page.platform,
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "instagram",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "linkedin",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "tiktok",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "youtube",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                        empty_json_array
-                    )),
-                    (Page.platform == "x",
-                    db.func.coalesce(
-                        db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                        empty_json_array
-                    )),
-                    else_=empty_json_array
-                ).label("posts"),
+                PageHistoryRepository._posts_case().label("posts"),
                 Page.entity_id.label("entity_id")
             )
             .join(subq, subq.c.hist_id == PageHistory.id)
@@ -172,7 +274,7 @@ class PageHistoryRepository:
     def get_all_entities_posts(date_limit):
         query = text("""
             SELECT * from page_posts_metrics_mv
-            where platform in ('instagram','linkedin','tiktok','youtube','x')
+            where platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
             and date(recorded_at) >= :date_limit
             and to_scrape
                     """)
@@ -193,7 +295,7 @@ class PageHistoryRepository:
                     page_id,
                     raw_followers AS current_followers
                 FROM page_posts_metrics_mv
-                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x')
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
                   AND to_scrape
                 ORDER BY page_id, recorded_at DESC
             ),
@@ -202,7 +304,7 @@ class PageHistoryRepository:
                     page_id,
                     raw_followers AS prev_followers
                 FROM page_posts_metrics_mv
-                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x')
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
                   AND to_scrape
                   AND date(recorded_at) >= :date_limit
                 ORDER BY page_id, recorded_at ASC
@@ -217,20 +319,122 @@ class PageHistoryRepository:
         results = db.session.execute(query, {'date_limit': date_limit}).all()
         return results
 
+    @staticmethod
+    def get_followers_progress_snapshot(date_limit, end_date=None):
+        query = text("""
+            WITH latest AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    category,
+                    root_category,
+                    raw_followers AS current_followers
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+                  AND (:end_date IS NULL OR date(recorded_at) <= :end_date)
+                ORDER BY page_id, recorded_at DESC
+            ),
+            prev AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    raw_followers AS prev_followers
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+                  AND date(recorded_at) >= :date_limit
+                  AND (:end_date IS NULL OR date(recorded_at) <= :end_date)
+                ORDER BY page_id, recorded_at ASC
+            )
+            SELECT
+                l.page_id,
+                l.entity_id,
+                l.entity_name,
+                l.platform,
+                l.page_name,
+                l.page_url,
+                l.profile_image_url,
+                l.category,
+                l.root_category,
+                l.current_followers,
+                p.prev_followers
+            FROM latest l
+            LEFT JOIN prev p ON p.page_id = l.page_id
+        """)
+        results = db.session.execute(query, {'date_limit': date_limit, 'end_date': end_date}).mappings().all()
+        return results
+
+
+
+    @staticmethod
+    def get_companies_interactions_summary(date_limit: date = None, end_date: date = None):
+        if date_limit is None:
+            date_limit = (datetime.now() - timedelta(days=30)).date()
+
+        query = text("""
+            WITH page_entity_map AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    to_scrape
+                FROM page_posts_metrics_mv
+                ORDER BY page_id, recorded_at DESC
+            ),
+            entity_category_map AS (
+                SELECT
+                    entity_id,
+                    MIN(category) AS category,
+                    MIN(root_category) AS root_category
+                FROM page_posts_metrics_mv
+                GROUP BY entity_id
+            )
+            SELECT
+                pem.entity_id AS entity_id,
+                pem.entity_name AS entity_name,
+                ecm.category AS category,
+                ecm.root_category AS root_category,
+                pm.platform AS platform,
+                pm.page_id AS page_id,
+                pem.page_name AS page_name,
+                pem.page_url AS page_url,
+                pem.profile_image_url AS profile_image_url,
+                COUNT(pm.post_id) AS posts_count,
+                COALESCE(SUM(pm.likes), 0)::BIGINT AS total_likes,
+                COALESCE(SUM(pm.comments), 0)::BIGINT AS total_comments,
+                COALESCE(SUM(pm.shares), 0)::BIGINT AS total_shares,
+                COALESCE(SUM(pm.views), 0)::BIGINT AS total_views
+            FROM posts_mv pm
+            JOIN page_entity_map pem ON pem.page_id = pm.page_id
+            JOIN entities e ON e.id = pem.entity_id
+            LEFT JOIN entity_category_map ecm ON ecm.entity_id = pem.entity_id
+            WHERE LOWER(COALESCE(e.type, '')) = 'company'
+              AND pem.to_scrape
+              AND e.to_scrape
+              AND pm.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+              AND DATE(pm.created_at) >= :date_limit
+              AND (:end_date IS NULL OR DATE(pm.created_at) <= :end_date)
+                        GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform, pm.page_id, pem.page_name, pem.page_url, pem.profile_image_url
+            ORDER BY pem.entity_name, pm.platform
+        """)
+
+        return db.session.execute(query, {'date_limit': date_limit, 'end_date': end_date}).mappings().all()
+
+
 
 
     @staticmethod
     def get_page_posts(page_id: int):
-        latest = (
-            select(
-                PageHistory.page_id,
-                PageHistory.recorded_at
-            )
-            .join(Page, PageHistory.page_id == page_id)
-            .distinct(PageHistory.page_id)                  
-            .order_by(PageHistory.page_id, PageHistory.recorded_at.desc())
-            .subquery()
-        )
 
         stmt = (
             select(
@@ -238,24 +442,7 @@ class PageHistoryRepository:
                 Page.name.label("page_name"),
                 Page.platform,
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "instagram",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "linkedin",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.updates'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "tiktok",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "youtube",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.top_videos'),
-                                cast(text("'[]'"), JSONB))),
-                    (Page.platform == "x",
-                    db.func.coalesce(db.func.jsonb_path_query_array(PageHistory.data, '$.posts'),
-                                cast(text("'[]'"), JSONB))),
-                    else_=None
-                ).label("posts")
+                PageHistoryRepository._posts_case().label("posts")
             )
             .join(Page, PageHistory.page_id == Page.uuid)
             
@@ -266,23 +453,11 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
-        # Step 1: Get latest history per page
-        latest_history_subq = (
-            select(
-                PageHistory.page_id,
-                db.func.max(PageHistory.recorded_at).label("latest_recorded_at")
-            )
-            .group_by(PageHistory.page_id)
-            .subquery()
-        )
+        latest_history_subq = PageHistoryRepository._latest_history_subquery()
 
         ph_alias = aliased(PageHistory)
 
-        # Step 2: Followers per page (handle youtube vs others)
-        page_followers = case(
-            (Page.platform == "youtube", ph_alias.data["subscribers"]),
-            else_=ph_alias.data["followers"]
-        ).cast(db.Integer)
+        page_followers = PageHistoryRepository._followers_case(Page, ph_alias).cast(db.Integer)
 
         # Step 3: Aggregate per entity (total followers)
         entity_totals_subq = (
@@ -318,20 +493,8 @@ class PageHistoryRepository:
                 Entity.id.label("entity_id"),
                 entity_totals_subq.c.total_followers,
                 entity_totals_subq.c.entity_rank,
-                case(
-                    (Page.platform == "youtube", ph_alias.data["profile_image"]),
-                    (Page.platform == "x", ph_alias.data["profile_image_link"]),
-                    (Page.platform == "tiktok", ph_alias.data["profile_pic_url"]),
-                    (Page.platform == "linkedin", ph_alias.data["logo"]),
-                    (Page.platform == "instagram", ph_alias.data["profile_image_link"]),
-                ).label("profile_url"),
-                case(
-                    (Page.platform == "youtube", ph_alias.data["Description"]),
-                    (Page.platform == "x", ph_alias.data["biography"]),
-                    (Page.platform == "tiktok", ph_alias.data["biography"]),
-                    (Page.platform == "linkedin", ph_alias.data["about"]),
-                    (Page.platform == "instagram", ph_alias.data["biography"]),
-                ).label("description"),
+                PageHistoryRepository._profile_url_case(Page, ph_alias).label("profile_url"),
+                PageHistoryRepository._description_case(Page, ph_alias).label("description"),
                 page_followers.label("followers"),
             )
             .join(Page, Page.uuid == ph_alias.page_id)
@@ -377,17 +540,7 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                cast(
-                    db.func.coalesce(
-                        case(
-                            (Page.platform == "youtube", PageHistory.data["subscribers"].astext),
-                            (Page.platform == "facebook", PageHistory.data["page_followers"].astext),
-                            else_=PageHistory.data["followers"].astext
-                        ),
-                        "0"  # default if null
-                    ),
-                    db.Integer
-                ).label("followers"),
+                cast(db.func.coalesce(PageHistoryRepository._followers_case(), "0"), db.Integer).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )
@@ -421,10 +574,7 @@ class PageHistoryRepository:
                 OtherEntity.name.label("entity_name"),
                 OtherEntity.id.label("entity_id"),
                 PageHistory.recorded_at,
-                case(
-                    (Page.platform == "youtube", PageHistory.data["subscribers"]),
-                    else_ = PageHistory.data["followers"]
-                ).cast(db.Integer).label("followers"),
+                PageHistoryRepository._followers_case().cast(db.Integer).label("followers"),
                 PageHistory.page_id,
                 Page.platform
             )
@@ -437,115 +587,229 @@ class PageHistoryRepository:
         return results
         
     @staticmethod
+    def get_all_entities_ranking_by_date(target_date: date):
+        # Build a per-page snapshot for the target date, interpolating when the day is missing.
+        query = text("""
+            WITH base AS (
+                SELECT
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    category,
+                    raw_followers::BIGINT AS followers,
+                    DATE(recorded_at) AS snapshot_date,
+                    recorded_at
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+            ),
+            prev_day AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_image_url,
+                    category,
+                    followers,
+                    snapshot_date
+                FROM base
+                WHERE snapshot_date <= :target_date
+                ORDER BY page_id, snapshot_date DESC, recorded_at DESC
+            ),
+            next_day AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_image_url,
+                    category,
+                    followers,
+                    snapshot_date
+                FROM base
+                WHERE snapshot_date >= :target_date
+                ORDER BY page_id, snapshot_date ASC, recorded_at ASC
+            ),
+            resolved_page_data AS (
+                SELECT
+                    COALESCE(prev_day.page_id, next_day.page_id) AS page_id,
+                    COALESCE(prev_day.entity_id, next_day.entity_id) AS entity_id,
+                    COALESCE(prev_day.entity_name, next_day.entity_name) AS entity_name,
+                    COALESCE(prev_day.platform, next_day.platform) AS platform,
+                    COALESCE(prev_day.page_name, next_day.page_name) AS page_name,
+                    COALESCE(prev_day.page_url, next_day.page_url) AS page_url,
+                    COALESCE(prev_day.profile_image_url, next_day.profile_image_url) AS profile_image_url,
+                    COALESCE(prev_day.category, next_day.category) AS category,
+                    CASE
+                        WHEN prev_day.snapshot_date = :target_date THEN prev_day.followers
+                        WHEN next_day.snapshot_date = :target_date THEN next_day.followers
+                        WHEN prev_day.followers IS NOT NULL AND next_day.followers IS NOT NULL
+                            THEN ROUND((prev_day.followers + next_day.followers) / 2.0)::BIGINT
+                        ELSE COALESCE(prev_day.followers, next_day.followers)
+                    END AS followers
+                FROM prev_day
+                FULL OUTER JOIN next_day ON next_day.page_id = prev_day.page_id
+            ),
+            entity_category_map AS (
+                SELECT
+                    entity_id,
+                    MIN(category) AS category
+                FROM resolved_page_data
+                GROUP BY entity_id
+            ),
+            entity_totals AS (
+                SELECT
+                    entity_id,
+                    SUM(followers)::BIGINT AS total_followers,
+                    CAST(:target_date AS DATE) AS window_start,
+                    RANK() OVER (ORDER BY SUM(followers) DESC) AS entity_rank
+                FROM resolved_page_data
+                WHERE followers IS NOT NULL
+                GROUP BY entity_id
+            )
+            SELECT
+                rpd.entity_id,
+                rpd.entity_name,
+                et.total_followers,
+                et.entity_rank,
+                et.window_start,
+                ecm.category,
+                rpd.platform,
+                rpd.page_name,
+                rpd.page_id,
+                rpd.page_url,
+                rpd.profile_image_url,
+                rpd.followers
+            FROM resolved_page_data rpd
+            JOIN entity_totals et ON et.entity_id = rpd.entity_id
+            LEFT JOIN entity_category_map ecm ON ecm.entity_id = rpd.entity_id
+            WHERE rpd.followers IS NOT NULL
+            ORDER BY et.entity_rank, rpd.platform
+        """)
+
+        rows = db.session.execute(query, {"target_date": target_date}).mappings().all()
+        if len(rows) < 1:
+            return []
+
+        result = {}
+        for row in rows:
+            entity_id = row["entity_id"]
+            if entity_id not in result:
+                result[entity_id] = {
+                    "entity_id": entity_id,
+                    "entity_name": row["entity_name"],
+                    "total_followers": row["total_followers"],
+                    "rank": row["entity_rank"],
+                    "category": row["category"],
+                    "root_category": row["category"],
+                    "window_start": row["window_start"].isoformat() if row["window_start"] else None,
+                    "platforms": {}
+                }
+
+            result[entity_id]["platforms"][row["platform"]] = {
+                "page_name": row["page_name"],
+                "page_id": row["page_id"],
+                "followers": row["followers"],
+                "profile_image_url": row["profile_image_url"],
+                "page_url": row["page_url"],
+            }
+
+        return sorted(result.values(), key=lambda x: x["rank"])
+
+    @staticmethod
     def get_all_entities_ranking():
-        # Step 1: raw JSON value
-        raw_followers = case(
-            (Page.platform == "youtube", PageHistory.data["subscribers"]),
-            else_=PageHistory.data["followers"]
-        )
-
-        # Step 2: Cast AFTER evaluating it's not NULL
-        followers_case = db.cast(raw_followers, db.Integer)
-
-        # profile picture case
-        profile_url_case = case(
-            (Page.platform == "youtube", PageHistory.data["profile_image"]),
-            (Page.platform == "x", PageHistory.data["profile_image_link"]),
-            (Page.platform == "tiktok", PageHistory.data["profile_pic_url"]),
-            (Page.platform == "linkedin", PageHistory.data["logo"]),
-            (Page.platform == "instagram", PageHistory.data["profile_image_link"]),
-        )
-
-        latest_page_data = (
-            select(
-                PageHistory.page_id,
-                PageHistory.recorded_at,
-                followers_case.label("followers"),
-                profile_url_case.label("profile_url"),
+        if db.engine.dialect.name == 'sqlite':
+            return []
+        query = text("""
+            WITH latest_page_data AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url AS profile_image_url,
+                    category,
+                    raw_followers::BIGINT AS followers,
+                    DATE(recorded_at) AS snapshot_date
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND raw_followers IS NOT NULL
+                  AND to_scrape
+                ORDER BY page_id, recorded_at DESC
+            ),
+            entity_category_map AS (
+                SELECT
+                    entity_id,
+                    MIN(category) AS category
+                FROM latest_page_data
+                GROUP BY entity_id
+            ),
+            entity_totals AS (
+                SELECT
+                    entity_id,
+                    SUM(followers)::BIGINT AS total_followers,
+                    MIN(snapshot_date) AS window_start,
+                    RANK() OVER (ORDER BY SUM(followers) DESC) AS entity_rank
+                FROM latest_page_data
+                GROUP BY entity_id
             )
-            .join(Page, Page.uuid == PageHistory.page_id)
-            .where(
-                PageHistory.recorded_at
-                == (
-                    select(db.func.max(PageHistory.recorded_at))
-                    .where(PageHistory.page_id == Page.uuid)
-                    .where(raw_followers.isnot(None))
-                    .correlate(Page)
-                    .scalar_subquery()
-                )
-            )
-            .subquery()
-        )
+            SELECT
+                lpd.entity_id,
+                lpd.entity_name,
+                et.total_followers,
+                et.entity_rank,
+                et.window_start,
+                ecm.category,
+                lpd.platform,
+                lpd.page_name,
+                lpd.page_id,
+                lpd.page_url,
+                lpd.profile_image_url,
+                lpd.followers
+            FROM latest_page_data lpd
+            JOIN entity_totals et ON et.entity_id = lpd.entity_id
+            LEFT JOIN entity_category_map ecm ON ecm.entity_id = lpd.entity_id
+            ORDER BY et.entity_rank, lpd.platform
+        """)
 
-
-        # --- Step 2: Aggregate per entity ---
-
-        entity_totals = (
-            select(
-                Entity.id.label("entity_id"),
-                RootCategory.name.label("root_category_name"),
-                db.func.sum(latest_page_data.c.followers).label("total_followers"),
-                db.func.rank()
-                .over(order_by=db.func.sum(latest_page_data.c.followers).desc())
-                .label("entity_rank"),
-            )
-            .join(Page, Page.entity_id == Entity.id)
-            .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
-            .join(EntityCategory, EntityCategory.entity_id == Entity.id)
-            .join(Category, Category.id == EntityCategory.category_id)
-            .join(
-                RootCategory,
-                case(
-                    (Category.parent_id == None, Category.id),  # if no parent, use itself
-                    else_=Category.parent_id
-                ) == RootCategory.id   # <-- compare result to RootCategory.id
-            )
-            .group_by(Entity.id, RootCategory.name)
-            .subquery()
-        )
-
-        # --- Step 3: Final query (no second join to PageHistory needed) ---
-        stmt = (
-            select(
-                Entity.id.label("entity_id"),
-                Entity.name.label("entity_name"),
-                entity_totals.c.total_followers,
-                entity_totals.c.entity_rank,
-                entity_totals.c.root_category_name,
-                Page.platform,
-                Page.uuid.label("page_id"),
-                Page.link.label("page_url"),
-                latest_page_data.c.profile_url,
-                latest_page_data.c.followers,
-            )
-            .join(Page, Page.entity_id == Entity.id)
-            .join(latest_page_data, latest_page_data.c.page_id == Page.uuid)
-            .join(entity_totals, entity_totals.c.entity_id == Entity.id)
-            .order_by(entity_totals.c.entity_rank)
-        )
-
-        rows = db.session.execute(stmt).all()
+        rows = db.session.execute(query).mappings().all()
         if len(rows) < 1:
             return []
         
         # --- Step 4: Build result dict ---
         result = {}
         for row in rows:
-            if row.entity_id not in result:
-                result[row.entity_id] = {
-                    "entity_id": row.entity_id,
-                    "entity_name": row.entity_name,
-                    "total_followers": row.total_followers,
-                    "rank": row.entity_rank,
-                    "category": row.root_category_name,
+            entity_id = row["entity_id"]
+            if entity_id not in result:
+                result[entity_id] = {
+                    "entity_id": entity_id,
+                    "entity_name": row["entity_name"],
+                    "total_followers": row["total_followers"],
+                    "rank": row["entity_rank"],
+                    "category": row["category"],
+                    "root_category": row["category"],
+                    "window_start": row["window_start"].isoformat() if row["window_start"] else None,
                     "platforms": {}
                 }
 
-            result[row.entity_id]["platforms"][row.platform] = {
-                "page_id": row.page_id,
-                "followers": row.followers,
-                "profile_url": row.profile_url,
-                "page_url": row.page_url,
+            result[entity_id]["platforms"][row["platform"]] = {
+                "page_name": row["page_name"],
+                "page_id": row["page_id"],
+                "followers": row["followers"],
+                "profile_image_url": row["profile_image_url"],
+                "page_url": row["page_url"],
             }
 
         # return list sorted by rank

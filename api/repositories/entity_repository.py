@@ -1,9 +1,13 @@
+# Data-access methods for entity repository.
 from api import db
 from api.models import Entity
 from api.models.page_history_model import PageHistory
 from api.models.page_model import Page
+from api.utils.logging_utils import instrument_repository_class
 from sqlalchemy import text
 
+
+@instrument_repository_class
 class EntityRepository:
     @staticmethod
     def get_by_id(entity_id: int) -> Entity | None:
@@ -38,10 +42,13 @@ class EntityRepository:
         return entity
 
     @staticmethod
-    def create(name: str, type_: str) -> Entity:
+    def create(name: str, type_: str, commit: bool = True) -> Entity:
         entity = Entity(name=name, type=type_)
         db.session.add(entity)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return entity
 
     @staticmethod

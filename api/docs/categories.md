@@ -1,19 +1,24 @@
+# Category Routes Documentation
 
-# Data Routes Documentation
+All routes in this document are prefixed with `/api/data`.
 
-## **POST /add_category**
+Note: `add_category` and `delete_category` currently have no authentication guard. `get_all_categories` and `get_active_categories` are also publicly accessible without a token. Authentication enforcement for write operations is planned.
+
+---
+
+## **POST /api/data/add_category**
+
 Add a new category.
 
-
-#### allowed_roles = ["admin"]
-
 ### Request
+
 ```json
 {
   "name": "Technology",
+  "name_french": "Technologie",
   "parent_id": 1
 }
-````
+```
 
 ### Success Response (201)
 
@@ -23,7 +28,9 @@ Add a new category.
   "data": {
     "id": 5,
     "name": "technology",
-    "parent_id": 1
+    "name_french": "technologie",
+    "parent_id": 1,
+    "is_active": true
   }
 }
 ```
@@ -31,26 +38,18 @@ Add a new category.
 ### Error Responses
 
 ```json
-{
-  "error": "Missing required field: 'name'."
-}
+{ "success": false, "error": "Missing required field: 'name'." }
 ```
 
 ```json
-{
-  "error": "Database error details here"
-}
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **POST /delete\_category**
+## **POST /api/data/delete_category**
 
-Delete an existing category by ID.
-
-
-#### allowed_roles = ["admin"]
-
+Delete a category by id.
 
 ### Request
 
@@ -74,35 +73,22 @@ Delete an existing category by ID.
 ### Error Responses
 
 ```json
-{
-  "error": "Missing required field: 'id'."
-}
+{ "success": false, "error": "Missing required field: 'id'." }
 ```
 
 ```json
-{
-  "error": "No category found with id 5"
-}
+{ "success": false, "error": "No category found with id 5" }
 ```
 
 ```json
-{
-  "error": "Database error details here"
-}
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **GET /get\_all\_categories**
+## **GET /api/data/get_all_categories**
 
 Fetch all categories.
-
-####   allowed_roles = ["admin", "subscribed", "registered"]
-
-
-### Request
-
-*No body required.*
 
 ### Success Response (200)
 
@@ -110,9 +96,8 @@ Fetch all categories.
 {
   "success": true,
   "data": [
-    { "id": 1, "name": "technology", "parent_id": null },
-    { "id": 2, "name": "science", "parent_id": null },
-    { "id": 3, "name": "ai", "parent_id": 1 }
+    { "id": 1, "name": "technology", "name_french": "technologie", "parent_id": null, "is_active": true },
+    { "id": 2, "name": "science", "name_french": "science", "parent_id": null, "is_active": false }
   ]
 }
 ```
@@ -120,14 +105,36 @@ Fetch all categories.
 ### Error Responses
 
 ```json
-{
-  "error": "No categories found."
-}
+{ "success": false, "error": "No categories found." }
 ```
 
 ```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **GET /api/data/get_active_categories**
+
+Fetch all active categories.
+
+### Success Response (200)
+
+```json
 {
-  "error": "Database error details here"
+  "success": true,
+  "data": [
+    { "id": 1, "name": "technology", "name_french": "technologie", "parent_id": null, "is_active": true }
+  ]
 }
 ```
 
+### Error Responses
+
+```json
+{ "success": false, "error": "No active categories found." }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```

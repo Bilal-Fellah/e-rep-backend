@@ -1,9 +1,9 @@
-from api.models.entity_model import Entity
+# Data API endpoints for note.
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.note_repository import NoteRepository
 from api.repositories.post_repository import PostRepository
 from api.repositories.user_repository import UserRepository
-from flask import Blueprint, request, jsonify
+from flask import request
 from api.routes.main import error_response, success_response
 from . import data_bp
 
@@ -58,8 +58,8 @@ def create_note():
             visibility=data.get("visibility", "private"),
         )
         return success_response(data=_note_dict(note), status_code=201)
-    except Exception as e:
-        return error_response(f"Error creating note: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 @data_bp.route("/get_note/<int:note_id>", methods=["GET"])
 def get_note(note_id):

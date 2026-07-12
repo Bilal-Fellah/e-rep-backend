@@ -1,8 +1,8 @@
+# Shared helper functions for posts utils.
 import re
 from datetime import timedelta, datetime, timezone
 from dateutil import parser   # pip install python-dateutil if not already installed
 import pytz
-from sqlalchemy import func, literal
 
 def parse_relative_time(text):
     # Simple pattern matching
@@ -62,23 +62,4 @@ def ensure_datetime(value):
 
 
 
-def jsonb_projection(post_col, fields):
-    args = []
-    for f in fields:
-        args.extend([
-            literal(f),
-            func.jsonb_extract_path(post_col, f)
-        ])
-    return func.jsonb_build_object(*args)
 
-
-from sqlalchemy import func, literal
-
-def jsonb_projection_from_alias(post_alias, fields):
-    args = []
-    for f in fields:
-        args.extend([
-            literal(f),
-            func.jsonb_extract_path(post_alias.c.value, f)
-        ])
-    return func.jsonb_build_object(*args)

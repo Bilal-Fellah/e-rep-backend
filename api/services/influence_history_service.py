@@ -1,0 +1,718 @@
+# Business workflows for influence history service.
+from collections import defaultdict
+from datetime import datetime, date, timedelta, timezone
+
+from api.repositories.page_history_repository import PageHistoryRepository
+from api.utils.data_keys import platform_metrics
+from api.utils.logging_utils import instrument_service_class
+from api.utils.request_parsing import parse_iso_date
+from api.utils.posts_utils import _to_number, ensure_datetime
+from api.utils.period_resolver import resolve_period_dates
+
+
+
+@instrument_service_class
+class InfluenceHistoryService:
+    # Relative windows supported by the followers ranking API.
+    _FOLLOWERS_RANKING_WINDOWS = {
+        "7d": 7,
+        "1m": 30,
+        "3m": 90,
+    }
+    _POST_METRIC_ALIASES = {
+        "likes": ("likes", "likes_count", "favorites_count"),
+        "comments": ("comments", "comments_count", "commentcount", "replies", "num_comments"),
+        "shares": ("shares", "share_count", "reposts", "num_shares"),
+        "views": ("views", "playcount", "view_count", "video_view_count"),
+    }
+    _METRIC_TOTAL_GROUPS = {
+        "likes": {"likes", "likes_count", "favorites_count"},
+        "comments": {"comments", "comments_count", "commentcount", "replies", "num_comments"},
+        "shares": {"shares", "share_count", "reposts", "num_shares"},
+        "views": {"views", "playcount", "view_count", "video_view_count"},
+    }
+
+    @staticmethod
+    def _row_value(row, key, default=0):
+        if isinstance(row, dict):
+            return row.get(key, default)
+        if hasattr(row, key):
+            return getattr(row, key)
+        try:
+            return row[key]
+        except Exception:
+            return default
+
+    @staticmethod
+    def _metric_value_from_totals(metric_name, totals):
+        for total_key, names in InfluenceHistoryService._METRIC_TOTAL_GROUPS.items():
+            if metric_name in names:
+                return _to_number(totals.get(total_key, 0))
+        return 0
+
+    @staticmethod
+    def _post_metric_value(post, metric_name):
+        aliases = InfluenceHistoryService._POST_METRIC_ALIASES.get(metric_name, (metric_name,))
+        for alias in aliases:
+            if alias in post and post.get(alias) is not None:
+                return _to_number(post.get(alias, 0))
+        return 0
+
+    @staticmethod
+    def get_after_time(hour):
+        return PageHistoryRepository.get_after_time(hour)
+
+    @staticmethod
+    def get_today_pages_history():
+        return PageHistoryRepository().get_today_all()
+
+    @staticmethod
+    def get_page_history_today(page_id):
+        return PageHistoryRepository().get_page_data_today(page_id)
+
+    @staticmethod
+    def get_platform_history(platform):
+        return PageHistoryRepository().get_platform_history(platform)
+
+    @staticmethod
+    def get_entity_history(entity_id, date_str=None):
+        target_date = parse_iso_date(date_str) if date_str else date.today()
+        return PageHistoryRepository().get_entity_data_by_date(entity_id, target_date)
+
+    @staticmethod
+    def get_entities_ranking():
+        # Legacy alias kept for compatibility.
+        return InfluenceHistoryService.get_followers_ranking()
+
+    @staticmethod
+    def _resolve_followers_ranking_date(date_window):
+        if not date_window:
+            return None
+
+        normalized = str(date_window).strip().lower()
+        days = InfluenceHistoryService._FOLLOWERS_RANKING_WINDOWS.get(normalized)
+        if days is None:
+            allowed = ", ".join(InfluenceHistoryService._FOLLOWERS_RANKING_WINDOWS.keys())
+            raise ValueError(f"Invalid date value. Use one of: {allowed}.")
+        return date.today() - timedelta(days=days)
+
+    @staticmethod
+    def get_followers_ranking(date_window=None):
+        target_date = InfluenceHistoryService._resolve_followers_ranking_date(date_window)
+        if target_date is None:
+            return PageHistoryRepository.get_all_entities_ranking()
+        return PageHistoryRepository.get_all_entities_ranking_by_date(target_date)
+
+    @staticmethod
+    def entities_ranking():
+        # Legacy alias kept for compatibility.
+        return InfluenceHistoryService.get_followers_ranking()
+
+    @staticmethod
+    def get_followers_progress_ranking(period=None, start_date=None, end_date=None):
+        date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
+        rows = PageHistoryRepository.get_followers_progress_snapshot(date_limit=date_limit, end_date=end_dt)
+        if not rows:
+            return []
+
+        entities = {}
+        for row in rows:
+            entity_id = InfluenceHistoryService._row_value(row, "entity_id", None)
+            if entity_id is None:
+                continue
+
+            entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            category = InfluenceHistoryService._row_value(row, "category", None)
+            root_category = InfluenceHistoryService._row_value(row, "root_category", None)
+            if root_category is None and category is not None:
+                root_category = category
+
+            platform = InfluenceHistoryService._row_value(row, "platform", None)
+            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
+            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
+            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
+            profile_image_url = InfluenceHistoryService._row_value(row, "profile_image_url", None)
+
+            current_followers = _to_number(InfluenceHistoryService._row_value(row, "current_followers", 0))
+            prev_followers = InfluenceHistoryService._row_value(row, "prev_followers", None)
+            if prev_followers is None:
+                prev_followers = current_followers
+            else:
+                prev_followers = _to_number(prev_followers)
+
+            progress = current_followers - prev_followers
+
+            entity = entities.setdefault(
+                entity_id,
+                {
+                    "entity_id": entity_id,
+                    "entity_name": entity_name,
+                    "category": category,
+                    "root_category": root_category,
+                    "window_start": date_limit.isoformat(),
+                    "total_followers": 0,
+                    "total_prev_followers": 0,
+                    "followers_progress": 0,
+                    "platforms": {},
+                },
+            )
+
+            if entity.get("category") is None and category is not None:
+                entity["category"] = category
+            if entity.get("root_category") is None and root_category is not None:
+                entity["root_category"] = root_category
+
+            entity["total_followers"] += current_followers
+            entity["total_prev_followers"] += prev_followers
+            entity["followers_progress"] += progress
+
+            if platform:
+                entity["platforms"][platform] = {
+                    "page_name": page_name,
+                    "page_id": page_id,
+                    "page_url": page_url,
+                    "profile_image_url": profile_image_url,
+                    "followers": current_followers,
+                    "previous_followers": prev_followers,
+                    "followers_progress": progress,
+                }
+
+        ranking = list(entities.values())
+        ranking.sort(key=lambda x: x.get("followers_progress", 0), reverse=True)
+        for idx, row in enumerate(ranking, start=1):
+            row["rank"] = idx
+
+        return ranking
+
+    @staticmethod
+    def get_interactions_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_score")
+
+    @staticmethod
+    def get_likes_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_likes")
+
+    @staticmethod
+    def get_comments_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_comments")
+
+    @staticmethod
+    def get_posts_followers_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_posts_ranking(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            order_by_key="total_followers",
+        )
+
+    @staticmethod
+    def get_posts_interactions_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_posts_ranking(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            order_by_key="total_score",
+        )
+
+    @staticmethod
+    def get_posts_likes_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_posts_ranking(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            order_by_key="total_likes",
+        )
+
+    @staticmethod
+    def get_posts_comments_ranking(period=None, start_date=None, end_date=None):
+        return InfluenceHistoryService._get_posts_ranking(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            order_by_key="total_comments",
+        )
+
+    @staticmethod
+    def _get_companies_ranking(period=None, start_date=None, end_date=None, order_by_key="total_score"):
+        date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
+        # print(f"Fetching companies interactions summary from {date_limit} to {end_dt}")
+        rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit, end_date=end_dt)
+        
+        if not rows:
+            return []
+
+
+        entities = {}
+
+        for row in rows:
+            platform = InfluenceHistoryService._row_value(row, "platform", None)
+            if platform not in platform_metrics:
+                continue
+
+            entity_id = InfluenceHistoryService._row_value(row, "entity_id", None)
+            entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            category = InfluenceHistoryService._row_value(row, "category", None)
+            root_category = InfluenceHistoryService._row_value(row, "root_category", None)
+            if root_category is None and category is not None:
+                root_category = category
+            if entity_id is None:
+                continue
+
+            totals = {
+                "likes": _to_number(InfluenceHistoryService._row_value(row, "total_likes", 0)),
+                "comments": _to_number(InfluenceHistoryService._row_value(row, "total_comments", 0)),
+                "shares": _to_number(InfluenceHistoryService._row_value(row, "total_shares", 0)),
+                "views": _to_number(InfluenceHistoryService._row_value(row, "total_views", 0)),
+            }
+            posts_count = _to_number(InfluenceHistoryService._row_value(row, "posts_count", 0))
+            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
+            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
+            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
+            profile_image_url = InfluenceHistoryService._row_value(row, "profile_image_url", None)
+
+            metrics = platform_metrics.get(platform, {}).get("metrics", [])
+            platform_score = 0.0
+            for metric in metrics:
+                metric_name = metric["name"]
+                metric_weight = metric.get("score", 1.0)
+                platform_score += InfluenceHistoryService._metric_value_from_totals(metric_name, totals) * metric_weight
+
+            entity = entities.setdefault(
+                entity_id,
+                {
+                    "entity_id": entity_id,
+                    "entity_name": entity_name,
+                    "category": category,
+                    "root_category": root_category,
+                    "window_start": date_limit.isoformat(),
+                    "total_score": 0.0,
+                    "total_posts": 0,
+                    "total_likes": 0,
+                    "total_comments": 0,
+                    "total_shares": 0,
+                    "total_views": 0,
+                    "platforms": {},
+                },
+            )
+
+            if entity.get("category") is None and category is not None:
+                entity["category"] = category
+            if entity.get("root_category") is None and root_category is not None:
+                entity["root_category"] = root_category
+
+            entity["total_score"] += platform_score
+            entity["total_posts"] += posts_count
+            entity["total_likes"] += totals["likes"]
+            entity["total_comments"] += totals["comments"]
+            entity["total_shares"] += totals["shares"]
+            entity["total_views"] += totals["views"]
+            entity["platforms"][platform] = {
+                "page_name": page_name,
+                "page_id": page_id,
+                "page_url": page_url,
+                "profile_image_url": profile_image_url,
+                "posts_count": posts_count,
+                "likes": totals["likes"],
+                "comments": totals["comments"],
+                "shares": totals["shares"],
+                "views": totals["views"],
+                "score": round(platform_score, 4),
+            }
+
+        ranking = list(entities.values())
+        for row in ranking:
+            row["total_score"] = round(row["total_score"], 4)
+
+        ranking.sort(key=lambda x: x.get(order_by_key, 0), reverse=True)
+        for idx, row in enumerate(ranking, start=1):
+            row["rank"] = idx
+
+        return ranking
+
+    @staticmethod
+    def _get_posts_ranking(period=None, start_date=None, end_date=None, order_by_key="gained_score"):
+        """
+        Calculate posts ranking based on metric growth (difference between snapshots).
+        
+        Posts are tracked across multiple snapshots within the date window.
+        Growth is calculated as: latest_snapshot_value - earliest_snapshot_value.
+        This matches the behavior of company/entity interaction rankings.
+        """
+        date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
+        rows = PageHistoryRepository.get_all_entities_posts(date_limit=date_limit)
+
+        if not rows:
+            return []
+
+        # Track post snapshots across time: {post_key: {snapshot_data}}
+        post_snapshots = defaultdict(list)
+        
+        # Metadata for each post (entity info, page info, etc.)
+        post_metadata = {}
+
+        sorted_rows = sorted(
+            rows,
+            key=lambda row: InfluenceHistoryService._row_value(row, "recorded_at", datetime.min),
+        )  # Sort ascending to process oldest first
+
+        for row in sorted_rows:
+            platform = InfluenceHistoryService._row_value(row, "platform", None)
+            if platform not in platform_metrics:
+                continue
+
+            posts = InfluenceHistoryService._row_value(row, "posts_metrics", None)
+            if not posts:
+                continue
+
+            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
+                posts = sum(posts, [])
+            if not isinstance(posts, list):
+                continue
+
+            entity_id = InfluenceHistoryService._row_value(row, "entity_id", None)
+            entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            category = InfluenceHistoryService._row_value(row, "category", None)
+            root_category = InfluenceHistoryService._row_value(row, "root_category", None)
+            if root_category is None and category is not None:
+                root_category = category
+
+            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
+            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
+            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
+            profile_image_url = InfluenceHistoryService._row_value(row, "profile_url", None)
+            page_followers = _to_number(InfluenceHistoryService._row_value(row, "raw_followers", 0))
+            recorded_at = InfluenceHistoryService._row_value(row, "recorded_at", None)
+
+            metrics = platform_metrics.get(platform, {}).get("metrics", [])
+            id_key = platform_metrics[platform]["id_key"]
+            date_key = platform_metrics[platform]["date"]
+
+            for post in posts:
+                if not isinstance(post, dict):
+                    continue
+
+                post_id = post.get(id_key)
+                if not post_id:
+                    continue
+
+                post_date = post.get(date_key) or recorded_at
+                if not post_date:
+                    continue
+
+                post_dt = ensure_datetime(post_date)
+                if post_dt.date() < date_limit:
+                    continue
+                if end_dt and post_dt.date() > end_dt:
+                    continue
+
+                post_key = (page_id, platform, str(post_id))
+                
+                # Store metadata once per post
+                if post_key not in post_metadata:
+                    post_metadata[post_key] = {
+                        "entity_id": entity_id,
+                        "entity_name": entity_name,
+                        "category": category,
+                        "root_category": root_category,
+                        "page_id": page_id,
+                        "page_name": page_name,
+                        "page_url": page_url,
+                        "profile_image_url": profile_image_url,
+                        "platform": platform,
+                        "post_id": post_id,
+                        "caption": post.get("caption"),
+                        "post_url": post.get("url") or post.get("link"),
+                        "created_at": post_dt.isoformat(),
+                        "page_followers": page_followers,
+                    }
+
+                # Extract metric values for this snapshot
+                likes = InfluenceHistoryService._post_metric_value(post, "likes")
+                comments = InfluenceHistoryService._post_metric_value(post, "comments")
+                shares = InfluenceHistoryService._post_metric_value(post, "shares")
+                views = InfluenceHistoryService._post_metric_value(post, "views")
+                
+                # Calculate platform-specific score for this snapshot
+                snapshot_score = 0.0
+                for metric in metrics:
+                    metric_name = metric["name"]
+                    metric_weight = metric.get("score", 1.0)
+                    snapshot_score += _to_number(post.get(metric_name, 0)) * metric_weight
+
+                post_snapshots[post_key].append({
+                    "recorded_at": recorded_at,
+                    "likes": likes,
+                    "comments": comments,
+                    "shares": shares,
+                    "views": views,
+                    "score": snapshot_score,
+                })
+
+        # Calculate growth for each post
+        ranked_posts = {}
+        window_end = end_dt.isoformat() if end_dt else datetime.now(timezone.utc).date().isoformat()
+        
+        for post_key, snapshots in post_snapshots.items():
+            if len(snapshots) < 1:
+                continue
+
+            metadata = post_metadata[post_key]
+            
+            # Sort snapshots by recorded_at to get earliest and latest
+            snapshots.sort(key=lambda x: x["recorded_at"] or datetime.min)
+            
+            earliest = snapshots[0]
+            latest = snapshots[-1]
+            
+            # Calculate gains (growth) between earliest and latest snapshot
+            gained_likes = latest["likes"] - earliest["likes"]
+            gained_comments = latest["comments"] - earliest["comments"]
+            gained_shares = latest["shares"] - earliest["shares"]
+            gained_views = latest["views"] - earliest["views"]
+            gained_score = latest["score"] - earliest["score"]
+
+            ranked_posts[post_key] = {
+                # Entity & Page info
+                "entity_id": metadata["entity_id"],
+                "entity_name": metadata["entity_name"],
+                "category": metadata["category"],
+                "root_category": metadata["root_category"],
+                "page_id": metadata["page_id"],
+                "page_name": metadata["page_name"],
+                "page_url": metadata["page_url"],
+                "profile_image_url": metadata["profile_image_url"],
+                # Post info
+                "platform": metadata["platform"],
+                "post_id": metadata["post_id"],
+                "caption": metadata["caption"],
+                "post_url": metadata["post_url"],
+                "created_at": metadata["created_at"],
+                # Window info
+                "window_start": date_limit.isoformat(),
+                "window_end": window_end,
+                "snapshots_count": len(snapshots),
+                # Growth metrics (used for ranking)
+                "gained_likes": gained_likes,
+                "gained_comments": gained_comments,
+                "gained_shares": gained_shares,
+                "gained_views": gained_views,
+                "gained_score": round(gained_score, 4),
+                # Page followers
+                "page_followers": metadata["page_followers"],
+            }
+
+        # Map order_by_key to growth-based keys
+        order_key_mapping = {
+            "total_score": "gained_score",
+            "total_likes": "gained_likes",
+            "total_comments": "gained_comments",
+            "total_shares": "gained_shares",
+            "total_views": "gained_views",
+            "total_followers": "page_followers",
+        }
+        sort_key = order_key_mapping.get(order_by_key, order_by_key)
+
+        ranking = list(ranked_posts.values())
+        ranking.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
+
+        for idx, row in enumerate(ranking, start=1):
+            row["rank"] = idx
+
+        return ranking
+
+    @staticmethod
+    def get_entity_interaction_stats(entity_id, start_date=None):
+        normalized_start = ensure_datetime(start_date) if start_date else None
+        baseline_start = normalized_start - timedelta(days=1) if normalized_start else None
+        start_day = normalized_start.date() if normalized_start else None
+
+        data = PageHistoryRepository.get_entity_posts__old(entity_id=entity_id)
+        if not data:
+            return []
+
+        daily_posts = {}
+
+        for row in data:
+            platform = row.platform if hasattr(row, "platform") else row[2]
+            posts = row.posts if hasattr(row, "posts") else row[4]
+            recorded_at = row.recorded_at if hasattr(row, "recorded_at") else row[3]
+
+            if platform not in platform_metrics:
+                continue
+
+            if not posts:
+                continue
+            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
+                posts = sum(posts, [])
+            if not isinstance(posts, list):
+                continue
+
+            day_key = recorded_at.date().isoformat()
+            if day_key not in daily_posts:
+                daily_posts[day_key] = {}
+
+            id_key = platform_metrics[platform]["id_key"]
+            metrics = platform_metrics[platform]["metrics"]
+            date_key = platform_metrics[platform]["date"]
+
+            for post in posts:
+                if not isinstance(post, dict):
+                    continue
+
+                post_id = post.get(id_key)
+                if not post_id:
+                    continue
+
+                post_date = post.get(date_key)
+                if baseline_start and post_date and ensure_datetime(post_date) < baseline_start:
+                    continue
+
+                daily_posts[day_key][post_id] = {
+                    "post_id": post_id,
+                    "platform": platform,
+                    "create_time": post_date,
+                    **{m["name"]: post.get(m["name"], 0) for m in metrics},
+                }
+
+        sorted_days = sorted(daily_posts.keys())
+        if not sorted_days:
+            return []
+
+        first_day = ensure_datetime(sorted_days[0]).date()
+        last_day = ensure_datetime(sorted_days[-1]).date()
+        all_days = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
+
+        distributed_gains = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+        post_series = defaultdict(list)
+        for day_key, posts_map in daily_posts.items():
+            day_date = ensure_datetime(day_key).date()
+            for post_id, post_data in (posts_map or {}).items():
+                platform = post_data.get("platform")
+                post_series[(platform, post_id)].append((day_date, post_data))
+
+        for (platform, _post_id), samples in post_series.items():
+            metric_defs = platform_metrics.get(platform, {}).get("metrics", [])
+            if not metric_defs:
+                continue
+
+            samples.sort(key=lambda x: x[0])
+
+            for idx in range(1, len(samples)):
+                prev_day, prev_data = samples[idx - 1]
+                cur_day, cur_data = samples[idx]
+
+                span_days = (cur_day - prev_day).days
+                if span_days <= 0:
+                    continue
+
+                for metric in metric_defs:
+                    metric_name = metric["name"]
+                    prev_val = _to_number(prev_data.get(metric_name, 0))
+                    cur_val = _to_number(cur_data.get(metric_name, 0))
+                    step_gain = (cur_val - prev_val) / span_days
+
+                    for step in range(1, span_days + 1):
+                        day = prev_day + timedelta(days=step)
+                        distributed_gains[day][platform][metric_name] += step_gain
+
+        summary = []
+        for day in all_days:
+            if start_day and day < start_day:
+                continue
+
+            day_platform_scores = {}
+            day_gains = {}
+            day_total_score = 0.0
+
+            platforms_data = distributed_gains.get(day, {})
+            for platform, metrics_map in platforms_data.items():
+                metric_defs = platform_metrics.get(platform, {}).get("metrics", [])
+                metric_weights = {m["name"]: m.get("score", 1.0) for m in metric_defs}
+
+                platform_score = 0.0
+                day_gains[platform] = {}
+
+                for metric_name, metric_value in metrics_map.items():
+                    value = float(metric_value)
+                    day_gains[platform][metric_name] = value
+                    platform_score += value * metric_weights.get(metric_name, 1.0)
+
+                day_platform_scores[platform] = platform_score
+                day_total_score += platform_score
+
+            summary.append({
+                "date": day.isoformat(),
+                "total_score": day_total_score,
+                "platform_scores": day_platform_scores,
+                "day_gains": day_gains,
+            })
+
+        return summary
+
+    @staticmethod
+    def get_competitors_interaction_stats(entity_ids, start_date=None):
+        normalized_start = ensure_datetime(start_date) if start_date else None
+        date_limit = normalized_start.date() if normalized_start else date.today() - timedelta(days=30)
+
+        data = []
+        for entity_id in entity_ids:
+            data.extend(
+                PageHistoryRepository().get_entity_posts_new(
+                    entity_id=entity_id,
+                    date_limit=date_limit,
+                    max_posts=10000,
+                )
+            )
+
+        if not data:
+            return []
+
+        post_scores = []
+
+        for row in data:
+            platform = row.platform if hasattr(row, "platform") else row[2]
+            page_id = row.page_id if hasattr(row, "page_id") else row[0]
+            entity_id = row.entity_id if hasattr(row, "entity_id") else row[5]
+
+            if platform not in platform_metrics:
+                continue
+
+            posts = row.posts_metrics if hasattr(row, "posts_metrics") else row[4]
+            if not posts:
+                continue
+            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
+                posts = sum(posts, [])
+            if not isinstance(posts, list):
+                continue
+
+            id_key = platform_metrics[platform]["id_key"]
+            metrics = platform_metrics[platform]["metrics"]
+
+            for post in posts:
+                if not isinstance(post, dict):
+                    continue
+
+                post_sc = 0
+
+                post_date = post.get(platform_metrics[platform]["date"])
+                if normalized_start and post_date and normalized_start > ensure_datetime(post_date):
+                    continue
+
+                for metric in metrics:
+                    metric_name = metric["name"]
+                    metric_score = metric["score"]
+
+                    value = _to_number(post.get(metric_name, 0))
+                    post_sc += value * metric_score
+
+                post_scores.append({
+                    "post_id": post.get(id_key),
+                    **{m["name"]: post.get(m["name"], 0) for m in metrics},
+                    "score": post_sc,
+                    "platform": platform,
+                    "create_time": post.get(platform_metrics[platform]["date"]),
+                    "page_id": page_id,
+                    "entity_id": entity_id,
+                })
+
+        return post_scores

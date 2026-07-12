@@ -1,9 +1,10 @@
+# Data-access methods for post repository.
 from api.models.post_model import db, PostMV, PostHistoryMV
 from api.models.page_model import Page
-from api.models.entity_model import Entity
-from sqlalchemy import select
+from api.utils.logging_utils import instrument_repository_class
 
 
+@instrument_repository_class
 class PostRepository:
 
     # ── Single post lookup ────────────────────────────────────────────────

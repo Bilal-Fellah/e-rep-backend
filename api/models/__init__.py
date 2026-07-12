@@ -1,4 +1,3 @@
-from api import db
 
 from .entity_model import Entity
 from .category_model import Category

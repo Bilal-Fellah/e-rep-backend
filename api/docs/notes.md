@@ -1,18 +1,23 @@
 # Notes API
 
-All routes are prefixed with `/data`.
+All routes in this document are prefixed with `/api/data`.
 
-Notes can be attached to a **post** (`target_type: "post"`) or to an entity graph (`target_type: "interactions_graph"` / `"followers_graph"`).
+Notes can target:
+- a post: `target_type = "post"`
+- an entity graph: `target_type = "interactions_graph"` or `"followers_graph"`
 
-Visibility controls who can read a note:
-- `"private"` — author only
-- `"public"` — anyone with access to the target
+Visibility:
+- `private`: author only
+- `public`: visible to others with access to the target
 
-`status` values: `active` | `archived` | `deleted` (soft-delete only).
+Status values:
+- `active`
+- `archived`
+- `deleted` (soft delete)
 
 ---
 
-## **POST /data/create_note**
+## **POST /api/data/create_note**
 
 Create a new note.
 
@@ -30,16 +35,6 @@ Create a new note.
 }
 ```
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `user_id` | integer | ✅ | Must exist in `users` |
-| `content` | string | ✅ | |
-| `target_type` | string | ✅ | `"post"`, `"interactions_graph"`, or `"followers_graph"` |
-| `target_id` | integer | ✅ | `post.id` or `entity.id` depending on `target_type` |
-| `title` | string | ❌ | |
-| `visibility` | string | ❌ | Default: `"private"` |
-| `context_data` | object | ❌ | Arbitrary JSON metadata |
-
 ### Success Response (201)
 
 ```json
@@ -51,7 +46,7 @@ Create a new note.
     "title": "Q1 observation",
     "content": "Engagement dropped after Feb 10.",
     "target_type": "interactions_graph",
-    "target_id": 3,
+    "target_id": "3",
     "context_data": { "date_range": "2026-02-01/2026-02-20" },
     "visibility": "private",
     "status": "active",
@@ -63,99 +58,93 @@ Create a new note.
 
 ### Error Responses
 
-| Status | Message |
-|--------|---------|
-| 400 | `"<field> is required"` |
-| 400 | `"Invalid target_type, must be 'post', 'interactions_graph', or 'followers_graph'"` |
-| 404 | `"Target post not found"` |
-| 404 | `"Target entity not found"` |
-| 404 | `"User doesn't exist, can't create note"` |
+```json
+{ "success": false, "error": "user_id is required" }
+```
+
+```json
+{ "success": false, "error": "Invalid target_type, must be 'post', 'interactions_graph', or 'followers_graph'" }
+```
+
+```json
+{ "success": false, "error": "Target post not found" }
+```
+
+```json
+{ "success": false, "error": "Target entity not found" }
+```
+
+```json
+{ "success": false, "error": "User doesn't exist, can't create note" }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
 
 ---
 
-## **GET /data/get_note/\<note_id\>**
+## **GET /api/data/get_note/<note_id>**
 
-Get a single note by its ID. Returns 403 if the note is private and `user_id` is not the author.
+Get a single note by id.
 
 ### Query Parameters
 
-| Param | Type | Required |
-|-------|------|----------|
-| `user_id` | integer | ✅ |
+- `user_id` (optional, integer)
 
-### Success Response (200)
-
-```json
-{
-  "success": true,
-  "data": { ...note object... }
-}
-```
+If note visibility requires ownership and `user_id` does not match author, returns 403.
 
 ### Error Responses
 
-| Status | Message |
-|--------|---------|
-| 403 | `"Access denied"` |
-| 404 | `"Note not found"` |
-
----
-
-## **GET /data/get_notes_for_target**
-
-Get all notes attached to a specific post or entity graph. Returns public notes plus the requesting user's own private notes.
-
-### Query Parameters
-
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| `target_type` | string | ✅ | `"post"`, `"interactions_graph"`, `"followers_graph"` |
-| `target_id` | integer | ✅ | |
-| `user_id` | integer | ✅ | Used to include the user's own private notes |
-| `include_archived` | boolean | ❌ | Default: `false` |
-
-### Success Response (200)
+```json
+{ "success": false, "error": "Note not found" }
+```
 
 ```json
-{
-  "success": true,
-  "data": [ ...array of note objects... ]
-}
+{ "success": false, "error": "Access denied" }
 ```
 
 ---
 
-## **GET /data/get_notes_by_author**
+## **GET /api/data/get_notes_for_target**
 
-Get all notes written by a specific user.
+Get notes for one target.
 
 ### Query Parameters
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| `author_id` | integer | ✅ | |
-| `include_archived` | boolean | ❌ | Default: `false` |
-
-### Success Response (200)
-
-```json
-{
-  "success": true,
-  "data": [ ...array of note objects... ]
-}
-```
+- `target_type` (required)
+- `target_id` (required)
+- `user_id` (optional)
+- `include_archived` (optional, `true`/`false`, default `false`)
 
 ### Error Responses
 
-| Status | Message |
-|--------|---------|
-| 400 | `"author_id is required"` |
+```json
+{ "success": false, "error": "target_type and target_id are required" }
+```
 
 ---
 
-## **POST /data/update_note/\<note_id\>**
+## **GET /api/data/get_notes_by_author**
 
-Update the content, title, context_data, or visibility of a note. Only the author can update.
+Get all notes for a user author.
+
+### Query Parameters
+
+- `user_id` (required)
+- `include_archived` (optional, `true`/`false`, default `false`)
+
+### Error Responses
+
+```json
+{ "success": false, "error": "user_id is required" }
+```
+
+---
+
+## **POST /api/data/update_note/<note_id>**
+
+Update note fields. Author only.
 
 ### Request Body
 
@@ -169,30 +158,25 @@ Update the content, title, context_data, or visibility of a note. Only the autho
 }
 ```
 
-All fields except `user_id` are optional — only provided fields are updated.
-
-### Success Response (200)
-
-```json
-{
-  "success": true,
-  "data": { ...updated note object... }
-}
-```
-
 ### Error Responses
 
-| Status | Message |
-|--------|---------|
-| 400 | `"user_id is required"` |
-| 403 | `"Access denied — you are not the author"` |
-| 404 | `"Note not found"` |
+```json
+{ "success": false, "error": "user_id is required" }
+```
+
+```json
+{ "success": false, "error": "Note not found" }
+```
+
+```json
+{ "success": false, "error": "Access denied — you are not the author" }
+```
 
 ---
 
-## **POST /data/archive_note/\<note_id\>**
+## **POST /api/data/archive_note/<note_id>**
 
-Set a note's status to `"archived"`. Only the author can archive.
+Archive note. Author only.
 
 ### Request Body
 
@@ -209,19 +193,11 @@ Set a note's status to `"archived"`. Only the author can archive.
 }
 ```
 
-### Error Responses
-
-| Status | Message |
-|--------|---------|
-| 400 | `"user_id is required"` |
-| 403 | `"Access denied — you are not the author"` |
-| 404 | `"Note not found"` |
-
 ---
 
-## **POST /data/delete_note/\<note_id\>**
+## **POST /api/data/delete_note/<note_id>**
 
-Soft-delete a note (sets status to `"deleted"`). Only the author can delete.
+Soft-delete note. Author only.
 
 ### Request Body
 
@@ -237,11 +213,3 @@ Soft-delete a note (sets status to `"deleted"`). Only the author can delete.
   "data": { "message": "Note deleted" }
 }
 ```
-
-### Error Responses
-
-| Status | Message |
-|--------|---------|
-| 400 | `"user_id is required"` |
-| 403 | `"Access denied — you are not the author"` |
-| 404 | `"Note not found"` |

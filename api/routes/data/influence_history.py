@@ -1,111 +1,96 @@
-from collections import defaultdict, OrderedDict
-from datetime import datetime, date, timedelta
-import os
-import jwt
-from api.repositories.page_history_repository import PageHistoryRepository
+# Data API endpoints for influence history.
+from datetime import datetime
+
 from flask import request
+
 from api.routes.main import error_response, success_response
-from api.utils.posts_utils import _to_number, ensure_datetime
-from api.utils.auth import _extract_token
+from api.services.influence_history_service import InfluenceHistoryService
+from api.utils.posts_utils import ensure_datetime
+
 from . import data_bp
-from sqlalchemy.exc import SQLAlchemyError
-from api.utils.data_keys import platform_metrics
-import traceback
+
+# @data_bp.route("/get_after_time", methods=["GET"])
+# def get_after_time():
+#     try:
+#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+#         # if not payload:
+#         #     return error_response("No valid token has been sent", 401)
+#         # role = payload['role']
+#         # if role not in allowed_roles:
+#         #     return error_response("Access denied", 403)
+
+#         hour = int(request.args.get("hour"))
+
+#         history = InfluenceHistoryService.get_after_time(hour)
+#         if not history:
+#             return error_response("No history found", 404)
+
+#         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
+#         return success_response(data, 200)
+
+#     except jwt.ExpiredSignatureError:
+#         return error_response("Token has expired", 401)
+#     except jwt.InvalidTokenError:
+#         return error_response("Invalid token", 401)
+#     except Exception as e:
+#         return error_response(str(e), 500)
+
+# @data_bp.route("/get_today_pages_history", methods=["GET"])
+# def get_today_pages_history():
+#     try:
+#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+#         # if not payload:
+#         #     return error_response("No valid token has been sent", 401)
+#         # role = payload['role']
+#         # if role not in allowed_roles:
+#         #     return error_response("Access denied", 403)
+
+#         history = InfluenceHistoryService.get_today_pages_history()
+#         if not history:
+#             return error_response("No history found", 404)
+
+#         data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
+#         return success_response(data, 200)
+
+#     except jwt.ExpiredSignatureError:
+#         return error_response("Token has expired", 401)
+#     except jwt.InvalidTokenError:
+#         return error_response("Invalid token", 401)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
 
-SECRET = os.environ.get("SECRET_KEY")
+# @data_bp.route("/get_page_history_today", methods=["GET"])
+# def get_page_history():
+#     try:
+#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
+#         # if not payload:
+#         #     return error_response("No valid token has been sent", 401)
+#         # role = payload['role']
+#         # if role not in allowed_roles:
+#         #     return error_response("Access denied", 403)
 
+#         page_id = request.args.get("page_id")
 
-@data_bp.route("/get_after_time", methods=["GET"])
-def get_after_time():
-    allowed_roles = ["admin"]
+#         history = InfluenceHistoryService.get_page_history_today(page_id)
+#         if not history:
+#             return error_response("No history found", 404)
 
-    try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
-        hour = int(request.args.get("hour"))
-
-        history = PageHistoryRepository.get_after_time(hour)
-        if not history:
-            return error_response("No history found", 404)
-        
-        data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
-        return success_response(data, 200)
-
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-@data_bp.route("/get_today_pages_history", methods=["GET"])
-def get_today_pages_history():
-    allowed_roles = ["admin", "subscribed", "registered"]
-
-    try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
-        history = PageHistoryRepository().get_today_all()
-        if not history:
-            return error_response("No history found", 404)
-        
-        data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data} for h in history ]
-        return success_response(data, 200)
-
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@data_bp.route("/get_page_history_today", methods=["GET"])
-def get_page_history():
-    allowed_roles = ["admin", "subscribed", "registered"]
-
-    try:
-        # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-        # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        # if not payload:
-        #     return error_response("No valid token has been sent", 401)
-        # role = payload['role']
-        # if role not in allowed_roles:
-        #     return error_response("Access denied", 403)
-        
-        page_id = request.args.get("page_id")
-
-        history = PageHistoryRepository().get_page_data_today(page_id)
-        if not history:
-            return error_response("No history found", 404)
-        
-        data = {'id': history.id, 'page_id': history.page_id, 'data': history.data}
-        return success_response(data, 200)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+#         data = {'id': history.id, 'page_id': history.page_id, 'data': history.data}
+#         return success_response(data, 200)
+#     except jwt.ExpiredSignatureError:
+#         return error_response("Token has expired", 401)
+#     except jwt.InvalidTokenError:
+#         return error_response("Invalid token", 401)
+#     except Exception as e:
+#         return error_response(str(e), 500)
 
 
 @data_bp.route("/get_platform_history", methods=["GET"])
 def get_platform_history():
-    allowed_roles = ["admin", "subscribed", "registered"]
-
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
@@ -114,26 +99,26 @@ def get_platform_history():
         # role = payload['role']
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
-        
+
         platform = request.args.get("platform")
         if not platform:
             return error_response("Missing platform parameter", 400)
-        print(platform)
-        history_list = PageHistoryRepository().get_platform_history(platform)
+        history_list = InfluenceHistoryService.get_platform_history(platform)
         if not history_list:
             return error_response("No history found", 404)
 
         data = [
-            {"id": h.id, "page_id": h.page_id, "data": h.data, "recorded_at": h.recorded_at}
+            {
+                "id": h.id,
+                "page_id": h.page_id,
+                "data": h.data,
+                "recorded_at": h.recorded_at,
+            }
             for h in history_list
         ]
         return success_response(data, 200)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_entity_history", methods=["GET"])
@@ -142,7 +127,6 @@ def get_entity_history():
     Fetch all page histories for a given entity_id (all pages belonging to entity).
     Optional: filter by date (default = today).
     """
-    allowed_roles = ["admin", "subscribed", "registered"]
 
     try:
         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
@@ -152,354 +136,267 @@ def get_entity_history():
         # role = payload['role']
         # if role not in allowed_roles:
         #     return error_response("Access denied", 403)
-        
-        entity_id = request.args.get("entity_id", type=int)
-        date_str = request.args.get("date")  
 
-        allowed_roles = ['admin', 'registered',]
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        role = None
-        if payload:
-            role = payload['role']
-    
+        entity_id = request.args.get("entity_id", type=int)
+        date_str = request.args.get("date")
+
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)
 
-        # parse date
         if date_str:
             try:
-                target_date = datetime.fromisoformat(date_str).date()
+                datetime.fromisoformat(date_str)
             except ValueError:
-                return error_response("Invalid date format. Use ISO format: YYYY-MM-DD.", 400)
-        else:
-            target_date = date.today()
+                return error_response(
+                    "Invalid date format. Use ISO format: YYYY-MM-DD.", 400
+                )
 
-        history = PageHistoryRepository().get_entity_data_by_date(entity_id, target_date)
+        history = InfluenceHistoryService.get_entity_history(
+            entity_id, date_str=date_str
+        )
         if not history:
             return error_response("No history found for this entity.", 404)
-        
-        data = [{'id': h.id, 'page_id': h.page_id, 'data': h.data, 'date': h.recorded_at} for h in history]
+
+        data = [
+            {"id": h.id, "page_id": h.page_id, "data": h.data, "date": h.recorded_at}
+            for h in history
+        ]
         return success_response(data, 200)
-    
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
 
-    except SQLAlchemyError as e:
-        return error_response(f"Database error: {str(e)}", 500)
-    except Exception as e:
-        return error_response(f"Unexpected error: {str(e)}", 500)
-    
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
-@data_bp.route("/get_entities_ranking", methods=["GET"])
-def get_entities_ranking():
-    allowed_roles = ["admin", "subscribed", "registered"]
-    token = None
-    payload = None
-    # try:
-    #     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    #     payload = jwt.decode(token, SECRET, algorithms=['HS256'])
 
-    # except Exception:
-    #     pass
-    
+# @data_bp.route("/get_entities_ranking", methods=["GET"])
+# def get_entities_ranking():
+#     # Deprecated in favor of /get_followers_ranking.
+#     pass
+
+
+@data_bp.route("/get_followers_ranking", methods=["GET"])
+def get_followers_ranking():
     try:
+        date_window = request.args.get("date")
 
-        data = PageHistoryRepository.get_all_entities_ranking()
+        if not date_window:
+            date_window = "1m"
+
+        data = InfluenceHistoryService.get_followers_ranking(date_window=date_window)
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No followers ranking data found for entities.", 404)
+        return success_response(data, 200)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    except (TypeError, KeyError):
+        return error_response("Invalid request data", 400)
 
 
-        if not data or (type(data) == list and len(data)<1):
-            return error_response("No data found for entities.", 404)
-        
-        # user = None
-        # if payload:
-        #     user = UserRepository.get_by_id(payload["user_id"])
+@data_bp.route("/get_followers_progress_ranking", methods=["GET"])
+def get_followers_progress_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
 
-        # role = user.role if user else 'public'
-        
-        # if role == 'admin' or role=='subscribed' or role == 'registered':
-        return success_response(data, 200)    
-        
-        # elif role =='public':
-        #     # rank by category
-        #     filter_category = defaultdict(list)
-        #     for row in data:
-        #         filter_category[row['category']].append(row)
-
-        #     filtered_entities = data[:10]
-        #     for cat in filter_category.keys():
-        #         top_com_here = min(filter_category[cat], key= lambda e: e['rank'], default=None)
-        #         if top_com_here['entity_id'] not in [e['entity_id'] for e in filtered_entities]:
-        #             filtered_entities.append(top_com_here)
-
-        #     return success_response(filtered_entities, 200)
-       
-        # else:
-        #     return error_response("Role is not valid", 401)
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", status_code=500)
-
-@data_bp.route("/entities_ranking", methods=['GET'])
-def entities_ranking():
-    # get only last 30 days interactions
-    start_date = datetime.now() - timedelta(days=30)
-
-    # get all entities posts (for scoring) and followers snapshot (current + prev)
-    data = PageHistoryRepository.get_all_entities_posts(date_limit=start_date)
-    followers_snapshot = PageHistoryRepository.get_entities_followers_snapshot(date_limit=start_date)
-
-    # build lookup: page_id -> {current_followers, prev_followers}
-    followers_by_page = {
-        row.page_id: {
-            "current": row.current_followers or 0,
-            "prev": row.prev_followers or 0,
-        }
-        for row in followers_snapshot
-    }
-
-    structured_entities = defaultdict(lambda: {
-        "platforms": {},
-        "posts": [],
-        # track latest recorded_at per platform to ensure we only keep the freshest metadata
-        "_platform_ts": {}
-    })
-
-    for row in data:
-        entity = structured_entities[row.entity_id]
-
-        # static entity-level fields
-        entity["entity_id"] = row.entity_id
-        entity["entity_name"] = row.entity_name
-        entity["category"] = row.category
-        entity["root_category"] = row.root_category
-
-        # keep platform metadata only from the latest recording
-        prev_ts = entity["_platform_ts"].get(row.platform)
-        if prev_ts is None or row.recorded_at > prev_ts:
-            entity["_platform_ts"][row.platform] = row.recorded_at
-            snap = followers_by_page.get(row.page_id, {"current": 0, "prev": 0})
-            entity["platforms"][row.platform] = {
-                "followers": snap["current"],
-                "prev_followers": snap["prev"],
-                "page_id": row.page_id,
-                "page_name": row.page_name,
-                "profile_url": row.page_url,
-                "profile_image_url": row.profile_url,
-            }
-
-        # keep posts metrics for scoring
-        if row.posts_metrics:
-            entity["posts"].append({
-                "platform": row.platform,
-                "metrics": row.posts_metrics
-            })
-
-    entity_scores = []
-
-    for entity_id, entity_data in structured_entities.items():
-        total_score = 0
-        total_posts = 0
-
-        for post_block in entity_data["posts"]:
-            platform = post_block["platform"]
-            posts_metrics = post_block["metrics"]
-
-            if platform not in platform_metrics:
-                continue
-
-            metrics_def = platform_metrics[platform]["metrics"]
-
-            for post in posts_metrics:
-                for m in metrics_def:
-                    value = post.get(m["name"], 0) or 0
-                    total_score += value * m["score"]
-                total_posts += 1
-
-        total_followers = sum(
-            p["followers"] for p in entity_data["platforms"].values()
+        data = InfluenceHistoryService.get_followers_progress_ranking(
+            period=period, start_date=start_date, end_date=end_date
         )
-        total_prev_followers = sum(
-            p["prev_followers"] for p in entity_data["platforms"].values()
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response(
+                "No followers progress ranking data found for entities.", 404
+            )
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
         )
 
-        entity_scores.append({
-            "entity_id": entity_id,
-            "entity_name": entity_data["entity_name"],
-            "category": entity_data["category"],
-            "root_category": entity_data["root_category"],
-            "platforms": entity_data["platforms"],
-            "total_score": total_score,
-            "average_score": total_score / total_posts if total_posts else 0,
-            "total_followers": total_followers,
-            "total_prev_followers": total_prev_followers,
-        })
 
-    entity_scores.sort(key=lambda x: x["total_followers"], reverse=True)
+@data_bp.route("/get_interactions_ranking", methods=["GET"])
+def get_interactions_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
 
-    for idx, entity in enumerate(entity_scores, start=1):
-        entity["rank"] = idx
+        data = InfluenceHistoryService.get_interactions_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response(
+                "No interactions ranking data found for companies.", 404
+            )
 
-    return success_response(entity_scores, 200)
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
+
+
+@data_bp.route("/get_likes_ranking", methods=["GET"])
+def get_likes_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_likes_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No likes ranking data found for companies.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
+
+
+@data_bp.route("/get_comments_ranking", methods=["GET"])
+def get_comments_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_comments_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No comments ranking data found for companies.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
+
+
+@data_bp.route("/get_posts_followers_ranking", methods=["GET"])
+def get_posts_followers_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_posts_followers_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No followers ranking data found for posts.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
+
+
+@data_bp.route("/get_posts_interactions_ranking", methods=["GET"])
+def get_posts_interactions_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_posts_interactions_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No interactions ranking data found for posts.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
+
+
+@data_bp.route("/get_posts_likes_ranking", methods=["GET"])
+def get_posts_likes_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_posts_likes_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No likes ranking data found for posts.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
+
+
+@data_bp.route("/get_posts_comments_ranking", methods=["GET"])
+def get_posts_comments_ranking():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        period = request.args.get("period")
+
+        data = InfluenceHistoryService.get_posts_comments_ranking(
+            period=period, start_date=start_date, end_date=end_date
+        )
+        if not data or (isinstance(data, list) and len(data) < 1):
+            return error_response("No comments ranking data found for posts.", 404)
+
+        return success_response(data, 200)
+
+    except (TypeError, KeyError, ValueError) as exc:
+        return error_response(
+            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
+        )
 
 
 @data_bp.route("/get_entity_interaction_stats", methods=["GET"])
 def get_entity_interaction_stats():
     try:
         entity_id = request.args.get("entity_id", type=int)
+        if not entity_id:
+            return error_response("Missing required query param: 'entity_id'.", 400)
+
         start_date = request.args.get("start_date")
         if start_date:
-            start_date = ensure_datetime(start_date)
+            start_date = datetime.fromisoformat(start_date)
 
-        data = PageHistoryRepository.get_entity_posts__old(entity_id=entity_id)
+        data = InfluenceHistoryService.get_entity_interaction_stats(
+            entity_id, start_date=start_date
+        )
         if not data:
             return error_response(f"No data found for entity {entity_id}.", 404)
+        return success_response(data, 200)
 
-        # --- STEP 1: Structure raw rows by day ---
-        # days = { "2024-12-01": { post_id: post_dict, ... } }
-        daily_posts = {}
-
-        for row in data:
-            platform = row.platform if hasattr(row, "platform") else row[2]
-            posts = row.posts if hasattr(row, "posts") else row[4]
-            recorded_at = row.recorded_at if hasattr(row, "recorded_at") else row[3]
-
-            if platform not in platform_metrics:
-                continue
-
-            # Normalize posts
-            if not posts:
-                continue
-            if isinstance(posts, list) and len(posts) > 0 and isinstance(posts[0], list):
-                posts = sum(posts, [])
-            if not isinstance(posts, list):
-                continue    
-
-            day_key = recorded_at.date().isoformat()
-            if day_key not in daily_posts:
-                daily_posts[day_key] = {}
-
-            id_key = platform_metrics[platform]["id_key"]
-            metrics = platform_metrics[platform]["metrics"]
-            date_key = platform_metrics[platform]['date']
-
-            for post in posts:
-                if not isinstance(post, dict):
-                    continue
-
-                post_id = post.get(id_key)
-                if not post_id:
-                    continue
-
-                post_date = post.get(date_key)
-                if start_date and post_date and ensure_datetime(post_date) < start_date:
-                    continue
-
-                # Build compact metrics dict
-                daily_posts[day_key][post_id] = {
-                    "post_id": post_id,
-                    "platform": platform,
-                    "create_time": post_date,
-                    **{m["name"]: post.get(m["name"], 0) for m in metrics}
-                }
-
-        # --- STEP 2: Build dense calendar days ---
-        sorted_days = sorted(daily_posts.keys())
-        if not sorted_days:
-            return success_response([], 200)
-
-        first_day = ensure_datetime(sorted_days[0]).date()
-        last_day = ensure_datetime(sorted_days[-1]).date()
-        all_days = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
-
-        # Aggregate distributed gains: day -> platform -> metric -> value
-        distributed_gains = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
-
-        # --- STEP 3: Distribute gains linearly across gap days per post and metric ---
-        post_series = defaultdict(list)
-        for day_key, posts_map in daily_posts.items():
-            day_date = ensure_datetime(day_key).date()
-            for post_id, post_data in (posts_map or {}).items():
-                platform = post_data.get("platform")
-                post_series[(platform, post_id)].append((day_date, post_data))
-
-        for (platform, _post_id), samples in post_series.items():
-            metric_defs = platform_metrics.get(platform, {}).get("metrics", [])
-            if not metric_defs:
-                continue
-
-            samples.sort(key=lambda x: x[0])
-
-            for idx in range(1, len(samples)):
-                prev_day, prev_data = samples[idx - 1]
-                cur_day, cur_data = samples[idx]
-
-                span_days = (cur_day - prev_day).days
-                if span_days <= 0:
-                    continue
-
-                for metric in metric_defs:
-                    metric_name = metric["name"]
-                    prev_val = _to_number(prev_data.get(metric_name, 0))
-                    cur_val = _to_number(cur_data.get(metric_name, 0))
-                    step_gain = (cur_val - prev_val) / span_days
-
-                    # Apply equal step to each day between prev and current, including current day.
-                    for step in range(1, span_days + 1):
-                        day = prev_day + timedelta(days=step)
-                        distributed_gains[day][platform][metric_name] += step_gain
-
-        # --- STEP 4: Build response with every day in the range ---
-        summary = []
-        for day in all_days:
-            day_platform_scores = {}
-            day_gains = {}
-            day_total_score = 0.0
-
-            platforms_data = distributed_gains.get(day, {})
-            for platform, metrics_map in platforms_data.items():
-                metric_defs = platform_metrics.get(platform, {}).get("metrics", [])
-                metric_weights = {m["name"]: m.get("score", 1.0) for m in metric_defs}
-
-                platform_score = 0.0
-                day_gains[platform] = {}
-
-                for metric_name, metric_value in metrics_map.items():
-                    value = float(metric_value)
-                    day_gains[platform][metric_name] = value
-                    platform_score += value * metric_weights.get(metric_name, 1.0)
-
-                day_platform_scores[platform] = platform_score
-                day_total_score += platform_score
-
-            summary.append({
-                "date": day.isoformat(),
-                "total_score": day_total_score,
-                "platform_scores": day_platform_scores,
-                "day_gains": day_gains,
-            })
-
-        return success_response(summary, 200)
-
-    except Exception as e:
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @data_bp.route("/get_competitors_interaction_stats", methods=["POST"])
 def get_competitors_interaction_stats():
 
     try:
-        inputs = request.get_json()
+        inputs = request.get_json(silent=True) or {}
 
-        entity_ids = list(inputs.get("entity_ids"))
-        if not entity_ids:
-            return error_response(f"wrong value for entity_ids")
-        
+        entity_ids = inputs.get("entity_ids")
+        if not isinstance(entity_ids, list) or not entity_ids:
+            return error_response(
+                "Invalid value for 'entity_ids'. Expected a non-empty list.", 400
+            )
+
         start_date = inputs.get("start_date", None)
         # print(start_date)
 
@@ -508,64 +405,13 @@ def get_competitors_interaction_stats():
         else:
             start_date = None
 
-        if not isinstance(entity_ids, list):
-            return error_response(f"entity_ids must be a list not a {type(entity_ids)}")
-        
-        data = []
-        for id in entity_ids:
-            data.extend(PageHistoryRepository.get_entity_posts(entity_id=id))
+        data = InfluenceHistoryService.get_competitors_interaction_stats(
+            entity_ids, start_date=start_date
+        )
 
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response(f"No data found for entity {entity_ids}.", 404)
+        return success_response(data, 200)
 
-        post_scores = []
-
-        for row in data:
-            # row: [page_id, page_name, platform, recorded_at, posts, entity_id]
-            platform = row[2]
-            page_id = row[0]
-
-            if platform not in platform_metrics:
-                continue
-
-            posts = row.posts
-            if isinstance(posts, list) and len(posts) > 0:
-                posts = posts[0]  
-            else:
-                continue
-
-            id_key = platform_metrics[platform]["id_key"]
-            metrics = platform_metrics[platform]["metrics"]
-
-            for post in posts:
-                post_sc = 0
-
-                post_date = post.get(platform_metrics[platform]['date'])
-                if start_date and start_date > ensure_datetime(post_date):
-                    continue # skip older posts
-
-                # calculate score
-                for m in metrics:
-                    metric_name = m["name"]
-                    metric_score = m["score"]
-
-                    value = post.get(metric_name, 0)
-                    post_sc += value * metric_score
-
-                post_scores.append(
-                    {
-                        "post_id": post.get(id_key),
-                        **{m["name"]: post.get(m["name"], 0) for m in metrics},
-                        "score": post_sc,
-                        "platform": platform,
-                        "create_time": post.get(platform_metrics[platform]['date']),
-                        "page_id": page_id,
-                        "entity_id": row[5]
-                    }
-                )
-
-        return success_response(post_scores, 200)
-
-    except Exception as e:
-        traceback.print_exc()
-        return error_response(f"Internal server error: {str(e)}", 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)

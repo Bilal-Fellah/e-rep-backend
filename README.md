@@ -1,28 +1,96 @@
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fexamples%2Ftree%2Fmain%2Fpython%2Fflask3&demo-title=Flask%203%20%2B%20Vercel&demo-description=Use%20Flask%203%20on%20Vercel%20with%20Serverless%20Functions%20using%20the%20Python%20Runtime.&demo-url=https%3A%2F%2Fflask3-python-template.vercel.app%2F&demo-image=https://assets.vercel.com/image/upload/v1669994156/random/flask.png)
+# e-rep-backend
 
-# Flask + Vercel
+Flask REST API backend for the Brendex reputation analytics platform.
 
-This example shows how to use Flask 3 on Vercel with Serverless Functions using the [Python Runtime](https://vercel.com/docs/concepts/functions/serverless-functions/runtimes/python).
+## Overview
 
-## Demo
+This backend provides analytics data for social media entities (companies, influencers, small businesses), including followers history, interaction rankings, post metrics, and user authentication via both email/password and Google OAuth.
 
-https://flask-python-template.vercel.app/
+## Project Structure
 
-## How it Works
+```
+api/
+  routes/           # Flask Blueprints (auth, data, public, health, oauth)
+    data/           # Data endpoints: entities, pages, categories, influence history, notes, posts
+  services/         # Business logic layer
+  repositories/     # Database access layer (SQLAlchemy)
+  models/           # SQLAlchemy ORM models
+  utils/            # Auth helpers, validators, logging, permissions
+  docs/             # Markdown API documentation per feature area
+migrations/         # Alembic database migrations
+logs/               # Rotating JSONL log files (route, service, repository errors)
+```
 
-This example uses the Web Server Gateway Interface (WSGI) with Flask to enable handling requests on Vercel with Serverless Functions.
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `SECRET_KEY` | JWT signing secret |
+| `FLASK_ENV` | `development`, `production`, or `testing` |
+| `DB_USER` | PostgreSQL username |
+| `DB_PWD` | PostgreSQL password |
+| `DB_NAME` | PostgreSQL database name |
+| `VPS_ADDRESS` | DB host (development only) |
+| `VPS_DB_PORT` | DB port (development only) |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `BACKEND_URL` | Public backend URL (used for OAuth callback) |
+| `FRONTEND_REDIRECT_URL` | Frontend base URL for post-login redirects |
+| `FRONTEND_COOKIE_DOMAIN` | Cookie domain (e.g. `.brendex.net`) |
+| `COOKIE_SECURE` | Set to `true` in production |
+| `ALLOWED_OAUTH_RETURN_URLS` | Comma-separated list of allowed OAuth return URLs |
 
 ## Running Locally
 
 ```bash
-npm i -g vercel
-vercel dev
+python -m venv flask-env
+flask-env\Scripts\activate      # Windows
+pip install -r requirements.txt
+
+# Set environment variables, then:
+python app.py --port 5000
 ```
 
-Your Flask application is now available at `http://localhost:3000`.
+The API is available at `http://localhost:5000`.
 
-## One-Click Deploy
+## Running with Docker
 
-Deploy the example using [Vercel](https://vercel.com?utm_source=github&utm_medium=readme&utm_campaign=vercel-examples):
+```bash
+docker-compose up --build
+```
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fexamples%2Ftree%2Fmain%2Fpython%2Fflask3&demo-title=Flask%203%20%2B%20Vercel&demo-description=Use%20Flask%203%20on%20Vercel%20with%20Serverless%20Functions%20using%20the%20Python%20Runtime.&demo-url=https%3A%2F%2Fflask3-python-template.vercel.app%2F&demo-image=https://assets.vercel.com/image/upload/v1669994156/random/flask.png)
+## Running Tests
+
+```bash
+TESTING=true pytest
+```
+
+## API Documentation
+
+See `api/docs/` for per-feature documentation:
+
+| File | Coverage |
+|---|---|
+| `auth.md` | `/api/auth/*` — registration, login, logout, token refresh |
+| `google_login.md` | `/api/oauth/*` — Google OAuth flow |
+| `entities.md` | `/api/data/*` — entity CRUD and analytics |
+| `page.md` | `/api/data/*` — page CRUD |
+| `categories.md` | `/api/data/*` — category CRUD |
+| `influence_history.md` | `/api/data/*` — followers and interaction rankings |
+| `interaction_stats.md` | `/api/data/*` — per-entity/competitor interaction stats |
+| `notes.md` | `/api/data/*` — user notes on posts and graphs |
+| `posts.md` | `/api/data/*` — post data and history |
+| `public.md` | `/api/public/*` — unauthenticated public endpoints |
+| `health.md` | `/health/check` — liveness probe |
+| `access_roles.md` | Role-based access summary |
+
+## Auth Model
+
+- **JWT** tokens — short-lived access token (1 day) + long-lived refresh token (30 days)
+- Token is sent via `Authorization: Bearer <token>` header or `access_token` cookie
+- Roles: `registered`, `subscribed`, `admin`
+- Google OAuth users are created automatically on first login
+
+## Supported Platforms
+
+`facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`

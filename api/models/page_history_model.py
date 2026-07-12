@@ -1,3 +1,4 @@
+# Database model definitions for page history model.
 from api import db
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB, UUID

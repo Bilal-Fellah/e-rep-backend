@@ -1,12 +1,12 @@
+# Route wiring for google auth endpoints.
 from datetime import datetime, timedelta, timezone
-from flask import redirect, request, jsonify, Blueprint,  session
-from datetime import datetime
+from flask import redirect, request, Blueprint, session
 import jwt
 import requests
 import os
 from api.repositories.user_repository import UserRepository
 import secrets
-from api.routes.main import success_response
+from api.routes.main import error_response, success_response, register_blueprint_error_handlers
 from api.utils.login_codes_utils import store_login_code, consume_login_code
 
 
@@ -14,10 +14,29 @@ from api.utils.login_codes_utils import store_login_code, consume_login_code
 SECRET = os.environ.get("SECRET_KEY")
 oauth_bp = Blueprint("oauth", __name__)
 
+register_blueprint_error_handlers(oauth_bp)
+
 # 🔑 From Google Console
 GOOGLE_CLIENT_ID =  os.environ.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:5000")
+FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://www.brendex.net")
+
+ALLOWED_RETURN_URLS = {
+    url.strip()
+    for url in os.environ.get("ALLOWED_OAUTH_RETURN_URLS", "").split(",")
+    if url.strip()
+}
+
+if not ALLOWED_RETURN_URLS:
+    ALLOWED_RETURN_URLS = {
+        FRONTEND_REDIRECT_URL,
+        "https://www.brendex.net",
+        "https://brendex.net",
+        "http://localhost:3000",
+        "http://localhost:5000",
+    }
+
 # Must match Google Console redirect URI
 REDIRECT_URI = f"{BACKEND_URL}/api/oauth/google/callback"
 
@@ -28,24 +47,15 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 @oauth_bp.route("/google/login")
 def login_google():
-    return_to = request.args.get("return_to")
-
-    # ALLOWED_RETURN_URLS = {
-    #     "https://www.brendex.net",
-    #     "https://brendex.net",
-    # }
-
-    # if return_to not in ALLOWED_RETURN_URLS:
-    #     return jsonify({"error": "Invalid return_to"}), 400
+    return_to = request.args.get("return_to", FRONTEND_REDIRECT_URL)
+    if return_to not in ALLOWED_RETURN_URLS:
+        return error_response("Invalid return_to", 400)
 
     state = secrets.token_urlsafe(32)
 
     # login
     session["oauth_state"] = state
     session["return_to"] = return_to
-
-    print("SET STATE:", state)
-    print("SESSION:", dict(session))
 
 
     params = {
@@ -68,17 +78,16 @@ def google_callback():
     state = request.args.get("state")
 
     if not code or not state:
-        return jsonify({"error": "Missing code or state"}), 400
+        return error_response("Missing code or state", 400)
 
     # callback
     if state != session.get("oauth_state"):
-        return jsonify({"error": "Invalid or expired state"}), 400
+        return error_response("Invalid or expired state", 400)
 
-    return_to = session.pop("return_to")
-    session.pop("oauth_state")
-
-    print("CALLBACK STATE:", state)
-    print("SESSION:", dict(session))
+    return_to = session.pop("return_to", FRONTEND_REDIRECT_URL)
+    session.pop("oauth_state", None)
+    if return_to not in ALLOWED_RETURN_URLS:
+        return_to = FRONTEND_REDIRECT_URL
    
     # --- everything below stays the same ---
     token_data = {
@@ -89,20 +98,36 @@ def google_callback():
         "grant_type": "authorization_code",
     }
 
-    token_res = requests.post(GOOGLE_TOKEN_URL, data=token_data)
+    try:
+        token_res = requests.post(GOOGLE_TOKEN_URL, data=token_data, timeout=15)
+    except requests.RequestException:
+        return error_response("Google authentication failed", 502)
+
+    if token_res.status_code >= 400:
+        return error_response("Google authentication failed", 502)
+
     token_json = token_res.json()
 
     if "access_token" not in token_json:
-        return jsonify(token_json), 400
+        return error_response("Google authentication failed", 400)
 
     access_token = token_json["access_token"]
 
-    userinfo_res = requests.get(
-        GOOGLE_USERINFO_URL,
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
+    try:
+        userinfo_res = requests.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=15,
+        )
+    except requests.RequestException:
+        return error_response("Google authentication failed", 502)
+
+    if userinfo_res.status_code >= 400:
+        return error_response("Google authentication failed", 502)
 
     userinfo = userinfo_res.json()
+    if "email" not in userinfo:
+        return error_response("Google authentication failed", 502)
 
     user = UserRepository.find_by_email(userinfo["email"])
     if not user:
@@ -111,7 +136,7 @@ def google_callback():
             last_name=userinfo.get("family_name", ""),
             email=userinfo["email"],
             password="",
-            role=None,
+            role="registered",
             is_verified=False
         )
 
@@ -125,16 +150,21 @@ def google_callback():
 
 @oauth_bp.route("/google/finalize", methods=["POST"])
 def finalize_google_login():
-    code = request.json.get("code")
+    body = request.get_json(silent=True) or {}
+    code = body.get("code")
+    if not code:
+        return error_response("Missing code", 400)
 
     code_data = consume_login_code(code)
     if not code_data:
-        return jsonify({"error": "Invalid or expired code"}), 400
+        return error_response("Invalid or expired code", 400)
 
     user_id = code_data["user_id"]
 
 
     user = UserRepository.get_by_id(int(user_id))
+    if not user:
+        return error_response("User not found", 404)
 
     # --- unchanged JWT logic ---
     access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
@@ -170,6 +200,7 @@ def finalize_google_login():
                 "last_name": user.last_name,
                 "email": user.email,
                 "role": user.role,
+                "is_verified": bool(getattr(user, "is_verified", False)),
                 "profession": user.profession,
                 "created_at": user.created_at.isoformat()
             }

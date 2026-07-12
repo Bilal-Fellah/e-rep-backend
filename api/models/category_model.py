@@ -1,3 +1,4 @@
+# Database model definitions for category model.
 from api import db
 from sqlalchemy.orm import relationship
 
@@ -6,10 +7,12 @@ class Category(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text, unique=True, nullable=False)
+    name_french = db.Column(db.Text, nullable=True)
     parent_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=True)
 
     # Self-referential relationship
     parent = relationship("Category", remote_side=[id], backref="subcategories")
 
     # Many-to-many with Entity
-    entities = relationship("Entity", secondary="entity_category", back_populates="categories")
+    entities = relationship("Entity", secondary="entity_category", back_populates="categories", passive_deletes=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)

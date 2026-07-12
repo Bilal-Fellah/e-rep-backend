@@ -1,77 +1,14 @@
-## **POST /google/login**
+# Auth Routes Documentation
 
-Redirects the user to Google's OAuth 2.0 authorization endpoint.
+All routes in this document are prefixed with `/api/auth`.
 
-### Request
-
-No request body is required.
-
-### Success Response (302)
-
-Redirects to the Google OAuth 2.0 authorization URL.
+Token extraction in these routes uses the helper in `api/utils/auth.py`:
+- `Authorization: Bearer <token>` is checked first
+- if no bearer token is present, matching cookie is used (`access_token` or `refresh_token`)
 
 ---
 
-## **GET /google/callback**
-
-Handles the callback from Google after user authorization.
-
-### Query Parameters
-
-- `code`: Authorization code from Google.
-- `state`: State parameter to prevent CSRF attacks.
-
-### Success Response (302)
-
-Redirects to the `return_to` URL with a temporary login code.
-
-### Error Responses
-
-```json
-{
-  "error": "Missing code or state"
-}
-```
-
-```json
-{
-  "error": "Invalid or expired state"
-}
-```
-
----
-
-## **POST /google/finalize**
-
-Finalizes the Google login process and issues JWT tokens.
-
-### Request
-
-```json
-{
-  "code": "temporary_login_code"
-}
-```
-
-### Success Response (200)
-
-```json
-{
-  "success": true
-}
-```
-
-### Error Responses
-
-```json
-{
-  "error": "Invalid or expired code"
-}
-```
-
----
-
-## **POST /register_mail**
+## **POST /api/auth/register_mail**
 
 Registers an email for temporary access.
 
@@ -97,22 +34,18 @@ Registers an email for temporary access.
 ### Error Responses
 
 ```json
-{
-  "error": "Invalid email"
-}
+{ "success": false, "error": "Invalid email" }
 ```
 
 ```json
-{
-  "error": "Email already exists"
-}
+{ "success": false, "error": "Email already exists" }
 ```
 
 ---
 
-## **POST /register_user**
+## **POST /api/auth/register_user**
 
-Creates a new user account and returns authentication tokens.
+Creates a verified user account and returns tokens.
 
 ### Request
 
@@ -121,10 +54,13 @@ Creates a new user account and returns authentication tokens.
   "full_name": "John Doe",
   "email": "john@example.com",
   "password": "secret123",
-  "phone_number": "1234567890",
+  "phone_number": "+15551234567",
+  "profession": "marketing",
   "role": "registered"
 }
 ```
+
+`role` is optional and defaults to `registered`.
 
 ### Success Response (200)
 
@@ -135,7 +71,8 @@ Creates a new user account and returns authentication tokens.
     "access_token": "jwt_access_token_here",
     "refresh_token": "jwt_refresh_token_here",
     "user_role": "registered",
-    "user_id": 1
+    "user_id": 1,
+    "is_verified": true
   }
 }
 ```
@@ -143,26 +80,28 @@ Creates a new user account and returns authentication tokens.
 ### Error Responses
 
 ```json
-{
-  "error": "missing required key: full_name"
-}
+{ "success": false, "error": "missing required key: profession" }
 ```
 
 ```json
-{
-  "error": "role must be in ['public', 'registered', 'anonymous', 'subscribed', 'admin']"
-}
+{ "success": false, "error": "Invalid email format" }
 ```
 
 ```json
-{
-  "error": "Email already exists"
-}
+{ "success": false, "error": "Invalid phone number format" }
+```
+
+```json
+{ "success": false, "error": "Password must be at least 8 characters" }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **POST /register_entity_name**
+## **POST /api/auth/register_entity_name**
 
 Registers an entity name for temporary access.
 
@@ -188,29 +127,25 @@ Registers an entity name for temporary access.
 ### Error Responses
 
 ```json
-{
-  "error": "entity name MyEntity already exists"
-}
+{ "success": false, "error": "entity name MyEntity already exists" }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **POST /register_entity**
+## **POST /api/auth/register_entity**
 
-Registers a new entity with optional pages.
-
-### Headers
-
-```
-Authorization: Bearer <access_token>
-```
+Creates a new entity and maps it to a category. Requires authenticated user with role in `admin`, `registered`, `subscribed`.
 
 ### Request
 
 ```json
 {
   "entity_name": "MyEntity",
-  "type": "business",
+  "type": "company",
   "category_id": 2,
   "pages": [
     {
@@ -221,6 +156,12 @@ Authorization: Bearer <access_token>
 }
 ```
 
+`type` must be one of: `company`, `influencer`, `small-business`.
+
+Supported `platform` values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`.
+
+`pages` is optional.
+
 ### Success Response (201)
 
 ```json
@@ -229,7 +170,7 @@ Authorization: Bearer <access_token>
   "data": {
     "id": 5,
     "name": "MyEntity",
-    "type": "business",
+    "type": "company",
     "category_id": 2,
     "pages": [
       {
@@ -245,28 +186,38 @@ Authorization: Bearer <access_token>
 ### Error Responses
 
 ```json
-{
-  "error": "Missing required parameters"
-}
+{ "success": false, "error": "No valid token provided" }
 ```
 
 ```json
-{
-  "error": "wrong category_id"
-}
+{ "success": false, "error": "Insufficient permissions for this action" }
 ```
 
 ```json
-{
-  "error": "entity name MyEntity already exists"
-}
+{ "success": false, "error": "missing required key: entity_name" }
+```
+
+```json
+{ "success": false, "error": "Invalid entity_name" }
+```
+
+```json
+{ "success": false, "error": "type must be one of ['company', 'influencer', 'small-business']" }
+```
+
+```json
+{ "success": false, "error": "Invalid category_id" }
+```
+
+```json
+{ "success": false, "error": "entity name MyEntity already exists" }
 ```
 
 ---
 
-## **POST /login**
+## **POST /api/auth/login**
 
-Authenticates a user and returns JWT tokens.
+Authenticates user credentials and returns token pair.
 
 ### Request
 
@@ -285,8 +236,9 @@ Authenticates a user and returns JWT tokens.
   "data": {
     "access_token": "jwt_access_token_here",
     "refresh_token": "jwt_refresh_token_here",
-    "user_role": "public",
-    "user_id": 1
+    "user_role": "registered",
+    "user_id": 1,
+    "is_verified": true
   }
 }
 ```
@@ -294,22 +246,18 @@ Authenticates a user and returns JWT tokens.
 ### Error Responses
 
 ```json
-{
-  "error": "Invalid credentials"
-}
+{ "success": false, "error": "Invalid credentials" }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **POST /get_user_data**
+## **POST /api/auth/get_user_data**
 
-Fetches user details from the JWT access token.
-
-### Headers
-
-```
-Authorization: Bearer <access_token>
-```
+Returns user profile data from authenticated access token.
 
 ### Success Response (200)
 
@@ -319,10 +267,12 @@ Authorization: Bearer <access_token>
   "data": {
     "email": "john@example.com",
     "user_id": 1,
-    "role": "public",
+    "role": "registered",
+    "is_verified": true,
+    "profession": "marketing",
     "first_name": "John",
     "last_name": "Doe",
-    "created_at": "2025-09-15T08:20:30Z"
+    "created_at": "2026-04-12T08:20:30+00:00"
   }
 }
 ```
@@ -330,34 +280,18 @@ Authorization: Bearer <access_token>
 ### Error Responses
 
 ```json
-{
-  "error": "User not found"
-}
+{ "error": "User not found" }
 ```
 
 ```json
-{
-  "error": "Token has expired"
-}
-```
-
-```json
-{
-  "error": "Invalid token"
-}
+{ "success": false, "error": "Invalid request data" }
 ```
 
 ---
 
-## **POST /refresh_token**
+## **POST /api/auth/refresh_token**
 
-Generates a new access token using a refresh token.
-
-### Headers
-
-```
-Authorization: Bearer <refresh_token>
-```
+Validates refresh token, returns a new access token, and sets a refreshed `access_token` cookie.
 
 ### Success Response (200)
 
@@ -365,7 +299,7 @@ Authorization: Bearer <refresh_token>
 {
   "success": true,
   "data": {
-    "access_token": "new_jwt_access_token_here"
+    "access_token": "new_access_token"
   }
 }
 ```
@@ -373,34 +307,49 @@ Authorization: Bearer <refresh_token>
 ### Error Responses
 
 ```json
-{
-  "error": "Missing refresh token"
-}
+{ "error": "Missing refresh token" }
 ```
 
 ```json
-{
-  "error": "Invalid refresh token"
-}
+{ "error": "Invalid refresh token" }
 ```
 
 ```json
-{
-  "error": "Refresh token expired"
-}
+{ "error": "Refresh token expired" }
 ```
 
 ---
 
-## **POST /validate_user_role**
+## **POST /api/auth/logout**
 
-Updates the role of a user.
+Clears `access_token` and `refresh_token` cookies. If a user is identified from the provided token, the stored refresh token is revoked in the database.
 
-### Headers
+### Request
 
+No request body is required.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Logged out successfully"
+  }
+}
 ```
-Authorization: Bearer <access_token>
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Invalid request data" }
 ```
+
+---
+
+## **POST /api/auth/validate_user_role**
+
+Updates the target user's role and sets them as verified. Caller must be authenticated with role `admin` (non-admin callers receive 403).
 
 ### Request
 
@@ -418,7 +367,8 @@ Authorization: Bearer <access_token>
   "success": true,
   "data": {
     "user_id": 9,
-    "role": "admin"
+    "role": "admin",
+    "is_verified": true
   }
 }
 ```
@@ -426,13 +376,86 @@ Authorization: Bearer <access_token>
 ### Error Responses
 
 ```json
-{
-  "error": "Missing required key user_id"
-}
+{ "success": false, "error": "User not found" }
 ```
 
 ```json
+{ "success": false, "error": "Access denied" }
+```
+
+```json
+{ "success": false, "error": "Missing required key user_id" }
+```
+
+```json
+{ "success": false, "error": "Missing required key role" }
+```
+
+---
+
+## **POST /api/auth/complete_profile**
+
+Updates current authenticated user's `phone_number` and `profession`.
+
+### Request
+
+```json
 {
-  "error": "Access denied"
+  "phone_number": "+15551234567",
+  "profession": "marketing"
 }
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "user_id": 1,
+    "phone_number": "+15551234567",
+    "profession": "marketing",
+    "is_verified": true
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "User not found" }
+```
+
+```json
+{ "success": false, "error": "Invalid phone number format" }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
+```
+
+---
+
+## **POST /api/auth/redirect_to_app**
+
+Reissues fresh auth cookies and returns an HTTP redirect to the configured frontend app URL. Caller must be authenticated and have role in `admin`, `registered`, `subscribed`.
+
+### Success Response (302)
+
+Redirect to `FRONTEND_REDIRECT_URL` and set cookies:
+- `access_token`
+- `refresh_token`
+
+### Error Responses
+
+```json
+{ "error": "User not found" }
+```
+
+```json
+{ "success": false, "error": "User role doesnt has enough privilege" }
+```
+
+```json
+{ "success": false, "error": "Invalid request data" }
 ```

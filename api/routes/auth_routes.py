@@ -1,49 +1,68 @@
 # routes/auth_routes.py
-import email
 import json
-import json
-from api.services.auth_service import AuthService
-from api.utils.auth import validate_email, _extract_token
-from flask import Blueprint, request, jsonify, redirect, make_response
+import os
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from flask import Blueprint, jsonify, make_response, redirect, request
+from sqlalchemy.exc import SQLAlchemyError
+
+from api import db
 from api.repositories.category_repository import CategoryRepository
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
-from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
-import jwt
-from datetime import datetime, timedelta, timezone
-import os
-import uuid
-from api.utils.auth import MAILS_FILE, ENTITIES_FILE
-from api.utils.validators import (
-    validate_required_keys, validate_enum, sanitize_string,
-    validate_email as v_email, validate_phone, validate_password,
-    ALLOWED_ROLES, ALLOWED_PROFESSIONS
+from api.routes.main import (
+    SEVERITY_HIGH,
+    SEVERITY_LOW,
+    error_response,
+    log_route_error,
+    register_blueprint_error_handlers,
+    success_response,
 )
+from api.services.auth_service import AuthService
+from api.utils.auth import ENTITIES_FILE, MAILS_FILE, _extract_token, validate_email
+from api.utils.permissions import require_role
+from api.utils.validators import (
+    ALLOWED_PROFESSIONS,
+    ALLOWED_ROLES,
+    sanitize_string,
+    validate_enum,
+    validate_password,
+    validate_phone,
+    validate_required_keys,
+)
+from api.utils.validators import validate_email as v_email
 
-from api.routes.main import error_response, success_response
 # from app import app
 SECRET = os.environ.get("SECRET_KEY")
-FRONTEND_REDIRECT_URL = os.environ.get("FRONTEND_REDIRECT_URL", "https://app.brendex.net")
+FRONTEND_REDIRECT_URL = os.environ.get(
+    "FRONTEND_REDIRECT_URL", "https://www.brendex.net"
+)
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
+ALLOWED_ENTITY_TYPES = ["company", "influencer", "small-business"]
+
+register_blueprint_error_handlers(auth_bp, include_token_errors=True)
+
 
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
     try:
-        email = request.json.get("email")
+        payload = request.get_json(silent=True) or {}
+        email = payload.get("email")
         if not email or not validate_email(email):
             return error_response("Invalid email", 400)
-        
+
         if UserRepository.find_by_email(email):
             return error_response("Email already exists", 400)
-        
+
         init_status = "unverified"
         email_object = {
             "email": email,
             "status": init_status,
-            "registered_at": datetime.now(timezone.utc).isoformat()
+            "registered_at": datetime.now(timezone.utc).isoformat(),
         }
         with open(MAILS_FILE, "r+") as f:
             mails = json.load(f)
@@ -51,324 +70,253 @@ def register_mail():
             mails.append(email_object)
             f.seek(0)
             json.dump(mails, f, indent=4)
-            
-        return success_response(data={"message": f"Email {email} registered for temporary access"})
-    except Exception as e:
-        return error_response(str(e), 500)
+
+        return success_response(
+            data={"message": f"Email {email} registered for temporary access"}
+        )
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
 
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
     try:
         data = request.json
-        required_keys = ['full_name','email', 'password', 'phone_number', 'profession']
+        required_keys = ["full_name", "email", "password", "phone_number", "profession"]
         missing = validate_required_keys(data, required_keys)
         if missing:
             return error_response(f"missing required key: {missing}", 400)
 
-        if not v_email(data['email']):
+        if not v_email(data["email"]):
             return error_response("Invalid email format", 400)
 
-        if not validate_password(data['password']):
+        if not validate_password(data["password"]):
             return error_response("Password must be at least 8 characters", 400)
-        
-        if not validate_phone(data['phone_number']):
+
+        if not validate_phone(data["phone_number"]):
             return error_response("Invalid phone number format", 400)
 
-        role = data.get('role', 'registered')
-        err = validate_enum(role, ALLOWED_ROLES, 'role')
-        if err:
-            return error_response(err, 400)
-        
-        err = validate_enum(data['profession'], ALLOWED_PROFESSIONS, 'profession')
+        role = data.get("role", "registered")
+        err = validate_enum(role, ALLOWED_ROLES, "role")
         if err:
             return error_response(err, 400)
 
-        full_name = sanitize_string(data['full_name'], 100)
+        err = validate_enum(data["profession"], ALLOWED_PROFESSIONS, "profession")
+        if err:
+            return error_response(err, 400)
+
+        full_name = sanitize_string(data["full_name"], 100)
         if not full_name:
             return error_response("Invalid full_name", 400)
-        
+
         user = AuthService.signup(
             first_name=full_name.split()[0],
-            last_name=" ".join(full_name.split()[1:]) if len(full_name.split()) > 1 else "",
+            last_name=" ".join(full_name.split()[1:])
+            if len(full_name.split()) > 1
+            else "",
             email=data["email"].strip().lower(),
             password=data["password"],
             phone_number=data["phone_number"].strip(),
             role=role,
-            profession=data['profession'],
-            is_verified=True
+            profession=data["profession"],
+            is_verified=True,
         )
 
-        # Access token (1 day)
-        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
-        access_payload = {
-            "user_id": user.id,
-            "role": user.role,
-            "exp": access_token_exp
-        }
-        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
-        
-        # Refresh token (30 days)
-        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
-        refresh_payload = {
-            "user_id": user.id,
-            "exp": refresh_token_exp
-        }
-        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
-
-        # Save refresh token & expiry in DB
-        UserRepository.update_refresh_token(
+        tokens = AuthService.issue_token_pair(user)
+        AuthService.persist_refresh_token(
             user.id,
-            token=refresh_token,
-            exp=refresh_token_exp
+            token=tokens["refresh_token"],
+            exp=tokens["refresh_token_exp"],
         )
 
-        response_data = {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "user_role": user.role,
-            "user_id": user.id
-        }
+        response = AuthService.build_auth_response(
+            user,
+            tokens["access_token"],
+            tokens["refresh_token"],
+        )
+        response["is_verified"] = bool(getattr(user, "is_verified", False))
 
-        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
-        flask_response = make_response(success_response(data=response_data))
-        flask_response.set_cookie(
-            "access_token",
-            access_token,
-            expires=access_token_exp,
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="None",
-            domain=cookie_domain,
-            path="/"
-        )
-        flask_response.set_cookie(
-            "refresh_token",
-            refresh_token,
-            expires=refresh_token_exp,
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="None",
-            domain=cookie_domain,
-            path="/"
-        )
-        return flask_response
-    except Exception as e:
-        return error_response(str(e), 500)
+        return success_response(data=response)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/register_entity_name", methods=["POST"])
 def register_entity_name():
-    allowed_roles = ["admin", "registered", "subscribed"]
     try:
-        entity_name = request.json.get("entity_name")
+        payload = request.get_json(silent=True) or {}
+        entity_name = payload.get("entity_name")
 
-        if EntityRepository.get_by_name(entity_name= entity_name):
+        if not entity_name or not isinstance(entity_name, str):
+            return error_response(
+                "Missing or invalid required field: 'entity_name'.", 400
+            )
+
+        if EntityRepository.get_by_name(entity_name=entity_name):
             return error_response(f"entity name {entity_name} already exists")
-        
-        
+
         init_status = "unverified"
         entity_object = {
             "entity_name": entity_name,
             "status": init_status,
-            "registered_at": datetime.now(timezone.utc).isoformat()
+            "registered_at": datetime.now(timezone.utc).isoformat(),
         }
-        
+
         with open(ENTITIES_FILE, "r+") as f:
             entities = json.load(f)
 
             entities.append(entity_object)
             f.seek(0)
             json.dump(entities, f, indent=4)
-            
-        return success_response(data={"message": f"Entity {entity_name} registered for temporary access"})
-    except Exception as e:
-        return error_response(str(e), 500)
 
+        return success_response(
+            data={"message": f"Entity {entity_name} registered for temporary access"}
+        )
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/register_entity", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def register_entity():
-    allowed_roles = ["admin", "registered", "subscribed"]
-
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-        if not payload:
-            return error_response("No valid token has been sent", 401)
-        role = payload['role']
-        if role not in allowed_roles:
-            return error_response("Access denied", 403)
-        
-        required_keys = ["entity_name","type", "category_id"]
-        data = request.json
-        
-        for key in required_keys:
-            if key not in data:
-                return error_response("Missing required parameters", 400)
-            
-        name = data["entity_name"]
-        entity_type = data["type"]
-        category_id = data["category_id"]
+        required_keys = ["entity_name", "type", "category_id"]
+        data = request.get_json(silent=True)
+        missing = validate_required_keys(data, required_keys)
+        if missing:
+            return error_response(f"missing required key: {missing}", 400)
 
-        if not CategoryRepository.get_by_id(category_id= category_id):
-            return error_response("wrong category_id", 400)
+        name = sanitize_string(data["entity_name"], 120)
+        if not name:
+            return error_response("Invalid entity_name", 400)
 
-        if EntityRepository.get_by_name(entity_name= name):
-            return error_response(f"entity name {name} already exists")
+        entity_type = sanitize_string(data["type"], 20)
+        if not entity_type:
+            return error_response("Invalid type", 400)
+        type_error = validate_enum(entity_type, ALLOWED_ENTITY_TYPES, "type")
+        if type_error:
+            return error_response(type_error, 400)
 
-        # add the entity
+        try:
+            category_id = int(data["category_id"])
+        except (TypeError, ValueError):
+            return error_response("category_id must be an integer", 400)
+
+        pages_data = data.get("pages")
+        if pages_data is not None and not isinstance(pages_data, list):
+            return error_response("pages must be a list", 400)
+
+        if not CategoryRepository.get_by_id(category_id=category_id):
+            return error_response("Invalid category_id", 400)
+
+        if EntityRepository.get_by_name(entity_name=name):
+            return error_response(f"entity name {name} already exists", 409)
+
+        # Persist entity, category mapping, and pages in a single commit
+        # to avoid partially inserted data when any downstream step fails.
         entity = EntityRepository.create(
             name=name,
-            type_=entity_type
+            type_=entity_type,
+            commit=False,
         )
+        entity_category = EntityCategoryRepository.add(
+            entity_id=entity.id,
+            category_id=category_id,
+            commit=False,
+        )
+        pages_response = AuthService.create_entity_pages(
+            entity, pages_data, commit=False
+        )
+        db.session.commit()
 
-        if not entity:
-            return error_response("failed to insert entity data", 500)
-        entity_category = EntityCategoryRepository.add(entity_id=entity.id, category_id=category_id)
-
-        if not entity_category:
-            return error_response("failed to map entity to category", 500)
-
-        pages_data = None
-        if 'pages' in data:
-            pages_data = data['pages']
-        
-        pages_response = []
-        if isinstance(pages_data, list) and len(pages_data) > 0:
-            # insert pages as well
-            for page in pages_data:
-                if 'platform' not in page or 'link' not in page:
-                    return error_response(f"Invalid page data, platform and link are required for every page")
-                platform = page['platform']
-                link = page['link']
-
-                new_uuid = uuid.uuid5(uuid.NAMESPACE_URL, platform + link)
-
-                page = PageRepository.create(
-                    uuid=new_uuid, 
-                    name=entity.name,
-                    platform=platform,
-                    link=link,
-                    entity_id=entity.id
-                )
-                pages_response.append({"page_id": page.uuid, "page_link": page.link, "platform": page.platform})
-        pages_response = pages_response if len(pages_response)>0 else None
         payload = {
-                    "id": entity.id,
-                    "name": entity.name,
-                    "type": entity.type,
-                    "category_id": entity_category.category_id,
-                    "pages": pages_response 
-                }
-        
+            "id": entity.id,
+            "name": entity.name,
+            "type": entity.type,
+            "category_id": entity_category.category_id,
+            "pages": pages_response,
+        }
+
         return success_response(payload, status_code=201)
-    
-    except jwt.ExpiredSignatureError:
-        return error_response("Token has expired", 401)
-    except jwt.InvalidTokenError:
-        return error_response("Invalid token", 401)
-    except Exception as e:
-        return error_response(str(e), 500)
+
+    except ValueError as ve:
+        db.session.rollback()
+        log_route_error(ve, SEVERITY_LOW, 400, "Entity registration validation failed")
+        return error_response(str(ve), 400)
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        log_route_error(
+            db_err, SEVERITY_HIGH, 500, "Entity registration database insertion failed"
+        )
+        return error_response(
+            "Failed to save entity data. Check entity uniqueness, category mapping, and page values.",
+            500,
+        )
+    except Exception as ex:
+        db.session.rollback()
+        log_route_error(
+            ex, SEVERITY_HIGH, 500, "Entity registration failed unexpectedly"
+        )
+        return error_response("Entity registration failed unexpectedly", 500)
 
 
 @auth_bp.route("/login", methods=["POST"])
 def login():
     try:
         data = request.json
-        missing = validate_required_keys(data, ['email', 'password'])
+        missing = validate_required_keys(data, ["email", "password"])
         if missing:
             return error_response(f"missing required key: {missing}", 400)
 
-        if not v_email(data['email']):
+        if not v_email(data["email"]):
             return error_response("Invalid email format", 400)
 
         user = UserRepository.find_by_email(data["email"].strip().lower())
         if not user or not user.check_password(data["password"]):
             return error_response("Invalid credentials", status_code=401)
-        
-        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
-        # Access token (2 hours)
-        access_payload = {
-            "user_id": user.id,
-            "role": user.role,
-            "exp": access_token_exp
-        }
-        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
-        
-        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
-        # Refresh token (30 days)
-        refresh_payload = {
-            "user_id": user.id,
-            "exp": refresh_token_exp
-        }
-        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
 
-        # Save refresh token & expiry in DB
-        UserRepository.update_refresh_token(
+        tokens = AuthService.issue_token_pair(user)
+        AuthService.persist_refresh_token(
             user.id,
-            token=refresh_token,
-            exp=refresh_token_exp
+            token=tokens["refresh_token"],
+            exp=tokens["refresh_token_exp"],
         )
 
-        response_data = {
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "user_role": user.role,
-            "user_id": user.id
-        }
+        response = AuthService.build_auth_response(
+            user,
+            tokens["access_token"],
+            tokens["refresh_token"],
+        )
+        response["is_verified"] = bool(getattr(user, "is_verified", False))
 
-        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
-        flask_response = make_response(success_response(response_data, status_code=200))
-        flask_response.set_cookie(
-            "access_token",
-            access_token,
-            expires=access_token_exp,
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="None",
-            domain=cookie_domain,
-            path="/"
-        )
-        flask_response.set_cookie(
-            "refresh_token",
-            refresh_token,
-            expires=refresh_token_exp,
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="None",
-            domain=cookie_domain,
-            path="/"
-        )
-        return flask_response
-    except Exception as e:
-        return error_response(str(e), 500)
+        return success_response(response, status_code=200)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
 
 @auth_bp.route("/get_user_data", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def get_user_data():
-    
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        # Example: fetch the user from DB if needed
-        user = UserRepository.get_by_id(payload["user_id"])
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        return success_response(data={
-            "email": user.email,
-            "user_id": user.id,
-            "role": user.role,
-            "profession": user.profession,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        })
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        return error_response(str(e), 500)
+        return success_response(
+            data={
+                "email": user.email,
+                "user_id": user.id,
+                "role": user.role,
+                "is_verified": bool(getattr(user, "is_verified", False)),
+                "profession": user.profession,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+            }
+        )
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/refresh_token", methods=["POST"])
@@ -386,48 +334,110 @@ def refresh():
         if user.refresh_token_exp < datetime.now(timezone.utc):
             return jsonify({"error": "Refresh token expired"}), 401
 
-        # New 2-hour access token
-        new_access = jwt.encode({
-            "user_id": user.id,
-            "role": user.role,
-            "exp": datetime.now(timezone.utc) + timedelta(hours=2)
-        }, SECRET, algorithm="HS256")
-        response = {
-            "access_token": new_access
-        }
+        tokens = AuthService.issue_token_pair(
+            user,
+            access_delta=timedelta(hours=2),
+        )
+        new_access = tokens["access_token"]
+        access_exp = tokens["access_token_exp"]
+
+        response = {"access_token": new_access}
         flask_response = make_response(success_response(response))
         flask_response.set_cookie(
             "access_token",
             new_access,
-            expires=datetime.now(timezone.utc) + timedelta(hours=2),
+            expires=access_exp,
             httponly=True,
             secure=COOKIE_SECURE,
             samesite="None",
             domain=FRONTEND_COOKIE_DOMAIN or None,
-            path="/"
+            path="/",
         )
         return flask_response
+    except jwt.ExpiredSignatureError:
+        return error_response("Refresh token expired", status_code=401)
     except jwt.InvalidTokenError:
         return error_response("Invalid refresh token", status_code=401)
 
 
+@auth_bp.route("/logout", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
+def logout():
+    try:
+        user_id = None
+
+        refresh_token = _extract_token("refresh_token")
+        if refresh_token:
+            try:
+                refresh_payload = jwt.decode(
+                    refresh_token, SECRET, algorithms=["HS256"]
+                )
+                user_id = refresh_payload.get("user_id")
+            except jwt.InvalidTokenError:
+                user_id = None
+
+        if user_id is None:
+            access_token = _extract_token("access_token")
+            if access_token:
+                try:
+                    access_payload = jwt.decode(
+                        access_token, SECRET, algorithms=["HS256"]
+                    )
+                    user_id = access_payload.get("user_id")
+                except jwt.InvalidTokenError:
+                    user_id = None
+
+        if user_id is not None:
+            user = UserRepository.get_by_id(user_id)
+            if user:
+                AuthService.persist_refresh_token(
+                    user.id,
+                    token="",
+                    exp=datetime.now(timezone.utc),
+                )
+
+        cookie_domain = FRONTEND_COOKIE_DOMAIN or None
+        response = make_response(
+            success_response(data={"message": "Logged out successfully"})
+        )
+        response.set_cookie(
+            "access_token",
+            "",
+            expires=0,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/",
+        )
+        response.set_cookie(
+            "refresh_token",
+            "",
+            expires=0,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="None",
+            domain=cookie_domain,
+            path="/",
+        )
+
+        return response
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
 @auth_bp.route("/validate_user_role", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def validate_user_role():
+    """this route updates the user role, after signing from google auth"""
 
-    """ this route updates the user role, after signing from google auth"""
-
-
-    allowed_roles = ["admin", "registered", "subscribed"]
     required_keys = ["user_id", "role"]
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        # Example: fetch the user from DB if needed
-        user = UserRepository.get_by_id(payload["user_id"])
-        if not user:
+        # Auth payload is already validated by @require_role decorator
+        caller = UserRepository.get_by_id(request.user_id)
+        if not caller:
             return error_response("User not found", 404)
-        role = user.role
-        if role not in allowed_roles:
+        if caller.role != "admin":
             return error_response("Access denied", 403)
 
         data = request.get_json()
@@ -435,31 +445,31 @@ def validate_user_role():
             if key not in data:
                 return error_response(f"Missing required key {key}", 400)
 
-        user_id = data['user_id']
-        role = data['role']
+        user_id = data["user_id"]
+        role = data["role"]
 
-        user = UserRepository.update_role(user_id=user_id, role= role, is_verified=True)
-        response = {"user_id": user.id, 'role': user.role}
+        user = UserRepository.update_role(user_id=user_id, role=role, is_verified=True)
+        response = {
+            "user_id": user.id,
+            "role": user.role,
+            "is_verified": bool(getattr(user, "is_verified", False)),
+        }
         return success_response(data=response)
 
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
 
 
 @auth_bp.route("/complete_profile", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def complete_profile():
     """
     After Google sign-up, allows the user to add phone_number and profession.
     Requires a valid access token.
     """
     try:
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        user = UserRepository.get_by_id(payload["user_id"])
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         if not user:
             return error_response("User not found", 404)
 
@@ -478,121 +488,67 @@ def complete_profile():
         user = UserRepository.update_profile(
             user_id=user.id,
             phone_number=data["phone_number"].strip(),
-            profession=data["profession"]
+            profession=data["profession"],
         )
 
-        return success_response(data={
-            "user_id": user.id,
-            "phone_number": user.phone_number,
-            "profession": user.profession,
-        })
+        return success_response(
+            data={
+                "user_id": user.id,
+                "phone_number": user.phone_number,
+                "profession": user.profession,
+                "is_verified": bool(getattr(user, "is_verified", False)),
+            }
+        )
 
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        return error_response(str(e), 500)
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
 
 @auth_bp.route("/redirect_to_app", methods=["POST"])
+@require_role("admin", "registered", "subscribed")
 def redirect_to_app():
-
-    """ This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
-        It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens 
-        and redirects the user to the app subdomain after setting those tokens in cookies
+    """This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
+    It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens
+    and redirects the user to the app subdomain after setting those tokens in cookies
     """
 
-    allowed_roles = ['admin', 'registered', 'subscribed']
-
     try:
-
-        token = _extract_token("access_token")
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-
-        user_id = payload['user_id']
-        user = UserRepository.get_by_id(user_id)
+        # Auth payload is already validated by @require_role decorator
+        user = UserRepository.get_by_id(request.user_id)
         if not user:
-            return jsonify({"error": "User not found"}), 404
-        
-        # now we verify if the user has permitted role
-        user_role = payload["role"]
-        if user_role not in allowed_roles:
-            return error_response("User role doesnt has enough privilege", 401)
-        
-        # now we save the cookies into the new website
-        access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
-        access_payload = {  
-            "user_id": user.id,
-            "role": user.role,
-            "exp": access_token_exp 
-        }
-        access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")    
-        refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
-        refresh_payload = {
-            "user_id": user.id,
-            "exp": refresh_token_exp   
-        }       
-        refresh_token = jwt.encode(refresh_payload, SECRET, algorithm="HS256")
+            return error_response("User not found", 404)
 
-        UserRepository.update_refresh_token(
+        tokens = AuthService.issue_token_pair(user)
+        AuthService.persist_refresh_token(
             user.id,
-            token=refresh_token,
-            exp=refresh_token_exp
+            token=tokens["refresh_token"],
+            exp=tokens["refresh_token_exp"],
         )
 
         cookie_domain = FRONTEND_COOKIE_DOMAIN or None
         response = make_response(redirect(FRONTEND_REDIRECT_URL))
         response.set_cookie(
             "access_token",
-            access_token,
-            expires=access_token_exp,
+            tokens["access_token"],
+            expires=tokens["access_token_exp"],
             httponly=True,
             secure=COOKIE_SECURE,
             samesite="None",
             domain=cookie_domain,
-            path="/"
+            path="/",
         )
         response.set_cookie(
             "refresh_token",
-            refresh_token,
-            expires=refresh_token_exp,
+            tokens["refresh_token"],
+            expires=tokens["refresh_token_exp"],
             httponly=True,
             secure=COOKIE_SECURE,
             samesite="None",
             domain=cookie_domain,
-            path="/"
+            path="/",
         )
 
         return response
 
-        
-        
-
-    except Exception as e:
-        return error_response(str(e), 500)
-
-
-@auth_bp.route("/logout", methods=["POST"])
-def logout():
-    response = make_response(success_response({"message": "Logged out successfully"}))
-    response.set_cookie(
-        "access_token",
-        "",
-        expires=0,
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="None",
-        domain=FRONTEND_COOKIE_DOMAIN or None,
-        path="/"
-    )
-    response.set_cookie(
-        "refresh_token",
-        "",
-        expires=0,
-        httponly=True,
-        secure=COOKIE_SECURE,
-        samesite="None",
-        domain=FRONTEND_COOKIE_DOMAIN or None,
-        path="/"
-    )
-    return response
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
