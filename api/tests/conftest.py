@@ -14,6 +14,8 @@ import api.models.page_model
 import api.models.page_history_model
 import api.models.post_model
 import api.models.note_model
+import api.models.comment_model
+import api.models.scraping_session_model
 
 
 @pytest.fixture(scope="session")

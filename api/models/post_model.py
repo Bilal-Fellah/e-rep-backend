@@ -35,7 +35,24 @@ class PostMV(db.Model):
     extra_data   = db.Column(db.JSON)
 
     def to_dict(self):
+        """Convert model instance to dictionary with all columns."""
         return {c.key: getattr(self, c.key) for c in inspect(self).mapper.column_attrs}
+
+    def to_scraping_dict(self):
+        """
+        Convert to dictionary optimized for scraping service.
+        Only includes fields needed by external scraper.
+        """
+        return {
+            "url": self.url,
+            "platform": self.platform,
+            "comments": self.comments,
+            "likes": self.likes,
+            "content_type": self.content_type,
+            "post_id": self.post_id,
+            "page_id": self.page_id,
+            "recorded_at": self.recorded_at.isoformat() if self.recorded_at else None
+        }
 
 
 class PostHistoryMV(db.Model):
