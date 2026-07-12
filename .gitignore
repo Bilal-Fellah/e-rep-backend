@@ -1,6 +1,7 @@
 .vercel
 *.log
 *.pyc
+.kiro/*
 __pycache__
 flask-env/*
 # Environments 
