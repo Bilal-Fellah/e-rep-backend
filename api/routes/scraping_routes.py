@@ -422,7 +422,7 @@ def get_session_details(session_id):
 
 
 @scraping_bp.route("/posts/today-status", methods=["GET"])
-@require_api_key
+@require_auth("admin")
 def get_today_posts_status():
     """
     Get the scraping status of posts scheduled for today (or a specific date).
