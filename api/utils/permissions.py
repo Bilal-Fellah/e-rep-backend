@@ -81,6 +81,7 @@ ROLE_PERMISSIONS = {
     # SCRAPING STATUS ENDPOINTS (admin only)
     "scraping.get_scraping_summary": [UserRole.ADMIN.value],
     "scraping.get_scraping_sessions": [UserRole.ADMIN.value],
+    "scraping.get_today_posts_status": [UserRole.ADMIN.value],
 }
 
 # ============================================================================

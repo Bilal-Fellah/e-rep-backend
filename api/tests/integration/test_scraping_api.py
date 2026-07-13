@@ -23,6 +23,53 @@ def auth_headers(api_key):
 
 
 @pytest.fixture
+def admin_jwt_headers(app):
+    """Return authorization headers with an admin JWT token."""
+    from api.models.user_model import User
+    from api.services.auth_service import AuthService
+    
+    with app.app_context():
+        user = User.query.filter_by(email="test_admin_scraping@example.com").first()
+        if not user:
+            user = User(
+                first_name="Test",
+                last_name="Admin",
+                email="test_admin_scraping@example.com",
+                role="admin",
+                is_verified=True,
+            )
+            user.set_password("password123")
+            db.session.add(user)
+            db.session.commit()
+        tokens = AuthService.issue_token_pair(user)
+        return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+@pytest.fixture
+def registered_jwt_headers(app):
+    """Return authorization headers with a registered user JWT token."""
+    from api.models.user_model import User
+    from api.services.auth_service import AuthService
+    
+    with app.app_context():
+        user = User.query.filter_by(email="test_registered_scraping@example.com").first()
+        if not user:
+            user = User(
+                first_name="Test",
+                last_name="Registered",
+                email="test_registered_scraping@example.com",
+                role="registered",
+                is_verified=True,
+            )
+            user.set_password("password123")
+            db.session.add(user)
+            db.session.commit()
+        tokens = AuthService.issue_token_pair(user)
+        return {"Authorization": f"Bearer {tokens['access_token']}"}
+
+
+
+@pytest.fixture
 def sample_posts(app):
     """Create sample posts in the database for testing."""
     with app.app_context():
@@ -269,16 +316,19 @@ class TestInsertComments:
         assert "'id'" in data["error"]
     
     def test_insert_comments_empty_array(self, client, auth_headers):
-        """Test that empty comments array is rejected."""
+        """Test that an empty comments array is accepted (posts with no comments)."""
         response = client.post(
             "/api/scraping/comments",
             json={"comments": []},
             headers=auth_headers
         )
-        assert response.status_code == 400
+        assert response.status_code == 200
         
         data = response.get_json()
-        assert data["success"] is False
+        assert data["success"] is True
+        assert data["data"]["inserted"] == 0
+        assert data["data"]["skipped"] == 0
+        assert data["data"]["total"] == 0
     
     def test_insert_comments_with_session_id(self, client, auth_headers, sample_posts, app):
         """Test comment insertion with session tracking."""
@@ -360,6 +410,122 @@ class TestGetSessionDetails:
         assert "not found" in data["error"]
 
 
+class TestCompleteSession:
+    """Tests for POST /api/scraping/sessions/{session_id}/complete endpoint."""
+    
+    def test_complete_session_requires_auth(self, client):
+        """Test that endpoint requires API key."""
+        response = client.post("/api/scraping/sessions/test-id/complete")
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data["success"] is False
+        assert "API key" in data["error"]
+    
+    def test_complete_session_success(self, client, auth_headers, app):
+        """Test successfully completing a pending session."""
+        with app.app_context():
+            from api.repositories.scraping_session_repository import ScrapingSessionRepository
+            session = ScrapingSessionRepository.create(posts_fetched=5)
+            session_id = session.session_id
+            db.session.commit()
+        
+        response = client.post(
+            f"/api/scraping/sessions/{session_id}/complete",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["session_id"] == session_id
+        assert data["data"]["status"] == "completed"
+        assert data["data"]["completed_at"] is not None
+        assert data["data"]["posts_fetched"] == 5
+        
+        # Verify in database
+        with app.app_context():
+            session = ScrapingSession.query.filter_by(session_id=session_id).first()
+            assert session.status == "completed"
+            assert session.completed_at is not None
+    
+    def test_complete_session_already_completed(self, client, auth_headers, app):
+        """Test that completing an already-completed session returns 400."""
+        with app.app_context():
+            from api.repositories.scraping_session_repository import ScrapingSessionRepository
+            session = ScrapingSessionRepository.create(posts_fetched=3)
+            session_id = session.session_id
+            db.session.commit()
+        
+        # Complete it once
+        client.post(
+            f"/api/scraping/sessions/{session_id}/complete",
+            headers=auth_headers
+        )
+        
+        # Try to complete again
+        response = client.post(
+            f"/api/scraping/sessions/{session_id}/complete",
+            headers=auth_headers
+        )
+        assert response.status_code == 400
+        
+        data = response.get_json()
+        assert data["success"] is False
+        assert "cannot be completed" in data["error"]
+        assert "completed" in data["error"]
+    
+    def test_complete_session_not_found(self, client, auth_headers):
+        """Test 404 for non-existent session."""
+        response = client.post(
+            "/api/scraping/sessions/non-existent-id/complete",
+            headers=auth_headers
+        )
+        assert response.status_code == 404
+        
+        data = response.get_json()
+        assert data["success"] is False
+        assert "not found" in data["error"]
+    
+    def test_complete_session_with_inserted_comments(self, client, auth_headers, app, sample_posts):
+        """Test that completing a session reflects the correct comments_inserted count."""
+        with app.app_context():
+            from api.repositories.scraping_session_repository import ScrapingSessionRepository
+            session = ScrapingSessionRepository.create(posts_fetched=1)
+            session_id = session.session_id
+            db.session.commit()
+        
+        # Insert 1 comment with the session_id
+        client.post(
+            "/api/scraping/comments",
+            json={
+                "session_id": session_id,
+                "comments": [
+                    {
+                        "page_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "platform": "instagram",
+                        "post_id": "C12345678",
+                        "id": "complete_test_comment",
+                        "text": "Test comment for completion",
+                        "username": "user1",
+                        "timestamp": 1783787046
+                    }
+                ]
+            },
+            headers=auth_headers
+        )
+        
+        # Now complete the session
+        response = client.post(
+            f"/api/scraping/sessions/{session_id}/complete",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data["data"]["comments_inserted"] == 1
+        assert data["data"]["status"] == "completed"
+
+
 class TestRateLimiting:
     """Tests for rate limiting functionality."""
     
@@ -399,20 +565,25 @@ class TestGetTodayPostsStatus:
     """Tests for GET /api/scraping/posts/today-status endpoint."""
     
     def test_get_today_status_requires_auth(self, client):
-        """Test that endpoint requires API key."""
+        """Test that endpoint requires auth token."""
         response = client.get("/api/scraping/posts/today-status")
         assert response.status_code == 401
         data = response.get_json()
         assert data["success"] is False
-        assert "API key" in data["error"]
+        assert "token" in data["error"]
         
-    def test_get_today_status_invalid_api_key(self, client):
-        """Test that invalid API key is rejected."""
-        headers = {"Authorization": "Bearer invalid-key"}
-        response = client.get("/api/scraping/posts/today-status", headers=headers)
-        assert response.status_code == 401
+    def test_get_today_status_forbidden_for_registered(self, client, registered_jwt_headers):
+        """Test that registered users are forbidden (403)."""
+        response = client.get(
+            "/api/scraping/posts/today-status",
+            headers=registered_jwt_headers
+        )
+        assert response.status_code == 403
+        data = response.get_json()
+        assert data["success"] is False
+        assert "Insufficient permissions" in data["error"]
         
-    def test_get_today_status_success(self, client, auth_headers, app):
+    def test_get_today_status_success(self, client, admin_jwt_headers, app):
         """Test retrieving today status, categorizing into scraped and pending."""
         yesterday = date.today() - timedelta(days=1)
         yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
@@ -467,7 +638,7 @@ class TestGetTodayPostsStatus:
             # Get today status
             response = client.get(
                 "/api/scraping/posts/today-status",
-                headers=auth_headers
+                headers=admin_jwt_headers
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -500,7 +671,7 @@ class TestGetTodayPostsStatus:
                 PostMV.query.filter(PostMV.post_id.in_([post_id_1, post_id_2])).delete()
                 db.session.commit()
 
-    def test_get_today_status_with_platform_filter(self, client, auth_headers, app):
+    def test_get_today_status_with_platform_filter(self, client, admin_jwt_headers, app):
         """Test retrieving today status with a platform filter."""
         yesterday = date.today() - timedelta(days=1)
         yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
@@ -540,7 +711,7 @@ class TestGetTodayPostsStatus:
             # Query for platform=youtube
             response = client.get(
                 "/api/scraping/posts/today-status?platform=youtube",
-                headers=auth_headers
+                headers=admin_jwt_headers
             )
             assert response.status_code == 200
             data = response.get_json()
@@ -559,22 +730,22 @@ class TestGetTodayPostsStatus:
                 PostMV.query.filter_by(post_id=post_id).delete()
                 db.session.commit()
 
-    def test_get_today_status_invalid_platform(self, client, auth_headers):
+    def test_get_today_status_invalid_platform(self, client, admin_jwt_headers):
         """Test GET with invalid platform parameter."""
         response = client.get(
             "/api/scraping/posts/today-status?platform=invalid",
-            headers=auth_headers
+            headers=admin_jwt_headers
         )
         assert response.status_code == 400
         data = response.get_json()
         assert data["success"] is False
         assert "Invalid platform" in data["error"]
 
-    def test_get_today_status_invalid_date(self, client, auth_headers):
+    def test_get_today_status_invalid_date(self, client, admin_jwt_headers):
         """Test GET with invalid date parameter."""
         response = client.get(
             "/api/scraping/posts/today-status?date=invalid-date",
-            headers=auth_headers
+            headers=admin_jwt_headers
         )
         assert response.status_code == 400
         data = response.get_json()

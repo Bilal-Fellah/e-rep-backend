@@ -139,15 +139,6 @@ def insert_comments():
         comments = data.get("comments", [])
         session_id = data.get("session_id")
         
-        if not comments:
-            log_route_error(
-                ValueError("Empty comments array"),
-                SEVERITY_LOW,
-                400,
-                "Invalid request data"
-            )
-            return error_response("Comments array is required and cannot be empty", 400)
-        
         if not isinstance(comments, list):
             log_route_error(
                 TypeError("Comments must be an array"),
@@ -418,6 +409,61 @@ def get_session_details(session_id):
     
     except Exception as e:
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during session fetch")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/sessions/<session_id>/complete", methods=["POST"])
+@require_api_key
+def complete_session(session_id):
+    """
+    Mark a scraping session as completed.
+    Called by the external scraper when it has finished processing all posts
+    for this session, regardless of whether comments were found.
+    
+    Path Parameters:
+        - session_id: Session UUID
+    
+    Returns:
+        200: {
+            "success": true,
+            "data": {
+                "session_id": str,
+                "status": "completed",
+                "completed_at": str,
+                "posts_fetched": int,
+                "comments_inserted": int
+            }
+        }
+        400: Session already completed or failed
+        401: Missing or invalid API key
+        404: Session not found
+        500: Database error
+    """
+    try:
+        result = ScrapingService.complete_scraping_session(session_id)
+        
+        if result is None:
+            log_route_error(
+                ValueError(f"Session not found: {session_id}"),
+                SEVERITY_MEDIUM,
+                404,
+                "Session not found"
+            )
+            return error_response(f"Scraping session not found: {session_id}", 404)
+        
+        return success_response(result, 200)
+    
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid session state")
+        return error_response(str(e), 400)
+    
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during session completion")
+        return db_error_response(500)
+    
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during session completion")
         return server_error_response(500)
 
 

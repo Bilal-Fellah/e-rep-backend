@@ -120,9 +120,11 @@ class ScrapingService:
                             session_id: str = None) -> dict:
         """
         Validate and insert comment batch atomically.
+        An empty list is accepted (e.g. for posts with no comments); in that
+        case the call succeeds with inserted=0, skipped=0.
         
         Args:
-            comments_data: List of comment dictionaries
+            comments_data: List of comment dictionaries (may be empty)
             session_id: Optional session ID to associate comments with
             
         Returns:
@@ -251,6 +253,49 @@ class ScrapingService:
             "comments_inserted": session.comments_inserted,
             "status": session.status,
             "error_message": session.error_message
+        }
+    
+    @staticmethod
+    def complete_scraping_session(session_id: str) -> dict | None:
+        """
+        Mark a scraping session as completed.
+        Only a session in 'pending' state can be completed.
+        
+        Args:
+            session_id: Session UUID
+            
+        Returns:
+            dict | None: {
+                "session_id": str,
+                "status": "completed",
+                "completed_at": str,
+                "posts_fetched": int,
+                "comments_inserted": int
+            }
+            None if session not found.
+            
+        Raises:
+            ValueError: If the session is already completed or failed.
+        """
+        session = ScrapingSessionRepository.get_by_id(session_id)
+        
+        if not session:
+            return None
+        
+        if session.status != "pending":
+            raise ValueError(
+                f"Session '{session_id}' cannot be completed: "
+                f"current status is '{session.status}'"
+            )
+        
+        updated = ScrapingSessionRepository.complete_session(session_id)
+        
+        return {
+            "session_id": updated.session_id,
+            "status": updated.status,
+            "completed_at": updated.completed_at.isoformat() if updated.completed_at else None,
+            "posts_fetched": updated.posts_fetched,
+            "comments_inserted": updated.comments_inserted
         }
     
     @staticmethod

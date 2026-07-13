@@ -95,6 +95,7 @@ curl -X GET "https://api.example.com/api/scraping/posts?platform=instagram&start
 ### 2. Insert Scraped Comments
 
 Insert a batch of scraped comments into the database. All comments are inserted as a single atomic transaction.
+An **empty `comments` array is accepted** — useful when a post has no comments, so the session can still be properly tracked.
 
 **Endpoint**: `POST /api/scraping/comments`
 
@@ -121,7 +122,7 @@ Insert a batch of scraped comments into the database. All comments are inserted 
 
 **Request Body Schema**:
 - `session_id` (string, optional): The session ID from the fetch posts endpoint
-- `comments` (array, required): Array of comment objects
+- `comments` (array, required): Array of comment objects. **May be empty (`[]`)** — for posts with no comments.
   - `page_id` (string, required): Page UUID
   - `platform` (string, required): Platform name
   - `post_id` (string, required): Post ID
@@ -280,6 +281,77 @@ curl -X GET "https://api.example.com/api/scraping/sessions/550e8400-e29b-41d4-a7
 
 ---
 
+### 4. Complete a Scraping Session
+
+Explicitly mark a scraping session as **completed**. The external scraper should call this after finishing all posts in a session, even if no comments were found.
+Only sessions in **`pending`** state can be completed.
+
+**Endpoint**: `POST /api/scraping/sessions/{session_id}/complete`
+
+**Path Parameters**:
+- `session_id` (string, required): The session UUID to complete
+
+**Request Body**: None required.
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "completed",
+    "completed_at": "2024-01-15T09:35:00",
+    "posts_fetched": 150,
+    "comments_inserted": 487
+  }
+}
+```
+
+**Response Fields**:
+- `session_id`: Session UUID
+- `status`: Always `"completed"` on success
+- `completed_at`: Timestamp when the session was completed (ISO 8601)
+- `posts_fetched`: Number of posts fetched in this session
+- `comments_inserted`: Total comments inserted across all `POST /api/scraping/comments` calls for this session
+
+**Error Responses**:
+- `400`: Session already completed or failed
+```json
+{
+  "success": false,
+  "error": "Session '550e8400...' cannot be completed: current status is 'completed'"
+}
+```
+- `401`: Missing or invalid API key
+```json
+{
+  "success": false,
+  "error": "Invalid or missing API key"
+}
+```
+- `404`: Session not found
+```json
+{
+  "success": false,
+  "error": "Scraping session not found: 550e8400-e29b-41d4-a716-446655440000"
+}
+```
+- `500`: Database error
+```json
+{
+  "success": false,
+  "error": "An error occurred in the database."
+}
+```
+
+**Example cURL**:
+```bash
+curl -X POST "https://api.example.com/api/scraping/sessions/550e8400-e29b-41d4-a716-446655440000/complete" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
 ### 4. Get Today's Scraping Status
 
 Retrieve the status of posts scheduled for scraping today (or a specific date). Categorizes posts scheduled for that date into scraped (already scraped today) and pending (scheduled but not yet scraped).
@@ -372,8 +444,11 @@ curl -X GET "https://api.example.com/api/scraping/posts/today-status?platform=in
 
 1. **Fetch Posts**: Call `GET /api/scraping/posts` to get a list of posts and receive a `session_id`
 2. **Scrape Comments**: Use the external scraping service to collect comments for those posts
-3. **Insert Comments**: Call `POST /api/scraping/comments` with the scraped comments and the `session_id`
-4. **Check Status**: (Optional) Call `GET /api/scraping/sessions/{session_id}` to verify the operation
+3. **Insert Comments**: Call `POST /api/scraping/comments` with the scraped comments and the `session_id`.
+   - Send `"comments": []` for posts that have no comments — this is valid and will succeed with `inserted: 0`.
+4. **Complete Session**: Call `POST /api/scraping/sessions/{session_id}/complete` to mark the session as done.
+   This is required to move the session from `pending` to `completed` so it appears correctly in daily summaries.
+5. **Check Status**: (Optional) Call `GET /api/scraping/sessions/{session_id}` to verify the operation
 
 ## Data Integrity
 
