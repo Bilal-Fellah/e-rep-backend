@@ -280,6 +280,94 @@ curl -X GET "https://api.example.com/api/scraping/sessions/550e8400-e29b-41d4-a7
 
 ---
 
+### 4. Get Today's Scraping Status
+
+Retrieve the status of posts scheduled for scraping today (or a specific date). Categorizes posts scheduled for that date into scraped (already scraped today) and pending (scheduled but not yet scraped).
+
+**Endpoint**: `GET /api/scraping/posts/today-status`
+
+**Query Parameters**:
+- `platform` (optional): Filter by platform. Valid values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`
+- `date` (optional): Filter by a specific target date (ISO format YYYY-MM-DD, e.g. `2026-07-13`). Defaults to today's date.
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "date": "2026-07-13",
+    "platform_filter": null,
+    "scraped_count": 1,
+    "pending_count": 1,
+    "total_count": 2,
+    "scraped_posts": [
+      {
+        "page_id": "123e4567-e89b-12d3-a456-426614174000",
+        "platform": "instagram",
+        "post_id": "C12345678",
+        "url": "https://instagram.com/p/C12345678",
+        "caption": "Test post 1",
+        "expected_comments": 10,
+        "scraped_comments_count": 5,
+        "recorded_at": "2026-07-12T12:00:00",
+        "created_at": "2026-07-11T12:00:00"
+      }
+    ],
+    "pending_posts": [
+      {
+        "page_id": "123e4567-e89b-12d3-a456-426614174001",
+        "platform": "facebook",
+        "post_id": "FB123456",
+        "url": "https://facebook.com/posts/FB123456",
+        "caption": "Test post 2",
+        "expected_comments": 20,
+        "scraped_comments_count": 0,
+        "recorded_at": "2026-07-12T12:00:00",
+        "created_at": "2026-07-10T12:00:00"
+      }
+    ]
+  }
+}
+```
+
+**Error Responses**:
+- `400`: Invalid query parameters (e.g. invalid platform name or invalid date format)
+```json
+{
+  "success": false,
+  "error": "Invalid date format. Use ISO format (YYYY-MM-DD)"
+}
+```
+- `401`: Missing or invalid API key
+```json
+{
+  "success": false,
+  "error": "Invalid or missing API key"
+}
+```
+- `429`: Rate limit exceeded
+```json
+{
+  "success": false,
+  "error": "Rate limit exceeded. Try again in 30 seconds."
+}
+```
+- `500`: Database error
+```json
+{
+  "success": false,
+  "error": "An error occurred in the database."
+}
+```
+
+**Example cURL**:
+```bash
+curl -X GET "https://api.example.com/api/scraping/posts/today-status?platform=instagram" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
 ## Typical Workflow
 
 1. **Fetch Posts**: Call `GET /api/scraping/posts` to get a list of posts and receive a `session_id`

@@ -393,3 +393,192 @@ class TestRateLimiting:
         data = response3.get_json()
         assert data["success"] is False
         assert "Rate limit exceeded" in data["error"]
+
+
+class TestGetTodayPostsStatus:
+    """Tests for GET /api/scraping/posts/today-status endpoint."""
+    
+    def test_get_today_status_requires_auth(self, client):
+        """Test that endpoint requires API key."""
+        response = client.get("/api/scraping/posts/today-status")
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data["success"] is False
+        assert "API key" in data["error"]
+        
+    def test_get_today_status_invalid_api_key(self, client):
+        """Test that invalid API key is rejected."""
+        headers = {"Authorization": "Bearer invalid-key"}
+        response = client.get("/api/scraping/posts/today-status", headers=headers)
+        assert response.status_code == 401
+        
+    def test_get_today_status_success(self, client, auth_headers, app):
+        """Test retrieving today status, categorizing into scraped and pending."""
+        yesterday = date.today() - timedelta(days=1)
+        yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
+        
+        page_id = "999e4567-e89b-12d3-a456-426614174999"
+        platform = "instagram"
+        post_id_1 = "POST_STATUS_SCRAPED"
+        post_id_2 = "POST_STATUS_PENDING"
+        
+        with app.app_context():
+            # Create two unique posts
+            post_scraped = PostMV(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id_1,
+                url=f"https://instagram.com/p/{post_id_1}",
+                created_at=datetime.now() - timedelta(days=2),
+                recorded_at=yesterday_datetime,
+                caption="Scraped post test",
+                likes=100,
+                comments=10
+            )
+            post_pending = PostMV(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id_2,
+                url=f"https://instagram.com/p/{post_id_2}",
+                created_at=datetime.now() - timedelta(days=2),
+                recorded_at=yesterday_datetime,
+                caption="Pending post test",
+                likes=200,
+                comments=20
+            )
+            db.session.add(post_scraped)
+            db.session.add(post_pending)
+            
+            # Add one comment today for post_scraped
+            comment = Comment(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id_1,
+                comment_id="status_comment_1",
+                text="Great post!",
+                author_username="test_user",
+                comment_timestamp=datetime.now(),
+                recorded_at=datetime.now()
+            )
+            db.session.add(comment)
+            db.session.commit()
+            
+        try:
+            # Get today status
+            response = client.get(
+                "/api/scraping/posts/today-status",
+                headers=auth_headers
+            )
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["success"] is True
+            
+            res_data = data["data"]
+            assert "scraped_posts" in res_data
+            assert "pending_posts" in res_data
+            
+            # Filter the lists to only include our test posts to be 100% immune to other tests
+            our_scraped = [p for p in res_data["scraped_posts"] if p["post_id"] == post_id_1]
+            our_pending = [p for p in res_data["pending_posts"] if p["post_id"] == post_id_2]
+            
+            assert len(our_scraped) == 1
+            assert len(our_pending) == 1
+            
+            # Verify details
+            assert our_scraped[0]["scraped_comments_count"] == 1
+            assert our_scraped[0]["expected_comments"] == 10
+            assert our_scraped[0]["url"] == f"https://instagram.com/p/{post_id_1}"
+            
+            assert our_pending[0]["scraped_comments_count"] == 0
+            assert our_pending[0]["expected_comments"] == 20
+            assert our_pending[0]["url"] == f"https://instagram.com/p/{post_id_2}"
+            
+        finally:
+            # Clean up posts and comment
+            with app.app_context():
+                Comment.query.filter_by(comment_id="status_comment_1").delete()
+                PostMV.query.filter(PostMV.post_id.in_([post_id_1, post_id_2])).delete()
+                db.session.commit()
+
+    def test_get_today_status_with_platform_filter(self, client, auth_headers, app):
+        """Test retrieving today status with a platform filter."""
+        yesterday = date.today() - timedelta(days=1)
+        yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
+        
+        page_id = "999e4567-e89b-12d3-a456-426614174999"
+        platform = "youtube"  # Use a platform different from other tests to isolate
+        post_id = "YT_STATUS_TEST"
+        
+        with app.app_context():
+            post = PostMV(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id,
+                url=f"https://youtube.com/watch?v={post_id}",
+                created_at=datetime.now() - timedelta(days=2),
+                recorded_at=yesterday_datetime,
+                caption="YT test",
+                likes=150,
+                comments=15
+            )
+            db.session.add(post)
+            
+            comment = Comment(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id,
+                comment_id="status_comment_yt",
+                text="Great video!",
+                author_username="test_user",
+                comment_timestamp=datetime.now(),
+                recorded_at=datetime.now()
+            )
+            db.session.add(comment)
+            db.session.commit()
+            
+        try:
+            # Query for platform=youtube
+            response = client.get(
+                "/api/scraping/posts/today-status?platform=youtube",
+                headers=auth_headers
+            )
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["success"] is True
+            
+            res_data = data["data"]
+            assert res_data["platform_filter"] == "youtube"
+            assert res_data["total_count"] == 1
+            assert res_data["scraped_count"] == 1
+            assert res_data["pending_count"] == 0
+            assert res_data["scraped_posts"][0]["post_id"] == post_id
+            
+        finally:
+            with app.app_context():
+                Comment.query.filter_by(comment_id="status_comment_yt").delete()
+                PostMV.query.filter_by(post_id=post_id).delete()
+                db.session.commit()
+
+    def test_get_today_status_invalid_platform(self, client, auth_headers):
+        """Test GET with invalid platform parameter."""
+        response = client.get(
+            "/api/scraping/posts/today-status?platform=invalid",
+            headers=auth_headers
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+        assert "Invalid platform" in data["error"]
+
+    def test_get_today_status_invalid_date(self, client, auth_headers):
+        """Test GET with invalid date parameter."""
+        response = client.get(
+            "/api/scraping/posts/today-status?date=invalid-date",
+            headers=auth_headers
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+        assert "Invalid date format" in data["error"]
+
+

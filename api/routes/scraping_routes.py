@@ -419,3 +419,83 @@ def get_session_details(session_id):
     except Exception as e:
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during session fetch")
         return server_error_response(500)
+
+
+@scraping_bp.route("/posts/today-status", methods=["GET"])
+@require_api_key
+def get_today_posts_status():
+    """
+    Get the scraping status of posts scheduled for today (or a specific date).
+    Returns lists of scraped and pending posts.
+    
+    Query Parameters:
+        - date (optional): Date in ISO format (YYYY-MM-DD). Defaults to today.
+        - platform (optional): Filter by platform (facebook, instagram, x, tiktok, linkedin, youtube)
+    
+    Returns:
+        200: {
+            "success": true,
+            "data": {
+                "date": str,
+                "platform_filter": str | null,
+                "scraped_count": int,
+                "pending_count": int,
+                "total_count": int,
+                "scraped_posts": list[dict],
+                "pending_posts": list[dict]
+            }
+        }
+        400: Invalid query parameters
+        401: Missing or invalid API key
+        500: Database error
+    """
+    try:
+        # Extract query parameters
+        target_date = request.args.get("date")
+        platform = request.args.get("platform")
+        
+        # Validate platform if provided
+        valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
+        if platform and platform not in valid_platforms:
+            log_route_error(
+                ValueError(f"Invalid platform: {platform}"),
+                SEVERITY_LOW,
+                400,
+                "Invalid query parameters"
+            )
+            return error_response(f"Invalid platform. Must be one of: {', '.join(valid_platforms)}", 400)
+        
+        # Validate date format if provided
+        if target_date:
+            try:
+                from datetime import date
+                date.fromisoformat(target_date)
+            except ValueError:
+                log_route_error(
+                    ValueError(f"Invalid date format: {target_date}"),
+                    SEVERITY_LOW,
+                    400,
+                    "Invalid query parameters"
+                )
+                return error_response("Invalid date format. Use ISO format (YYYY-MM-DD)", 400)
+        
+        # Fetch status
+        result = ScrapingService.get_today_scraping_status(
+            platform=platform,
+            target_date=target_date
+        )
+        
+        return success_response(result, 200)
+        
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid query parameters")
+        return error_response(str(e), 400)
+    
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during today status fetch")
+        return db_error_response(500)
+    
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during today status fetch")
+        return server_error_response(500)
+

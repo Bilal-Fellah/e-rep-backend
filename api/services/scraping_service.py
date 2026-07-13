@@ -328,3 +328,114 @@ class ScrapingService:
             result.append(session_dict)
         
         return result
+
+    @staticmethod
+    def get_today_scraping_status(platform: str = None, target_date: str = None) -> dict:
+        """
+        Get the scraping status of posts scheduled for a specific date.
+        Categorizes posts scheduled for that date into scraped (already scraped today)
+        and pending (scheduled but not yet scraped).
+        
+        Args:
+            platform: Optional platform filter
+            target_date: Optional date in ISO format (YYYY-MM-DD). Defaults to today.
+            
+        Returns:
+            dict: {
+                "date": str,
+                "platform_filter": str | None,
+                "scraped_count": int,
+                "pending_count": int,
+                "total_count": int,
+                "scraped_posts": list[dict],
+                "pending_posts": list[dict]
+            }
+        """
+        from datetime import date as date_type, timedelta
+        from api.models.post_model import PostMV
+        from api.models.comment_model import Comment
+        from api import db
+        from sqlalchemy import func
+        
+        # Parse date or default to today
+        if target_date:
+            parsed_date = date_type.fromisoformat(target_date)
+        else:
+            parsed_date = date_type.today()
+            
+        # Yesterday's range (snapshot date for scheduled posts)
+        yesterday_start = datetime.combine(parsed_date - timedelta(days=1), datetime.min.time())
+        yesterday_end = datetime.combine(parsed_date, datetime.min.time())
+        
+        # Target date's range (when scraping happened)
+        target_date_start = datetime.combine(parsed_date, datetime.min.time())
+        target_date_end = datetime.combine(parsed_date + timedelta(days=1), datetime.min.time())
+        
+        # Query posts scheduled for target_date
+        posts_query = PostMV.query.filter(
+            PostMV.recorded_at >= yesterday_start,
+            PostMV.recorded_at < yesterday_end
+        )
+        if platform:
+            posts_query = posts_query.filter_by(platform=platform)
+            
+        posts = posts_query.all()
+        
+        # Query comment counts scraped on the target date grouped by post
+        comment_counts_query = db.session.query(
+            Comment.page_id,
+            Comment.platform,
+            Comment.post_id,
+            func.count(Comment.id).label('count')
+        ).filter(
+            Comment.recorded_at >= target_date_start,
+            Comment.recorded_at < target_date_end
+        )
+        if platform:
+            comment_counts_query = comment_counts_query.filter(Comment.platform == platform)
+            
+        comment_counts = comment_counts_query.group_by(
+            Comment.page_id,
+            Comment.platform,
+            Comment.post_id
+        ).all()
+        
+        # Build counts lookup
+        counts_lookup = {}
+        for page_id, platform_val, post_id, count in comment_counts:
+            counts_lookup[(str(page_id), platform_val, post_id)] = count
+            
+        scraped_posts = []
+        pending_posts = []
+        
+        for post in posts:
+            key = (str(post.page_id), post.platform, post.post_id)
+            comments_got = counts_lookup.get(key, 0)
+            
+            post_info = {
+                "page_id": post.page_id,
+                "platform": post.platform,
+                "post_id": post.post_id,
+                "url": post.url,
+                "caption": post.caption,
+                "expected_comments": post.comments,
+                "scraped_comments_count": comments_got,
+                "recorded_at": post.recorded_at.isoformat() if post.recorded_at else None,
+                "created_at": post.created_at.isoformat() if post.created_at else None
+            }
+            
+            if comments_got > 0:
+                scraped_posts.append(post_info)
+            else:
+                pending_posts.append(post_info)
+                
+        return {
+            "date": parsed_date.isoformat(),
+            "platform_filter": platform,
+            "scraped_count": len(scraped_posts),
+            "pending_count": len(pending_posts),
+            "total_count": len(posts),
+            "scraped_posts": scraped_posts,
+            "pending_posts": pending_posts
+        }
+
