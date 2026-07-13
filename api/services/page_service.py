@@ -12,18 +12,44 @@ from api.utils.request_parsing import parse_iso_date
 class PageService:
     @staticmethod
     def create_page(data):
-        platform = data.get("platform", "").strip().lower()
-        link = normalize_page_link(data.get("link", ""))
-        link = link.rstrip("/")
+        if isinstance(data, str):
+            import json
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                import ast
+                try:
+                    data = ast.literal_eval(data)
+                except Exception:
+                    return None, "Invalid request data: format is not valid JSON."
+
+        if not isinstance(data, dict):
+            return None, "Invalid request data: payload must be a JSON object."
+
+        platform = data.get("platform")
+        if not isinstance(platform, str):
+            platform = ""
+        platform = platform.strip().lower()
+
+        link = data.get("link")
+        if not isinstance(link, str):
+            link = ""
+        link = normalize_page_link(link).rstrip("/")
+
         entity_id = data.get("entity_id")
 
         if not platform or not link or not entity_id:
             return None, "Missing required fields: 'platform', 'link', or 'entity_id'."
 
         new_uuid = create_page_uuid(link)
+        name = data.get("name")
+        if not isinstance(name, str):
+            name = ""
+        name = name.strip() or link
+
         page = PageRepository.create(
             uuid=new_uuid,
-            name=data.get("name", "").strip() or link,
+            name=name,
             platform=platform,
             link=link,
             entity_id=entity_id,

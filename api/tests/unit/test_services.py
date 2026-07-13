@@ -157,6 +157,48 @@ def test_page_service_create_page_and_interaction_stats(monkeypatch):
     assert stats[0]["score"] == pytest.approx(expected_score)
 
 
+def test_page_service_create_page_robustness(monkeypatch):
+    monkeypatch.setattr("api.services.page_service.create_page_uuid", lambda link: f"id-{link}")
+    monkeypatch.setattr(
+        "api.services.page_service.PageRepository.create",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    # 1. Valid JSON string with double quotes
+    created_page, err = PageService.create_page(
+        '{"platform": "youtube", "link": "https://youtube.com/channel/abc", "entity_id": 208}'
+    )
+    assert err is None
+    assert created_page.platform == "youtube"
+    assert created_page.link == "https://youtube.com/channel/abc"
+    assert created_page.entity_id == 208
+
+    # 2. Python dict-like string with single quotes (ast.literal_eval fallback)
+    created_page, err = PageService.create_page(
+        "{'platform': 'facebook', 'link': 'https://facebook.com/xyz', 'entity_id': 500}"
+    )
+    assert err is None
+    assert created_page.platform == "facebook"
+    assert created_page.link == "https://facebook.com/xyz"
+    assert created_page.entity_id == 500
+
+    # 3. Invalid format string (truncated / not valid JSON/python literal)
+    page, err = PageService.create_page(
+        '{"platform": "youtube", "entity_id": 208, "link": \'https:'
+    )
+    assert page is None
+    assert "Invalid request data: format is not valid JSON." in err
+
+    # 4. Non-dictionary input (e.g. list, integer)
+    page, err = PageService.create_page([1, 2, 3])
+    assert page is None
+    assert "payload must be a JSON object" in err
+
+    page, err = PageService.create_page(None)
+    assert page is None
+    assert "payload must be a JSON object" in err
+
+
 def test_page_service_delegates_and_applies_start_date_filter(monkeypatch):
     monkeypatch.setattr("api.services.page_service.PageRepository.delete", lambda page_id: f"deleted:{page_id}")
     monkeypatch.setattr("api.services.page_service.PageRepository.get_all", lambda: ["p1", "p2"])
