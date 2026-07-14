@@ -73,7 +73,7 @@ class PageHistoryRepository:
         return (
             select(
                 PageHistory.page_id,
-                db.func.max(PageHistory.recorded_at).label("latest_recorded_at"),
+                db.func.max(PageHistory.id).label("latest_id"),
             )
             .group_by(PageHistory.page_id)
             .subquery()
@@ -455,17 +455,19 @@ class PageHistoryRepository:
     def get_entity_info_from_history(entity_id: int):
         latest_history_subq = PageHistoryRepository._latest_history_subquery()
 
-        ph_alias = aliased(PageHistory)
+        ph_outer = aliased(PageHistory, name="ph_outer")
+        ph_sub = aliased(PageHistory, name="ph_sub")
 
-        page_followers = PageHistoryRepository._followers_case(Page, ph_alias).cast(db.Integer)
+        page_followers_sub = PageHistoryRepository._followers_case(Page, ph_sub).cast(db.Integer)
+        page_followers_outer = PageHistoryRepository._followers_case(Page, ph_outer).cast(db.Integer)
 
         # Step 3: Aggregate per entity (total followers)
         entity_totals_subq = (
             select(
                 Entity.id.label("entity_id"),
-                db.func.sum(page_followers).label("total_followers"),
+                db.func.sum(page_followers_sub).label("total_followers"),
                 db.func.rank()
-                    .over(order_by=db.func.sum(page_followers).desc())
+                    .over(order_by=db.func.sum(page_followers_sub).desc())
                     .label("entity_rank"),
             )
             .join(Page, Page.entity_id == Entity.id)
@@ -474,9 +476,8 @@ class PageHistoryRepository:
                 latest_history_subq.c.page_id == Page.uuid
             )
             .join(
-                ph_alias,
-                (ph_alias.page_id == Page.uuid)
-                & (ph_alias.recorded_at == latest_history_subq.c.latest_recorded_at)
+                ph_sub,
+                ph_sub.id == latest_history_subq.c.latest_id
             )
             .group_by(Entity.id)
             .subquery()
@@ -493,15 +494,14 @@ class PageHistoryRepository:
                 Entity.id.label("entity_id"),
                 entity_totals_subq.c.total_followers,
                 entity_totals_subq.c.entity_rank,
-                PageHistoryRepository._profile_url_case(Page, ph_alias).label("profile_url"),
-                PageHistoryRepository._description_case(Page, ph_alias).label("description"),
-                page_followers.label("followers"),
+                PageHistoryRepository._profile_url_case(Page, ph_outer).label("profile_url"),
+                PageHistoryRepository._description_case(Page, ph_outer).label("description"),
+                page_followers_outer.label("followers"),
             )
-            .join(Page, Page.uuid == ph_alias.page_id)
+            .join(Page, Page.uuid == ph_outer.page_id)
             .join(
                 latest_history_subq,
-                (latest_history_subq.c.page_id == ph_alias.page_id)
-                & (latest_history_subq.c.latest_recorded_at == ph_alias.recorded_at)
+                ph_outer.id == latest_history_subq.c.latest_id
             )
             .join(Entity, Entity.id == Page.entity_id)
             .join(entity_totals_subq, entity_totals_subq.c.entity_id == Entity.id)

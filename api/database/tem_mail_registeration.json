@@ -158,5 +158,10 @@
         "email": "newemail@example.com",
         "status": "unverified",
         "registered_at": "2026-07-13T20:45:27.780456+00:00"
+    },
+    {
+        "email": "newemail@example.com",
+        "status": "unverified",
+        "registered_at": "2026-07-14T07:37:15.215270+00:00"
     }
 ]
