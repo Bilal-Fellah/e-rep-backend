@@ -271,6 +271,33 @@ class PageHistoryRepository:
 
 
     @staticmethod
+    def refresh_metrics_mv():
+        """
+        Refresh the page_posts_metrics_mv materialized view so API reads reflect
+        the latest scraped pages_history rows.
+
+        The scraper loads pages_history out-of-band; without this refresh the MV
+        stays frozen on an old snapshot, which is why profile image URLs (signed
+        + short-lived) expire and recent-window rankings return no data. Call
+        this right after each daily scrape (see `flask refresh-mv`).
+
+        Tries CONCURRENTLY first (non-blocking; needs the unique index
+        idx_ppmm_unique and an already-populated view). Falls back to a plain
+        REFRESH if CONCURRENTLY isn't possible (e.g. first populate).
+        """
+        try:
+            db.session.execute(
+                text("REFRESH MATERIALIZED VIEW CONCURRENTLY page_posts_metrics_mv")
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            db.session.execute(
+                text("REFRESH MATERIALIZED VIEW page_posts_metrics_mv")
+            )
+            db.session.commit()
+
+    @staticmethod
     def get_all_entities_posts(date_limit):
         query = text("""
             SELECT * from page_posts_metrics_mv

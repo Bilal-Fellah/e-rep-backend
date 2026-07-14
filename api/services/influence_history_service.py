@@ -406,25 +406,28 @@ class InfluenceHistoryService:
                     continue
 
                 post_key = (page_id, platform, str(post_id))
-                
-                # Store metadata once per post
-                if post_key not in post_metadata:
-                    post_metadata[post_key] = {
-                        "entity_id": entity_id,
-                        "entity_name": entity_name,
-                        "category": category,
-                        "root_category": root_category,
-                        "page_id": page_id,
-                        "page_name": page_name,
-                        "page_url": page_url,
-                        "profile_image_url": profile_image_url,
-                        "platform": platform,
-                        "post_id": post_id,
-                        "caption": post.get("caption"),
-                        "post_url": post.get("url") or post.get("link"),
-                        "created_at": post_dt.isoformat(),
-                        "page_followers": page_followers,
-                    }
+
+                # Rows are processed oldest -> newest, so overwriting keeps the
+                # LATEST snapshot's metadata. This matters for profile_image_url
+                # (a signed, short-lived CDN URL) and page_followers, which must
+                # reflect the most recent scrape rather than the oldest one in
+                # the window.
+                post_metadata[post_key] = {
+                    "entity_id": entity_id,
+                    "entity_name": entity_name,
+                    "category": category,
+                    "root_category": root_category,
+                    "page_id": page_id,
+                    "page_name": page_name,
+                    "page_url": page_url,
+                    "profile_image_url": profile_image_url,
+                    "platform": platform,
+                    "post_id": post_id,
+                    "caption": post.get("caption"),
+                    "post_url": post.get("url") or post.get("link"),
+                    "created_at": post_dt.isoformat(),
+                    "page_followers": page_followers,
+                }
 
                 # Extract metric values for this snapshot
                 likes = InfluenceHistoryService._post_metric_value(post, "likes")

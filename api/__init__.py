@@ -90,6 +90,20 @@ def create_app():
     from .routes import register_routes
     register_routes(app)
 
+    # ---- CLI: refresh the metrics materialized view after a daily scrape ----
+    @app.cli.command("refresh-mv")
+    def refresh_mv():
+        """Refresh page_posts_metrics_mv so API reads reflect the latest scrape.
+
+        Run this from the same cron as the daily scrape, e.g.:
+            flask refresh-mv
+        """
+        from api.repositories.page_history_repository import PageHistoryRepository
+
+        PageHistoryRepository.refresh_metrics_mv()
+        app.logger.info("page_posts_metrics_mv refreshed")
+        print("page_posts_metrics_mv refreshed")
+
     @app.errorhandler(SQLAlchemyError)
     def handle_database_error(error):
         from api.routes.main import db_error_response
