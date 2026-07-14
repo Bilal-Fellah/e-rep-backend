@@ -3,6 +3,7 @@ from datetime import datetime
 from api.repositories.comment_repository import CommentRepository
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.repositories.post_repository import PostRepository
+from api.repositories.scraping_post_result_repository import ScrapingPostResultRepository
 from api.utils.logging_utils import instrument_service_class
 
 
@@ -116,17 +117,34 @@ class ScrapingService:
         }
     
     @staticmethod
-    def insert_comment_batch(comments_data: list[dict], 
-                            session_id: str = None) -> dict:
+    def insert_comment_batch(
+        comments_data: list[dict],
+        session_id: str = None,
+        post_results: list[dict] = None,
+    ) -> dict:
         """
         Validate and insert comment batch atomically.
         An empty list is accepted (e.g. for posts with no comments); in that
         case the call succeeds with inserted=0, skipped=0.
-        
+
+        To mark zero-comment posts as done, pass their identity in
+        ``post_results``:
+
+            post_results = [
+                {"page_id": "...", "platform": "instagram", "post_id": "..."}
+            ]
+
+        For each post in ``post_results`` (and for every post that appears in
+        ``comments_data``) a ``ScrapingPostResult`` row is written so the
+        today-status endpoint can distinguish "done with 0 comments" from
+        "not yet scraped".
+
         Args:
             comments_data: List of comment dictionaries (may be empty)
             session_id: Optional session ID to associate comments with
-            
+            post_results: Optional list of {page_id, platform, post_id} dicts
+                          for posts that were scraped but had no comments.
+
         Returns:
             dict: {
                 "inserted": int,
@@ -139,7 +157,7 @@ class ScrapingService:
             is_valid, error_msg = ScrapingService.validate_comment_data(comment)
             if not is_valid:
                 raise ValueError(f"Validation failed at comment index {idx}: {error_msg}")
-        
+
         # Transform comments to match database schema
         # The external service sends: id, username, timestamp (Unix), parent_id
         # We need: comment_id, author_username, comment_timestamp (datetime), parent_comment_id
@@ -163,18 +181,47 @@ class ScrapingService:
                 }
             }
             transformed_comments.append(transformed)
-        
+
         # Insert comments (skips duplicates)
         inserted, skipped = CommentRepository.bulk_create(transformed_comments, commit=False)
-        
+
         # Update session if provided
         if session_id:
             ScrapingSessionRepository.increment_comments(session_id, inserted, commit=False)
-        
-        # Commit transaction
+
+        # ------------------------------------------------------------------ #
+        # Record per-post scraping outcomes in ScrapingPostResult.
+        #
+        # Build a mapping: (page_id, platform, post_id) -> inserted_count
+        # from the comment batch so we know how many comments each post got.
+        # ------------------------------------------------------------------ #
+        post_comment_counts: dict[tuple, int] = {}
+        for comment in comments_data:
+            key = (comment["page_id"], comment["platform"], comment["post_id"])
+            post_comment_counts[key] = post_comment_counts.get(key, 0) + 1
+
+        # Posts explicitly declared with 0 comments
+        if post_results:
+            for pr in post_results:
+                key = (pr["page_id"], pr["platform"], pr["post_id"])
+                if key not in post_comment_counts:
+                    post_comment_counts[key] = 0
+
+        # Write / update a ScrapingPostResult row for every processed post
+        for (page_id, platform, post_id), count in post_comment_counts.items():
+            ScrapingPostResultRepository.record(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id,
+                comments_count=count,
+                scraping_session_id=session_id,
+                commit=False,
+            )
+
+        # Commit everything in one transaction
         from api.models.comment_model import db
         db.session.commit()
-        
+
         return {
             "inserted": inserted,
             "skipped": skipped,
@@ -425,14 +472,24 @@ class ScrapingService:
         )
         if platform:
             posts_query = posts_query.filter_by(platform=platform)
-            
+
         if start_date:
             start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             posts_query = posts_query.filter(PostMV.created_at >= start_dt)
-            
+
         posts = posts_query.all()
-        
-        # Query comment counts scraped on the target date grouped by post
+
+        # Look up which posts already have a ScrapingPostResult row recorded
+        # on the target date — these are considered "done" regardless of whether
+        # they had 0 or more comments.
+        scraped_keys = ScrapingPostResultRepository.get_scraped_post_keys_in_range(
+            start_dt=target_date_start,
+            end_dt=target_date_end,
+            platform=platform,
+        )
+
+        # Also fetch actual comment counts for posts that were scraped, so we
+        # can report accurate scraped_comments_count in the response.
         comment_counts_query = db.session.query(
             Comment.page_id,
             Comment.platform,
@@ -444,25 +501,24 @@ class ScrapingService:
         )
         if platform:
             comment_counts_query = comment_counts_query.filter(Comment.platform == platform)
-            
+
         comment_counts = comment_counts_query.group_by(
             Comment.page_id,
             Comment.platform,
             Comment.post_id
         ).all()
-        
-        # Build counts lookup
+
         counts_lookup = {}
         for page_id, platform_val, post_id, count in comment_counts:
             counts_lookup[(str(page_id), platform_val, post_id)] = count
-            
+
         scraped_posts = []
         pending_posts = []
-        
+
         for post in posts:
             key = (str(post.page_id), post.platform, post.post_id)
             comments_got = counts_lookup.get(key, 0)
-            
+
             post_info = {
                 "page_id": post.page_id,
                 "platform": post.platform,
@@ -474,12 +530,15 @@ class ScrapingService:
                 "recorded_at": post.recorded_at.isoformat() if post.recorded_at else None,
                 "created_at": post.created_at.isoformat() if post.created_at else None
             }
-            
-            if comments_got > 0:
+
+            # A post is done when a ScrapingPostResult row exists for today,
+            # even if comments_got == 0 (post was scraped but had no comments).
+            # A post with no ScrapingPostResult row is still pending.
+            if key in scraped_keys:
                 scraped_posts.append(post_info)
             else:
                 pending_posts.append(post_info)
-                
+
         return {
             "date": parsed_date.isoformat(),
             "platform_filter": platform,

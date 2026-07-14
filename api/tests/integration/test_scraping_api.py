@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, date
 from api.models.post_model import PostMV
 from api.models.comment_model import Comment
 from api.models.scraping_session_model import ScrapingSession
+from api.models.scraping_post_result_model import ScrapingPostResult
 from api import db
 
 
@@ -587,12 +588,12 @@ class TestGetTodayPostsStatus:
         """Test retrieving today status, categorizing into scraped and pending."""
         yesterday = date.today() - timedelta(days=1)
         yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
-        
+
         page_id = "999e4567-e89b-12d3-a456-426614174999"
         platform = "instagram"
         post_id_1 = "POST_STATUS_SCRAPED"
         post_id_2 = "POST_STATUS_PENDING"
-        
+
         with app.app_context():
             # Create two unique posts
             post_scraped = PostMV(
@@ -619,7 +620,7 @@ class TestGetTodayPostsStatus:
             )
             db.session.add(post_scraped)
             db.session.add(post_pending)
-            
+
             # Add one comment today for post_scraped
             comment = Comment(
                 page_id=page_id,
@@ -632,8 +633,18 @@ class TestGetTodayPostsStatus:
                 recorded_at=datetime.now()
             )
             db.session.add(comment)
+
+            # Mark post_scraped as done via ScrapingPostResult
+            spr = ScrapingPostResult(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id_1,
+                comments_count=1,
+                scraped_at=datetime.now()
+            )
+            db.session.add(spr)
             db.session.commit()
-            
+
         try:
             # Get today status
             response = client.get(
@@ -643,30 +654,31 @@ class TestGetTodayPostsStatus:
             assert response.status_code == 200
             data = response.get_json()
             assert data["success"] is True
-            
+
             res_data = data["data"]
             assert "scraped_posts" in res_data
             assert "pending_posts" in res_data
-            
+
             # Filter the lists to only include our test posts to be 100% immune to other tests
             our_scraped = [p for p in res_data["scraped_posts"] if p["post_id"] == post_id_1]
             our_pending = [p for p in res_data["pending_posts"] if p["post_id"] == post_id_2]
-            
+
             assert len(our_scraped) == 1
             assert len(our_pending) == 1
-            
+
             # Verify details
             assert our_scraped[0]["scraped_comments_count"] == 1
             assert our_scraped[0]["expected_comments"] == 10
             assert our_scraped[0]["url"] == f"https://instagram.com/p/{post_id_1}"
-            
+
             assert our_pending[0]["scraped_comments_count"] == 0
             assert our_pending[0]["expected_comments"] == 20
             assert our_pending[0]["url"] == f"https://instagram.com/p/{post_id_2}"
-            
+
         finally:
-            # Clean up posts and comment
+            # Clean up posts, comment, and post result
             with app.app_context():
+                ScrapingPostResult.query.filter_by(post_id=post_id_1).delete()
                 Comment.query.filter_by(comment_id="status_comment_1").delete()
                 PostMV.query.filter(PostMV.post_id.in_([post_id_1, post_id_2])).delete()
                 db.session.commit()
@@ -675,11 +687,11 @@ class TestGetTodayPostsStatus:
         """Test retrieving today status with a platform filter."""
         yesterday = date.today() - timedelta(days=1)
         yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
-        
+
         page_id = "999e4567-e89b-12d3-a456-426614174999"
         platform = "youtube"  # Use a platform different from other tests to isolate
         post_id = "YT_STATUS_TEST"
-        
+
         with app.app_context():
             post = PostMV(
                 page_id=page_id,
@@ -693,7 +705,7 @@ class TestGetTodayPostsStatus:
                 comments=15
             )
             db.session.add(post)
-            
+
             comment = Comment(
                 page_id=page_id,
                 platform=platform,
@@ -705,8 +717,18 @@ class TestGetTodayPostsStatus:
                 recorded_at=datetime.now()
             )
             db.session.add(comment)
+
+            # Mark as done via ScrapingPostResult
+            spr = ScrapingPostResult(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_id,
+                comments_count=1,
+                scraped_at=datetime.now()
+            )
+            db.session.add(spr)
             db.session.commit()
-            
+
         try:
             # Query for platform=youtube
             response = client.get(
@@ -716,16 +738,17 @@ class TestGetTodayPostsStatus:
             assert response.status_code == 200
             data = response.get_json()
             assert data["success"] is True
-            
+
             res_data = data["data"]
-            assert res_data["platform_filter"] == "youtube"
+            assert res_data["platform_filter"] == "youtube"
             assert res_data["total_count"] == 1
             assert res_data["scraped_count"] == 1
             assert res_data["pending_count"] == 0
             assert res_data["scraped_posts"][0]["post_id"] == post_id
-            
+
         finally:
             with app.app_context():
+                ScrapingPostResult.query.filter_by(post_id=post_id).delete()
                 Comment.query.filter_by(comment_id="status_comment_yt").delete()
                 PostMV.query.filter_by(post_id=post_id).delete()
                 db.session.commit()

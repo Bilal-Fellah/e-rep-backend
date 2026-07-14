@@ -18,6 +18,8 @@ from api.repositories.scraping_session_repository import ScrapingSessionReposito
 from api.utils.api_key_auth import require_api_key
 from api.utils.permissions import require_auth
 from api.models.comment_model import db
+# Import new model so Alembic/Flask-Migrate picks it up for migrations
+from api.models.scraping_post_result_model import ScrapingPostResult  # noqa: F401
 
 
 scraping_bp = Blueprint("scraping", __name__, url_prefix="/api/scraping")
@@ -95,7 +97,7 @@ def fetch_posts():
 def insert_comments():
     """
     Insert scraped comments in bulk.
-    
+
     Request Body:
         {
             "session_id": str (optional),
@@ -112,9 +114,17 @@ def insert_comments():
                     "is_reply": bool (optional),
                     "parent_id": str (optional)
                 }
-            ]
+            ],
+            "post_results": [
+                {
+                    "page_id": str,
+                    "platform": str,
+                    "post_id": str
+                }
+            ] (optional — supply posts that were scraped but had 0 comments,
+               so they are recorded as done rather than pending)
         }
-    
+
     Returns:
         200: {
             "success": true,
@@ -132,13 +142,14 @@ def insert_comments():
     try:
         # Parse request body
         data = request.get_json()
-        
+
         if not data:
             return error_response("Invalid request payload", 400)
-        
+
         comments = data.get("comments", [])
         session_id = data.get("session_id")
-        
+        post_results = data.get("post_results")
+
         if not isinstance(comments, list):
             log_route_error(
                 TypeError("Comments must be an array"),
@@ -147,13 +158,33 @@ def insert_comments():
                 "Invalid request data"
             )
             return error_response("Comments must be an array", 400)
-        
+
+        if post_results is not None and not isinstance(post_results, list):
+            log_route_error(
+                TypeError("post_results must be an array"),
+                SEVERITY_LOW,
+                400,
+                "Invalid request data"
+            )
+            return error_response("post_results must be an array", 400)
+
+        # Validate post_results entries if provided
+        if post_results:
+            for idx, pr in enumerate(post_results):
+                for field in ("page_id", "platform", "post_id"):
+                    if not pr.get(field):
+                        return error_response(
+                            f"post_results[{idx}] missing required field '{field}'", 400
+                        )
+
         # Insert comments
-        result = ScrapingService.insert_comment_batch(comments, session_id)
-        
+        result = ScrapingService.insert_comment_batch(
+            comments, session_id, post_results=post_results
+        )
+
         # Add total count to response
         result["total"] = result["inserted"] + result["skipped"]
-        
+
         return success_response(result, 200)
     
     except ValueError as e:
