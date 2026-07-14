@@ -752,4 +752,80 @@ class TestGetTodayPostsStatus:
         assert data["success"] is False
         assert "Invalid date format" in data["error"]
 
+    def test_get_today_status_invalid_start_date(self, client, admin_jwt_headers):
+        """Test GET with invalid start_date parameter."""
+        response = client.get(
+            "/api/scraping/posts/today-status?start_date=invalid-date",
+            headers=admin_jwt_headers
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+        assert "Invalid start_date format" in data["error"]
+
+    def test_get_today_status_with_start_date_filter(self, client, admin_jwt_headers, app):
+        """Test retrieving today status with a start_date filter."""
+        yesterday = date.today() - timedelta(days=1)
+        yesterday_datetime = datetime.combine(yesterday, datetime.min.time()) + timedelta(hours=12)
+        
+        page_id = "999e4567-e89b-12d3-a456-426614174999"
+        platform = "youtube"
+        post_old_id = "YT_OLD_POST"
+        post_new_id = "YT_NEW_POST"
+        
+        # We will filter for posts created after start_date (today - 3 days)
+        start_date_val = (date.today() - timedelta(days=3)).isoformat()
+        
+        with app.app_context():
+            # Created 5 days ago (should be filtered out by start_date)
+            post_old = PostMV(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_old_id,
+                url=f"https://youtube.com/watch?v={post_old_id}",
+                created_at=datetime.now() - timedelta(days=5),
+                recorded_at=yesterday_datetime,
+                caption="Old post",
+                likes=150,
+                comments=15
+            )
+            # Created 1 day ago (should be included by start_date)
+            post_new = PostMV(
+                page_id=page_id,
+                platform=platform,
+                post_id=post_new_id,
+                url=f"https://youtube.com/watch?v={post_new_id}",
+                created_at=datetime.now() - timedelta(days=1),
+                recorded_at=yesterday_datetime,
+                caption="New post",
+                likes=200,
+                comments=20
+            )
+            db.session.add(post_old)
+            db.session.add(post_new)
+            db.session.commit()
+            
+        try:
+            # Query for platform=youtube & start_date
+            response = client.get(
+                f"/api/scraping/posts/today-status?platform=youtube&start_date={start_date_val}",
+                headers=admin_jwt_headers
+            )
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["success"] is True
+            
+            res_data = data["data"]
+            assert res_data["platform_filter"] == "youtube"
+            assert res_data["start_date_filter"] == start_date_val
+            assert res_data["total_count"] == 1
+            assert res_data["pending_count"] == 1
+            assert len(res_data["pending_posts"]) == 1
+            assert res_data["pending_posts"][0]["post_id"] == post_new_id
+            
+        finally:
+            with app.app_context():
+                PostMV.query.filter(PostMV.post_id.in_([post_old_id, post_new_id])).delete()
+                db.session.commit()
+
 

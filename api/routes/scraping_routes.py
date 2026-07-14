@@ -477,6 +477,7 @@ def get_today_posts_status():
     Query Parameters:
         - date (optional): Date in ISO format (YYYY-MM-DD). Defaults to today.
         - platform (optional): Filter by platform (facebook, instagram, x, tiktok, linkedin, youtube)
+        - start_date (optional): Filter posts created after this date (ISO 8601)
     
     Returns:
         200: {
@@ -484,6 +485,7 @@ def get_today_posts_status():
             "data": {
                 "date": str,
                 "platform_filter": str | null,
+                "start_date_filter": str | null,
                 "scraped_count": int,
                 "pending_count": int,
                 "total_count": int,
@@ -499,6 +501,7 @@ def get_today_posts_status():
         # Extract query parameters
         target_date = request.args.get("date")
         platform = request.args.get("platform")
+        start_date = request.args.get("start_date")
         
         # Validate platform if provided
         valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
@@ -525,10 +528,25 @@ def get_today_posts_status():
                 )
                 return error_response("Invalid date format. Use ISO format (YYYY-MM-DD)", 400)
         
+        # Validate start_date format if provided
+        if start_date:
+            try:
+                from datetime import datetime as dt
+                dt.fromisoformat(start_date.replace('Z', '+00:00'))
+            except ValueError:
+                log_route_error(
+                    ValueError(f"Invalid start_date format: {start_date}"),
+                    SEVERITY_LOW,
+                    400,
+                    "Invalid query parameters"
+                )
+                return error_response("Invalid start_date format. Use ISO 8601 format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)", 400)
+        
         # Fetch status
         result = ScrapingService.get_today_scraping_status(
             platform=platform,
-            target_date=target_date
+            target_date=target_date,
+            start_date=start_date
         )
         
         return success_response(result, 200)

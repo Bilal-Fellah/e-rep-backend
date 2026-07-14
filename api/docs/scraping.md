@@ -361,6 +361,7 @@ Retrieve the status of posts scheduled for scraping today (or a specific date). 
 **Query Parameters**:
 - `platform` (optional): Filter by platform. Valid values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`
 - `date` (optional): Filter by a specific target date (ISO format YYYY-MM-DD, e.g. `2026-07-13`). Defaults to today's date.
+- `start_date` (optional): Filter posts created after this date (ISO 8601, e.g. `2026-07-12`).
 
 **Response** (200 OK):
 ```json
@@ -369,6 +370,7 @@ Retrieve the status of posts scheduled for scraping today (or a specific date). 
   "data": {
     "date": "2026-07-13",
     "platform_filter": null,
+    "start_date_filter": "2026-07-12",
     "scraped_count": 1,
     "pending_count": 1,
     "total_count": 2,
@@ -403,7 +405,7 @@ Retrieve the status of posts scheduled for scraping today (or a specific date). 
 ```
 
 **Error Responses**:
-- `400`: Invalid query parameters (e.g. invalid platform name or invalid date format)
+- `400`: Invalid query parameters (e.g. invalid platform name, invalid date format, or invalid start_date format)
 ```json
 {
   "success": false,
@@ -434,7 +436,7 @@ Retrieve the status of posts scheduled for scraping today (or a specific date). 
 
 **Example cURL**:
 ```bash
-curl -X GET "https://api.example.com/api/scraping/posts/today-status?platform=instagram" \
+curl -X GET "https://api.example.com/api/scraping/posts/today-status?platform=instagram&start_date=2026-07-12" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 

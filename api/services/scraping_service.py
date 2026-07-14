@@ -375,7 +375,7 @@ class ScrapingService:
         return result
 
     @staticmethod
-    def get_today_scraping_status(platform: str = None, target_date: str = None) -> dict:
+    def get_today_scraping_status(platform: str = None, target_date: str = None, start_date: str = None) -> dict:
         """
         Get the scraping status of posts scheduled for a specific date.
         Categorizes posts scheduled for that date into scraped (already scraped today)
@@ -384,11 +384,13 @@ class ScrapingService:
         Args:
             platform: Optional platform filter
             target_date: Optional date in ISO format (YYYY-MM-DD). Defaults to today.
+            start_date: Optional start date (ISO format) to filter post creation date.
             
         Returns:
             dict: {
                 "date": str,
                 "platform_filter": str | None,
+                "start_date_filter": str | None,
                 "scraped_count": int,
                 "pending_count": int,
                 "total_count": int,
@@ -423,6 +425,10 @@ class ScrapingService:
         )
         if platform:
             posts_query = posts_query.filter_by(platform=platform)
+            
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            posts_query = posts_query.filter(PostMV.created_at >= start_dt)
             
         posts = posts_query.all()
         
@@ -477,6 +483,7 @@ class ScrapingService:
         return {
             "date": parsed_date.isoformat(),
             "platform_filter": platform,
+            "start_date_filter": start_date,
             "scraped_count": len(scraped_posts),
             "pending_count": len(pending_posts),
             "total_count": len(posts),
