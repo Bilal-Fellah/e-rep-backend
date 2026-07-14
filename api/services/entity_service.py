@@ -417,6 +417,7 @@ class EntityService:
             "tiktok": "create_date",
             "youtube": "posted_time",
             "x": None,
+            "facebook": "date_posted",
         }
 
         filter_date = None

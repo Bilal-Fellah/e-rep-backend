@@ -259,7 +259,7 @@ class PageHistoryRepository:
             SELECT *
             FROM page_posts_metrics_mv
             WHERE entity_id = :entity_id
-            AND platform IN ('instagram','linkedin','tiktok','youtube','x')
+            AND platform IN ('instagram','linkedin','tiktok','youtube','x','facebook')
             AND  date(recorded_at) >= :date_limit
             AND to_scrape
             ORDER BY recorded_at DESC
