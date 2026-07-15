@@ -68,7 +68,10 @@ SELECT
                         'repost',              post->'repost',
                         'tagged_companies',    post->'tagged_companies',
                         'tagged_people',       post->'tagged_people',
-                        'text',                post->'text'
+                        -- Scraper stores the LinkedIn caption under text_html
+                        -- (sometimes text); keep both so the caption renders.
+                        'text',                post->'text',
+                        'text_html',           post->'text_html'
                     )
                 )
                 FROM jsonb_array_elements(COALESCE(ph.data->'updates', '[]'::jsonb)) AS post
