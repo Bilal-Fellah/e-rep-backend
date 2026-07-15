@@ -263,3 +263,54 @@ def optional_auth(f):
         return f(*args, **kwargs)
 
     return decorated_function
+
+
+# ============================================================================
+# ENTITLEMENT HELPERS (premium/free gating for the data API)
+# Drive the DATA_VISIBILITY_RULES matrix above. Use with @optional_auth so the
+# current user's role is available on request.user_role (None if anonymous).
+# ============================================================================
+
+# brand_rankings: registered/anonymous users only see the global top 10.
+FREE_RANKING_LIMIT = 10
+# top_posts: registered/anonymous users only see the single top post.
+FREE_TOP_POSTS_LIMIT = 1
+
+
+def current_user_role():
+    """Best-effort role of the caller (from the Bearer/cookie JWT), or None when
+    anonymous or the token is invalid. Lets a route apply entitlement rules
+    without failing closed on unauthenticated access."""
+    payload, _ = extract_and_validate_token()
+    return payload.get("role") if payload else None
+
+
+def is_premium_role(role):
+    """True for subscribed/admin — the roles with full data visibility."""
+    return role in (UserRole.SUBSCRIBED.value, UserRole.ADMIN.value)
+
+
+def ranking_access_error(role, start_date=None, end_date=None):
+    """Custom date ranges (start_date/end_date) are a premium feature. Returns
+    an error message string to deny with, or None when access is allowed."""
+    if is_premium_role(role):
+        return None
+    if start_date or end_date:
+        return "Custom date ranges are available on a paid plan."
+    return None
+
+
+def limit_ranking_for_role(role, data):
+    """Cap ranking rows to the free tier's top-N (brand_rankings top_10_only)."""
+    if is_premium_role(role):
+        return data
+    if isinstance(data, list):
+        return data[:FREE_RANKING_LIMIT]
+    return data
+
+
+def top_posts_limit_for_role(role, requested):
+    """Cap the number of top posts a free user may request (top_posts rule)."""
+    if is_premium_role(role):
+        return requested
+    return FREE_TOP_POSTS_LIMIT
