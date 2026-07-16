@@ -164,27 +164,34 @@ class CommentRepository:
         ).count()
     
     @staticmethod
-    def update_label(comment_id: int, label: int, commit: bool = True) -> Comment | None:
+    def update_label(comment_id: int, label: int, confidence: float | None = None, 
+                     commit: bool = True) -> Comment | None:
         """
-        Update the label of a comment.
+        Update the label (and optionally confidence) of a comment.
         
         Args:
             comment_id: Primary key of the comment
             label: Label value (0-4)
+            confidence: Confidence score (0.0 to 1.0), optional
             commit: Whether to commit the transaction
             
         Returns:
             Comment | None: The updated comment if found
             
         Raises:
-            ValueError: If label is not in range 0-4
+            ValueError: If label is not in range 0-4 or confidence is out of range
         """
         if label not in range(5):
             raise ValueError(f"Label must be between 0 and 4, got {label}")
         
+        if confidence is not None and not (0.0 <= confidence <= 1.0):
+            raise ValueError(f"Confidence must be between 0.0 and 1.0, got {confidence}")
+        
         comment = Comment.query.get(comment_id)
         if comment:
             comment.label = label
+            if confidence is not None:
+                comment.confidence = confidence
             if commit:
                 db.session.commit()
         return comment
@@ -192,10 +199,11 @@ class CommentRepository:
     @staticmethod
     def bulk_update_labels(label_updates: list[dict], commit: bool = True) -> int:
         """
-        Bulk update labels for multiple comments.
+        Bulk update labels and confidence scores for multiple comments.
+        Also marks comments as processed.
         
         Args:
-            label_updates: List of dicts with 'comment_id' and 'label' keys
+            label_updates: List of dicts with 'comment_id', 'label', and optional 'confidence' keys
             commit: Whether to commit the transaction
             
         Returns:
@@ -206,13 +214,20 @@ class CommentRepository:
         for update in label_updates:
             comment_id = update.get('comment_id')
             label = update.get('label')
+            confidence = update.get('confidence')
             
             if label not in range(5):
                 continue  # Skip invalid labels
             
+            if confidence is not None and not (0.0 <= confidence <= 1.0):
+                continue  # Skip invalid confidence scores
+            
             comment = Comment.query.get(comment_id)
             if comment:
                 comment.label = label
+                if confidence is not None:
+                    comment.confidence = confidence
+                comment.is_processed = True
                 updated_count += 1
         
         if commit:
@@ -237,6 +252,22 @@ class CommentRepository:
         return query.all()
     
     @staticmethod
+    def get_unprocessed(limit: int | None = None) -> list[Comment]:
+        """
+        Get comments that have not been processed yet.
+        
+        Args:
+            limit: Maximum number of comments to return (optional)
+            
+        Returns:
+            list[Comment]: List of unprocessed comments
+        """
+        query = Comment.query.filter_by(is_processed=False).order_by(Comment.recorded_at.desc())
+        if limit:
+            query = query.limit(limit)
+        return query.all()
+    
+    @staticmethod
     def get_by_label(label: int) -> list[Comment]:
         """
         Get all comments with a specific label.
@@ -254,3 +285,66 @@ class CommentRepository:
             raise ValueError(f"Label must be between 0 and 4, got {label}")
         
         return Comment.query.filter_by(label=label).order_by(Comment.recorded_at.desc()).all()
+    
+    @staticmethod
+    def mark_processed(comment_id: int, commit: bool = True) -> Comment | None:
+        """
+        Mark a comment as processed.
+        
+        Args:
+            comment_id: Primary key of the comment
+            commit: Whether to commit the transaction
+            
+        Returns:
+            Comment | None: The updated comment if found
+        """
+        comment = Comment.query.get(comment_id)
+        if comment:
+            comment.is_processed = True
+            if commit:
+                db.session.commit()
+        return comment
+    
+    @staticmethod
+    def bulk_mark_processed(comment_ids: list[int], commit: bool = True) -> int:
+        """
+        Mark multiple comments as processed.
+        
+        Args:
+            comment_ids: List of comment primary keys
+            commit: Whether to commit the transaction
+            
+        Returns:
+            int: Number of comments updated
+        """
+        updated_count = Comment.query.filter(Comment.id.in_(comment_ids)).update(
+            {Comment.is_processed: True}, synchronize_session=False
+        )
+        
+        if commit:
+            db.session.commit()
+        
+        return updated_count
+    
+    @staticmethod
+    def count_unprocessed() -> int:
+        """
+        Count comments that have not been processed yet.
+        
+        Returns:
+            int: Number of unprocessed comments
+        """
+        return Comment.query.filter_by(is_processed=False).count()
+    
+    @staticmethod
+    def count_by_processing_status(is_processed: bool) -> int:
+        """
+        Count comments by processing status.
+        
+        Args:
+            is_processed: Processing status to filter by
+            
+        Returns:
+            int: Number of comments matching the status
+        """
+        return Comment.query.filter_by(is_processed=is_processed).count()

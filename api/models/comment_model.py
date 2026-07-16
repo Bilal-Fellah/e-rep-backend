@@ -53,6 +53,12 @@ class Comment(db.Model):
     # Label (classification result from inference, values 0-4)
     label = db.Column(db.Integer, nullable=True)
     
+    # Confidence score for the label (0.0 to 1.0)
+    confidence = db.Column(db.Float, nullable=True)
+    
+    # Processing Status
+    is_processed = db.Column(db.Boolean, default=False, nullable=True)
+    
     # Constraints and Indexes
     __table_args__ = (
         db.UniqueConstraint('page_id', 'platform', 'post_id', 'comment_id', 
