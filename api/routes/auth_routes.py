@@ -271,6 +271,11 @@ def login():
         if not v_email(data["email"]):
             return error_response("Invalid email format", 400)
 
+        # Reject blank passwords outright: OAuth-only accounts have no usable
+        # password, and validate_required_keys treats "" as present.
+        if not data.get("password"):
+            return error_response("Invalid credentials", status_code=401)
+
         user = UserRepository.find_by_email(data["email"].strip().lower())
         if not user or not user.check_password(data["password"]):
             return error_response("Invalid credentials", status_code=401)

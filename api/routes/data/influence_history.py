@@ -5,6 +5,11 @@ from flask import request
 
 from api.routes.main import error_response, success_response
 from api.services.influence_history_service import InfluenceHistoryService
+from api.utils.permissions import (
+    current_user_role,
+    limit_ranking_for_role,
+    ranking_access_error,
+)
 from api.utils.posts_utils import ensure_datetime
 
 from . import data_bp
@@ -198,6 +203,11 @@ def get_followers_progress_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_followers_progress_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
@@ -206,7 +216,7 @@ def get_followers_progress_ranking():
                 "No followers progress ranking data found for entities.", 404
             )
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -221,6 +231,11 @@ def get_interactions_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_interactions_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
@@ -229,7 +244,7 @@ def get_interactions_ranking():
                 "No interactions ranking data found for companies.", 404
             )
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -244,13 +259,18 @@ def get_likes_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_likes_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No likes ranking data found for companies.", 404)
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -265,13 +285,18 @@ def get_comments_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_comments_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No comments ranking data found for companies.", 404)
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -286,13 +311,18 @@ def get_posts_followers_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_posts_followers_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No followers ranking data found for posts.", 404)
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -307,13 +337,18 @@ def get_posts_interactions_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_posts_interactions_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No interactions ranking data found for posts.", 404)
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -328,13 +363,18 @@ def get_posts_likes_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_posts_likes_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No likes ranking data found for posts.", 404)
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(
@@ -349,13 +389,18 @@ def get_posts_comments_ranking():
         end_date = request.args.get("end_date")
         period = request.args.get("period")
 
+        role = current_user_role()
+        access_error = ranking_access_error(role, start_date, end_date)
+        if access_error:
+            return error_response(access_error, 403)
+
         data = InfluenceHistoryService.get_posts_comments_ranking(
             period=period, start_date=start_date, end_date=end_date
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No comments ranking data found for posts.", 404)
 
-        return success_response(data, 200)
+        return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
         return error_response(

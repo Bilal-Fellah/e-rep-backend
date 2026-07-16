@@ -4,7 +4,7 @@ import os
 from flask import request
 from api.routes.main import error_response, success_response
 from api.services.entity_service import EntityService
-from api.utils.permissions import require_role
+from api.utils.permissions import require_role, top_posts_limit_for_role
 from . import data_bp
 
 SECRET = os.environ.get("SECRET_KEY")
@@ -347,6 +347,9 @@ def get_entity_top_posts():
         k = request.args.get("top_posts", type=int, default=5)
         date = request.args.get("date")
 
+        # Free (registered) users only get the single top post (top_posts rule).
+        role = getattr(request, "user_role", None)
+        k = top_posts_limit_for_role(role, k)
 
         if not entity_id:
             return error_response("Missing required query param: 'entity_id'.", 400)

@@ -1,4 +1,5 @@
 # API key authentication utilities.
+import hmac
 import os
 import time
 from functools import wraps
@@ -38,8 +39,12 @@ def require_api_key(func):
         if not expected_key:
             return error_response("Invalid or missing API key", 401)
         
-        if provided_key != expected_key:
-    
+        # Constant-time comparison to avoid a timing side-channel on the key.
+        # Compare bytes: compare_digest raises TypeError on non-ASCII str, so a
+        # crafted Authorization header would otherwise 500 instead of 401.
+        if not hmac.compare_digest(
+            provided_key.encode("utf-8"), expected_key.encode("utf-8")
+        ):
             return error_response("Invalid or missing API key", 401)
         
         # Rate limiting check

@@ -1,4 +1,5 @@
 import logging
+import os
 
 # from .main import main_bp
 
@@ -25,5 +26,12 @@ def register_routes(app):
     app.register_blueprint(oauth_bp, url_prefix="/api/oauth")
     app.register_blueprint(public_bp, url_prefix="/api/public")
     app.register_blueprint(scraping_bp, url_prefix="/api/scraping")
-    if testing_bp is not None:
+    # The /api/testing routes are unauthenticated and mutate the DB (rewrite
+    # entity categories, page URLs); never mount them in production.
+    env = os.getenv("FLASK_ENV", "development").lower()
+    if testing_bp is not None and env in ("development", "testing"):
         app.register_blueprint(testing_bp, url_prefix="/api/testing")
+    elif testing_bp is not None:
+        logging.getLogger(__name__).info(
+            "Skipping /api/testing registration in %s environment.", env
+        )

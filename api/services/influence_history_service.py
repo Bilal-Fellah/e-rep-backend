@@ -350,6 +350,14 @@ class InfluenceHistoryService:
         # Metadata for each post (entity info, page info, etc.)
         post_metadata = {}
 
+        # Latest page-level profile picture / followers, keyed by page_id.
+        # The profile image is a page attribute (not a post attribute) and its
+        # CDN URL is signed + short-lived, so we must always serve the freshest
+        # one from the most recent scrape — even for older posts that are no
+        # longer being re-scraped (whose own snapshots hold expired URLs).
+        page_latest_profile = {}
+        page_latest_followers = {}
+
         sorted_rows = sorted(
             rows,
             key=lambda row: InfluenceHistoryService._row_value(row, "recorded_at", datetime.min),
@@ -359,6 +367,19 @@ class InfluenceHistoryService:
             platform = InfluenceHistoryService._row_value(row, "platform", None)
             if platform not in platform_metrics:
                 continue
+
+            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
+            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
+            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
+            profile_image_url = InfluenceHistoryService._row_value(row, "profile_url", None)
+            page_followers = _to_number(InfluenceHistoryService._row_value(row, "raw_followers", 0))
+            recorded_at = InfluenceHistoryService._row_value(row, "recorded_at", None)
+
+            # Rows are ascending, so the last non-empty value wins = latest scrape.
+            if page_id is not None and profile_image_url:
+                page_latest_profile[page_id] = profile_image_url
+            if page_id is not None and page_followers:
+                page_latest_followers[page_id] = page_followers
 
             posts = InfluenceHistoryService._row_value(row, "posts_metrics", None)
             if not posts:
@@ -375,13 +396,6 @@ class InfluenceHistoryService:
             root_category = InfluenceHistoryService._row_value(row, "root_category", None)
             if root_category is None and category is not None:
                 root_category = category
-
-            page_id = InfluenceHistoryService._row_value(row, "page_id", None)
-            page_name = InfluenceHistoryService._row_value(row, "page_name", None)
-            page_url = InfluenceHistoryService._row_value(row, "page_url", None)
-            profile_image_url = InfluenceHistoryService._row_value(row, "profile_url", None)
-            page_followers = _to_number(InfluenceHistoryService._row_value(row, "raw_followers", 0))
-            recorded_at = InfluenceHistoryService._row_value(row, "recorded_at", None)
 
             metrics = platform_metrics.get(platform, {}).get("metrics", [])
             id_key = platform_metrics[platform]["id_key"]
@@ -406,25 +420,28 @@ class InfluenceHistoryService:
                     continue
 
                 post_key = (page_id, platform, str(post_id))
-                
-                # Store metadata once per post
-                if post_key not in post_metadata:
-                    post_metadata[post_key] = {
-                        "entity_id": entity_id,
-                        "entity_name": entity_name,
-                        "category": category,
-                        "root_category": root_category,
-                        "page_id": page_id,
-                        "page_name": page_name,
-                        "page_url": page_url,
-                        "profile_image_url": profile_image_url,
-                        "platform": platform,
-                        "post_id": post_id,
-                        "caption": post.get("caption"),
-                        "post_url": post.get("url") or post.get("link"),
-                        "created_at": post_dt.isoformat(),
-                        "page_followers": page_followers,
-                    }
+
+                # Rows are processed oldest -> newest, so overwriting keeps the
+                # LATEST snapshot's metadata. This matters for profile_image_url
+                # (a signed, short-lived CDN URL) and page_followers, which must
+                # reflect the most recent scrape rather than the oldest one in
+                # the window.
+                post_metadata[post_key] = {
+                    "entity_id": entity_id,
+                    "entity_name": entity_name,
+                    "category": category,
+                    "root_category": root_category,
+                    "page_id": page_id,
+                    "page_name": page_name,
+                    "page_url": page_url,
+                    "profile_image_url": profile_image_url,
+                    "platform": platform,
+                    "post_id": post_id,
+                    "caption": post.get("caption"),
+                    "post_url": post.get("url") or post.get("link"),
+                    "created_at": post_dt.isoformat(),
+                    "page_followers": page_followers,
+                }
 
                 # Extract metric values for this snapshot
                 likes = InfluenceHistoryService._post_metric_value(post, "likes")
@@ -457,7 +474,16 @@ class InfluenceHistoryService:
                 continue
 
             metadata = post_metadata[post_key]
-            
+
+            # Prefer the page's freshest profile picture / followers over this
+            # post's (possibly stale) snapshot value, so image URLs don't expire.
+            profile_image_url = page_latest_profile.get(
+                metadata["page_id"], metadata["profile_image_url"]
+            )
+            page_followers = page_latest_followers.get(
+                metadata["page_id"], metadata["page_followers"]
+            )
+
             # Sort snapshots by recorded_at to get earliest and latest
             snapshots.sort(key=lambda x: x["recorded_at"] or datetime.min)
             
@@ -480,7 +506,7 @@ class InfluenceHistoryService:
                 "page_id": metadata["page_id"],
                 "page_name": metadata["page_name"],
                 "page_url": metadata["page_url"],
-                "profile_image_url": metadata["profile_image_url"],
+                "profile_image_url": profile_image_url,
                 # Post info
                 "platform": metadata["platform"],
                 "post_id": metadata["post_id"],
@@ -498,7 +524,7 @@ class InfluenceHistoryService:
                 "gained_views": gained_views,
                 "gained_score": round(gained_score, 4),
                 # Page followers
-                "page_followers": metadata["page_followers"],
+                "page_followers": page_followers,
             }
 
         # Map order_by_key to growth-based keys

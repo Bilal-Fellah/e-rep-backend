@@ -10,7 +10,8 @@ from datetime import datetime, timedelta
 
 # Configuration
 BASE_URL = "http://localhost:5000"  # Change to your server URL
-API_KEY = os.getenv("SCRAPING_API_KEY", "2e3f5d8b-0c7a-4e9f-9c1e-6b1f2d3e4f5g")
+# No hardcoded default — set SCRAPING_API_KEY in the environment before running.
+API_KEY = os.environ["SCRAPING_API_KEY"]
 
 headers = {
     "Authorization": f"Bearer {API_KEY}",

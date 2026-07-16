@@ -18,13 +18,18 @@ This creates:
 
 ### 2. Configure API Key
 
-The API key is already configured in `.env`:
+Generate a secure random key per environment and set it in `.env` (do NOT
+commit a real key). For example:
 
-```env
-SCRAPING_API_KEY=2e3f5d8b-0c7a-4e9f-9c1e-6b1f2d3e4f5g
+```bash
+python -c "import secrets; print('SCRAPING_API_KEY=' + secrets.token_urlsafe(32))"
 ```
 
-⚠️ **Important**: Change this to a secure random key in production!
+```env
+SCRAPING_API_KEY=<your-generated-key>
+```
+
+⚠️ **Important**: use a unique random key per environment; never commit it.
 
 ### 3. Start the Server
 
