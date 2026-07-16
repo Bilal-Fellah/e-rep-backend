@@ -50,6 +50,9 @@ class Comment(db.Model):
     # Platform-Specific Metadata
     extra_data = db.Column(db.JSON, nullable=True)
     
+    # Label (classification result from inference, values 0-4)
+    label = db.Column(db.Integer, nullable=True)
+    
     # Constraints and Indexes
     __table_args__ = (
         db.UniqueConstraint('page_id', 'platform', 'post_id', 'comment_id', 

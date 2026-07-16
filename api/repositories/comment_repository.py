@@ -162,3 +162,95 @@ class CommentRepository:
             platform=platform,
             post_id=post_id
         ).count()
+    
+    @staticmethod
+    def update_label(comment_id: int, label: int, commit: bool = True) -> Comment | None:
+        """
+        Update the label of a comment.
+        
+        Args:
+            comment_id: Primary key of the comment
+            label: Label value (0-4)
+            commit: Whether to commit the transaction
+            
+        Returns:
+            Comment | None: The updated comment if found
+            
+        Raises:
+            ValueError: If label is not in range 0-4
+        """
+        if label not in range(5):
+            raise ValueError(f"Label must be between 0 and 4, got {label}")
+        
+        comment = Comment.query.get(comment_id)
+        if comment:
+            comment.label = label
+            if commit:
+                db.session.commit()
+        return comment
+    
+    @staticmethod
+    def bulk_update_labels(label_updates: list[dict], commit: bool = True) -> int:
+        """
+        Bulk update labels for multiple comments.
+        
+        Args:
+            label_updates: List of dicts with 'comment_id' and 'label' keys
+            commit: Whether to commit the transaction
+            
+        Returns:
+            int: Number of comments updated
+        """
+        updated_count = 0
+        
+        for update in label_updates:
+            comment_id = update.get('comment_id')
+            label = update.get('label')
+            
+            if label not in range(5):
+                continue  # Skip invalid labels
+            
+            comment = Comment.query.get(comment_id)
+            if comment:
+                comment.label = label
+                updated_count += 1
+        
+        if commit:
+            db.session.commit()
+        
+        return updated_count
+    
+    @staticmethod
+    def get_unlabeled(limit: int | None = None) -> list[Comment]:
+        """
+        Get comments that have not been labeled yet.
+        
+        Args:
+            limit: Maximum number of comments to return (optional)
+            
+        Returns:
+            list[Comment]: List of unlabeled comments
+        """
+        query = Comment.query.filter_by(label=None).order_by(Comment.recorded_at.desc())
+        if limit:
+            query = query.limit(limit)
+        return query.all()
+    
+    @staticmethod
+    def get_by_label(label: int) -> list[Comment]:
+        """
+        Get all comments with a specific label.
+        
+        Args:
+            label: Label value (0-4)
+            
+        Returns:
+            list[Comment]: List of comments with the specified label
+            
+        Raises:
+            ValueError: If label is not in range 0-4
+        """
+        if label not in range(5):
+            raise ValueError(f"Label must be between 0 and 4, got {label}")
+        
+        return Comment.query.filter_by(label=label).order_by(Comment.recorded_at.desc()).all()
