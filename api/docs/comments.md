@@ -306,3 +306,175 @@ Get statistics about comment processing status.
   }
 }
 ```
+
+---
+
+# Sentiment aggregation
+
+The `label` field (0-4) is a **5-point sentiment scale**. The semantic meaning is a
+product convention and is **not** encoded in the database:
+
+| label | meaning        |
+|-------|----------------|
+| 0     | Very Negative  |
+| 1     | Negative       |
+| 2     | Neutral        |
+| 3     | Positive       |
+| 4     | Very Positive  |
+
+The endpoints below aggregate this per entity/brand, per post, and across all
+entities (ranking). **Only labeled comments** (`label` not null) are counted.
+Each summary includes:
+
+- `total` - number of labeled comments in scope
+- `counts` / `percentages` - per-label breakdown (`label_0` … `label_4`)
+- `score` - single sentiment score in `[-1, 1]`: `(avg_label - 2) / 2`
+  (all Very Negative → -1, all Very Positive → +1, all Neutral → 0)
+- `positive_share` - percentage of comments labeled Positive or Very Positive (3 or 4)
+
+An empty scope returns `total: 0` with a **200** (not 404) so the frontend can render
+an "insufficient data" state.
+
+When **no** window parameter (`period`, `start_date`, `end_date`) is supplied, the window
+is **all time** (no bounds).
+
+---
+
+## **GET /api/data/get_entity_comment_sentiment**
+
+Aggregated comment sentiment for one entity/brand, plus a daily trend series and
+highest-confidence example comments per label.
+
+### Query Parameters
+
+- `entity_id` (required, integer) - Entity id
+- `period` (optional) - Named window resolved server-side: `all`, `yesterday`, `7d`,
+  `30d`, `prev_month`, `90d`, `1y`
+- `start_date` / `end_date` (optional, ISO `YYYY-MM-DD`) - Explicit window, used when
+  `period` is absent
+
+Comments are counted within the resolved `[start_date, end_date]` window (both bounds
+inclusive of the whole day).
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "entity_id": 42,
+    "total": 320,
+    "counts": { "label_0": 20, "label_1": 40, "label_2": 60, "label_3": 120, "label_4": 80 },
+    "percentages": { "label_0": 6.3, "label_1": 12.5, "label_2": 18.8, "label_3": 37.5, "label_4": 25.0 },
+    "avg_confidence": { "label_0": 0.91, "label_1": 0.88, "label_2": 0.72, "label_3": 0.9, "label_4": 0.93 },
+    "score": 0.32,
+    "positive_share": 62.5,
+    "trend": [
+      { "date": "2026-07-01", "label_0": 2, "label_1": 3, "label_2": 5, "label_3": 10, "label_4": 7, "total": 27 }
+    ],
+    "examples": {
+      "label_4": [
+        { "id": 1, "text": "Absolutely love this!", "author_username": "user123", "confidence": 0.98, "likes_count": 12, "comment_timestamp": "2026-07-10T09:00:00" }
+      ],
+      "label_0": []
+    }
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "entity_id is required" }
+```
+
+```json
+{ "success": false, "error": "Invalid start_date format. Use ISO format: YYYY-MM-DD." }
+```
+
+---
+
+## **GET /api/data/get_post_comment_sentiment**
+
+Aggregated comment sentiment for a single post, plus example comments per label.
+
+### Query Parameters
+
+- `page_id` (required) - Page UUID
+- `platform` (required) - Platform name
+- `post_id` (required) - Post ID
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "total": 48,
+    "counts": { "label_0": 2, "label_1": 6, "label_2": 10, "label_3": 20, "label_4": 10 },
+    "percentages": { "label_0": 4.2, "label_1": 12.5, "label_2": 20.8, "label_3": 41.7, "label_4": 20.8 },
+    "avg_confidence": { "label_0": 0.9, "label_1": 0.85, "label_2": 0.7, "label_3": 0.92, "label_4": 0.95 },
+    "score": 0.31,
+    "positive_share": 62.5,
+    "examples": { "label_3": [], "label_4": [] }
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "page_id, platform, and post_id are required" }
+```
+
+---
+
+## **GET /api/data/get_sentiment_ranking**
+
+All entities ranked by `ranking_score` (descending; ties broken by `total`).
+`ranking_score` is the raw `score` shrunk toward neutral for small samples
+(`score * total / (total + 20)`), so a brand with a couple of glowing comments cannot
+outrank a large, steady audience. Brands with fewer than **5** labeled comments are
+excluded from the ranking.
+
+**Entitlement-gated** like the other brand rankings: free/registered users may only
+request the free time windows (All Time / Last 30 Days) and receive the top-N rows;
+premium/admin users get the full list for any window.
+
+### Query Parameters
+
+- `period` (optional) - Named window (`all`, `yesterday`, `7d`, `30d`, `prev_month`,
+  `90d`, `1y`)
+- `start_date` / `end_date` (optional, ISO `YYYY-MM-DD`) - Explicit window (premium only)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "entity_id": 42,
+      "entity_name": "Acme",
+      "type": "company",
+      "total": 320,
+      "counts": { "label_0": 20, "label_1": 40, "label_2": 60, "label_3": 120, "label_4": 80 },
+      "percentages": { "label_0": 6.3, "label_1": 12.5, "label_2": 18.8, "label_3": 37.5, "label_4": 25.0 },
+      "score": 0.32,
+      "ranking_score": 0.3012,
+      "positive_share": 62.5,
+      "rank": 1
+    }
+  ]
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "This time period is available on a paid plan." }
+```
+
+```json
+{ "success": false, "error": "Custom date ranges are available on a paid plan." }
+```

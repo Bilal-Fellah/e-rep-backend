@@ -1,6 +1,23 @@
 # Data-access methods for comment repository.
+from datetime import timedelta
+from sqlalchemy import func, nullslast
 from api.models.comment_model import Comment, db
+from api.models.page_model import Page
+from api.models.entity_model import Entity
 from api.utils.logging_utils import instrument_repository_class
+
+
+def _apply_comment_window(query, start_date=None, end_date=None):
+    """Restrict a comment query to the [start_date, end_date] window.
+
+    `end_date` is a date; we filter `< end_date + 1 day` so the whole end day is
+    included (a plain `<= end_date` would drop everything after that midnight).
+    """
+    if start_date:
+        query = query.filter(Comment.comment_timestamp >= start_date)
+    if end_date:
+        query = query.filter(Comment.comment_timestamp < end_date + timedelta(days=1))
+    return query
 
 
 @instrument_repository_class
@@ -340,11 +357,159 @@ class CommentRepository:
     def count_by_processing_status(is_processed: bool) -> int:
         """
         Count comments by processing status.
-        
+
         Args:
             is_processed: Processing status to filter by
-            
+
         Returns:
             int: Number of comments matching the status
         """
         return Comment.query.filter_by(is_processed=is_processed).count()
+
+    # ── Sentiment aggregation ─────────────────────────────────────────────
+    # Sentiment is stored per comment as `label` (int 0-4) + `confidence`.
+    # A comment links to a brand via page_id -> pages.uuid -> pages.entity_id.
+    # All aggregations ignore unlabeled comments (label IS NULL).
+
+    @staticmethod
+    def get_sentiment_counts_by_entity(
+        entity_id: int, start_date=None, end_date=None
+    ) -> list[tuple]:
+        """
+        Count labeled comments per sentiment label for one entity/brand.
+
+        Args:
+            entity_id: The entity (brand) id
+            start_date: Optional lower bound on comment_timestamp
+            end_date: Optional (inclusive) upper bound on comment_timestamp
+
+        Returns:
+            list[tuple]: rows of (label, count, avg_confidence)
+        """
+        q = (
+            db.session.query(
+                Comment.label,
+                func.count(Comment.id),
+                func.avg(Comment.confidence),
+            )
+            .join(Page, Page.uuid == Comment.page_id)
+            .filter(Page.entity_id == entity_id, Comment.label.isnot(None))
+        )
+        q = _apply_comment_window(q, start_date, end_date)
+        return q.group_by(Comment.label).order_by(Comment.label).all()
+
+    @staticmethod
+    def get_sentiment_trend_by_entity(
+        entity_id: int, start_date=None, end_date=None
+    ) -> list[tuple]:
+        """
+        Count labeled comments per (day, label) for one entity, for a trend chart.
+
+        Returns:
+            list[tuple]: rows of (day, label, count), ordered by day
+        """
+        day = func.date(Comment.comment_timestamp)
+        q = (
+            db.session.query(day, Comment.label, func.count(Comment.id))
+            .join(Page, Page.uuid == Comment.page_id)
+            .filter(Page.entity_id == entity_id, Comment.label.isnot(None))
+        )
+        q = _apply_comment_window(q, start_date, end_date)
+        return q.group_by(day, Comment.label).order_by(day).all()
+
+    @staticmethod
+    def get_example_comments_by_entity(
+        entity_id: int, label: int, limit: int = 5, start_date=None, end_date=None
+    ) -> list[Comment]:
+        """
+        Highest-confidence example comments with a given label for one entity,
+        within the same [start_date, end_date] window as the aggregates.
+
+        Returns:
+            list[Comment]: up to `limit` comments, most confident first
+        """
+        q = (
+            db.session.query(Comment)
+            .join(Page, Page.uuid == Comment.page_id)
+            .filter(Page.entity_id == entity_id, Comment.label == label)
+        )
+        q = _apply_comment_window(q, start_date, end_date)
+        return q.order_by(nullslast(Comment.confidence.desc())).limit(limit).all()
+
+    @staticmethod
+    def get_sentiment_counts_by_post(
+        page_id: str, platform: str, post_id: str
+    ) -> list[tuple]:
+        """
+        Count labeled comments per sentiment label for one post.
+
+        Returns:
+            list[tuple]: rows of (label, count, avg_confidence)
+        """
+        return (
+            db.session.query(
+                Comment.label,
+                func.count(Comment.id),
+                func.avg(Comment.confidence),
+            )
+            .filter(
+                Comment.page_id == page_id,
+                Comment.platform == platform,
+                Comment.post_id == post_id,
+                Comment.label.isnot(None),
+            )
+            .group_by(Comment.label)
+            .order_by(Comment.label)
+            .all()
+        )
+
+    @staticmethod
+    def get_example_comments_by_post(
+        page_id: str, platform: str, post_id: str, label: int, limit: int = 5
+    ) -> list[Comment]:
+        """
+        Highest-confidence example comments with a given label for one post.
+
+        Returns:
+            list[Comment]: up to `limit` comments, most confident first
+        """
+        return (
+            Comment.query.filter(
+                Comment.page_id == page_id,
+                Comment.platform == platform,
+                Comment.post_id == post_id,
+                Comment.label == label,
+            )
+            .order_by(nullslast(Comment.confidence.desc()))
+            .limit(limit)
+            .all()
+        )
+
+    @staticmethod
+    def get_sentiment_ranking(start_date=None, end_date=None) -> list[tuple]:
+        """
+        Count labeled comments per (entity, label) across all entities.
+
+        Args:
+            start_date: Optional lower bound on comment_timestamp
+            end_date: Optional (inclusive) upper bound on comment_timestamp
+
+        Returns:
+            list[tuple]: rows of (entity_id, entity_name, entity_type, label, count)
+        """
+        q = (
+            db.session.query(
+                Entity.id,
+                Entity.name,
+                Entity.type,
+                Comment.label,
+                func.count(Comment.id),
+            )
+            .join(Page, Page.uuid == Comment.page_id)
+            .join(Entity, Entity.id == Page.entity_id)
+            .filter(Comment.label.isnot(None))
+        )
+        q = _apply_comment_window(q, start_date, end_date)
+        return q.group_by(
+            Entity.id, Entity.name, Entity.type, Comment.label
+        ).all()

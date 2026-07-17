@@ -2,7 +2,14 @@
 from flask import request
 from . import data_bp
 from api.repositories.comment_repository import CommentRepository
+from api.services.comment_sentiment_service import CommentSentimentService
 from api.routes.main import success_response, error_response
+from api.utils.period_resolver import resolve_period_dates
+from api.utils.permissions import (
+    current_user_role,
+    limit_ranking_for_role,
+    ranking_access_error,
+)
 
 
 @data_bp.route("/get_comments_by_post", methods=["GET"])
@@ -173,3 +180,93 @@ def comment_processing_stats():
         "labeled": {f"label_{label}": count for label, count in label_counts.items()},
         "unlabeled": unlabeled_count
     })
+
+
+# ── Sentiment aggregation (5-point scale: 0=Very Negative … 4=Very Positive) ──
+#
+# Time window: like the other ranking/history endpoints, these accept either a
+# named `period` (resolved by resolve_period_dates) or an explicit
+# `start_date`/`end_date` pair, and count comments within [start, end].
+
+
+def _resolve_sentiment_window(args):
+    """Resolve the comment window from request args.
+
+    Returns ((start_date, end_date), None) on success, or ((None, None), resp)
+    where `resp` is a 400 error response. With no window params at all the
+    window is all-time (None, None) rather than the resolver's 30-day default.
+    """
+    period = args.get("period")
+    start_date_arg = args.get("start_date")
+    end_date_arg = args.get("end_date")
+
+    if not period and not start_date_arg and not end_date_arg:
+        return (None, None), None
+
+    try:
+        window = resolve_period_dates(
+            period=period, start_date=start_date_arg, end_date=end_date_arg
+        )
+        return window, None
+    except (TypeError, ValueError) as exc:
+        return (None, None), error_response(f"Invalid time window: {exc}", 400)
+
+
+@data_bp.route("/get_entity_comment_sentiment", methods=["GET"])
+def get_entity_comment_sentiment():
+    """Aggregated comment sentiment for one entity/brand: summary + trend + examples.
+
+    Only labeled comments are counted; an entity with none returns total=0
+    (200, not 404) so the frontend can render an "insufficient data" state.
+    """
+    entity_id = request.args.get("entity_id", type=int)
+    if not entity_id:
+        return error_response("entity_id is required", 400)
+
+    (start_date, end_date), window_error = _resolve_sentiment_window(request.args)
+    if window_error:
+        return window_error
+
+    data = CommentSentimentService.get_entity_sentiment(
+        entity_id, start_date, end_date
+    )
+    return success_response(data=data)
+
+
+@data_bp.route("/get_post_comment_sentiment", methods=["GET"])
+def get_post_comment_sentiment():
+    """Aggregated comment sentiment for a single post: summary + examples."""
+    page_id = request.args.get("page_id")
+    platform = request.args.get("platform")
+    post_id = request.args.get("post_id")
+
+    if not page_id or not platform or not post_id:
+        return error_response("page_id, platform, and post_id are required", 400)
+
+    data = CommentSentimentService.get_post_sentiment(page_id, platform, post_id)
+    return success_response(data=data)
+
+
+@data_bp.route("/get_sentiment_ranking", methods=["GET"])
+def get_sentiment_ranking():
+    """All entities ranked by comment sentiment score (desc).
+
+    Entitlement-gated like the other brand rankings: free/registered users may
+    only request the free time windows and see the top-N rows.
+    """
+    role = current_user_role()
+    access_error = ranking_access_error(
+        role,
+        request.args.get("period"),
+        request.args.get("start_date"),
+        request.args.get("end_date"),
+    )
+    if access_error:
+        return error_response(access_error, 403)
+
+    (start_date, end_date), window_error = _resolve_sentiment_window(request.args)
+    if window_error:
+        return window_error
+
+    data = CommentSentimentService.get_ranking(start_date, end_date)
+    return success_response(data=limit_ranking_for_role(role, data))

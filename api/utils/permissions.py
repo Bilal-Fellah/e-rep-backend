@@ -275,6 +275,9 @@ def optional_auth(f):
 FREE_RANKING_LIMIT = 10
 # top_posts: registered/anonymous users only see the single top post.
 FREE_TOP_POSTS_LIMIT = 1
+# The only time periods free/registered users may request (All Time + Last 30
+# Days). Every other named window — and any custom start/end range — is premium.
+FREE_PERIODS = {"all", "all_time", "max", "30d", "last_30d", "last_month"}
 
 
 def current_user_role():
@@ -290,13 +293,17 @@ def is_premium_role(role):
     return role in (UserRole.SUBSCRIBED.value, UserRole.ADMIN.value)
 
 
-def ranking_access_error(role, start_date=None, end_date=None):
-    """Custom date ranges (start_date/end_date) are a premium feature. Returns
-    an error message string to deny with, or None when access is allowed."""
+def ranking_access_error(role, period=None, start_date=None, end_date=None):
+    """Entitlement check for ranking windows. Free/registered users may only use
+    the free periods (All Time / Last 30 Days); every other named period and any
+    custom start/end range is premium. Returns an error message string to deny
+    with, or None when access is allowed."""
     if is_premium_role(role):
         return None
     if start_date or end_date:
         return "Custom date ranges are available on a paid plan."
+    if period and period.strip().lower() not in FREE_PERIODS:
+        return "This time period is available on a paid plan."
     return None
 
 
