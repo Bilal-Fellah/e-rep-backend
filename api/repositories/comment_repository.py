@@ -1,6 +1,6 @@
 # Data-access methods for comment repository.
 from datetime import timedelta
-from sqlalchemy import func, nullslast
+from sqlalchemy import String, cast, func, nullslast
 from api.models.comment_model import Comment, db
 from api.models.page_model import Page
 from api.models.entity_model import Entity
@@ -392,7 +392,7 @@ class CommentRepository:
                 func.count(Comment.id),
                 func.avg(Comment.confidence),
             )
-            .join(Page, Page.uuid == Comment.page_id)
+            .join(Page, cast(Page.uuid, String) == cast(Comment.page_id, String))
             .filter(Page.entity_id == entity_id, Comment.label.isnot(None))
         )
         q = _apply_comment_window(q, start_date, end_date)
@@ -411,7 +411,7 @@ class CommentRepository:
         day = func.date(Comment.comment_timestamp)
         q = (
             db.session.query(day, Comment.label, func.count(Comment.id))
-            .join(Page, Page.uuid == Comment.page_id)
+            .join(Page, cast(Page.uuid, String) == cast(Comment.page_id, String))
             .filter(Page.entity_id == entity_id, Comment.label.isnot(None))
         )
         q = _apply_comment_window(q, start_date, end_date)
@@ -430,7 +430,7 @@ class CommentRepository:
         """
         q = (
             db.session.query(Comment)
-            .join(Page, Page.uuid == Comment.page_id)
+            .join(Page, cast(Page.uuid, String) == cast(Comment.page_id, String))
             .filter(Page.entity_id == entity_id, Comment.label == label)
         )
         q = _apply_comment_window(q, start_date, end_date)
@@ -505,7 +505,7 @@ class CommentRepository:
                 Comment.label,
                 func.count(Comment.id),
             )
-            .join(Page, Page.uuid == Comment.page_id)
+            .join(Page, cast(Page.uuid, String) == cast(Comment.page_id, String))
             .join(Entity, Entity.id == Page.entity_id)
             .filter(Comment.label.isnot(None))
         )
