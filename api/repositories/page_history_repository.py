@@ -871,7 +871,7 @@ class PageHistoryRepository:
     @staticmethod
     def get_after_time(hour):
         # Build today 22:00 timestamp
-        today = datetime.now().date()
+        today = datetime.now().date() - timedelta(days=1)
         time_threshold = datetime.combine(today, time(hour, 0))
 
         stmt = (
