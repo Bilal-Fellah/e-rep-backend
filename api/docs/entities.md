@@ -154,10 +154,25 @@ Get profile-card style entity data derived from history.
 {
   "success": true,
   "data": {
-    "entity_id": 1
+    "entity_id": 1,
+    "entity_name": "Tesla",
+    "type": "influencer",
+    "total_followers": 120000,
+    "rank": 3,
+    "pages": {
+      "instagram": {
+        "page_id": "page_uuid",
+        "followers": 90000,
+        "profile_url": "https://...",
+        "description": "…",
+        "page_url": "https://instagram.com/…"
+      }
+    }
   }
 }
 ```
+
+`type` is the entity kind (`company` | `influencer` | `small-business`); the frontend uses it to render the creator-styled profile for influencers.
 
 ### Error Responses
 

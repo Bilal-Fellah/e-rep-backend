@@ -14,6 +14,27 @@ from api.utils.posts_utils import ensure_datetime
 
 from . import data_bp
 
+# Entity kinds a ranking can be filtered to (mirrors the DB CheckConstraint on
+# entities.type and the ALLOWED_ENTITY_TYPES in auth_routes).
+ALLOWED_ENTITY_TYPES = ("company", "influencer", "small-business")
+
+
+def _parse_entity_type(default=None):
+    """Read and validate the optional `?type=` query param.
+
+    Returns the lowercased type, or `default` when absent. Raises ValueError on
+    an unrecognized value so callers surface a 400.
+    """
+    raw = request.args.get("type")
+    if raw is None or raw == "":
+        return default
+    value = raw.strip().lower()
+    if value not in ALLOWED_ENTITY_TYPES:
+        raise ValueError(
+            f"type must be one of {list(ALLOWED_ENTITY_TYPES)}"
+        )
+    return value
+
 # @data_bp.route("/get_after_time", methods=["GET"])
 # def get_after_time():
 #     try:
@@ -208,8 +229,10 @@ def get_followers_progress_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default=None)
+
         data = InfluenceHistoryService.get_followers_progress_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response(
@@ -219,9 +242,9 @@ def get_followers_progress_ranking():
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_interactions_ranking", methods=["GET"])
@@ -236,20 +259,22 @@ def get_interactions_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default="company")
+
         data = InfluenceHistoryService.get_interactions_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response(
-                "No interactions ranking data found for companies.", 404
+                f"No interactions ranking data found for {entity_type}.", 404
             )
 
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_likes_ranking", methods=["GET"])
@@ -264,18 +289,20 @@ def get_likes_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default="company")
+
         data = InfluenceHistoryService.get_likes_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
-            return error_response("No likes ranking data found for companies.", 404)
+            return error_response(f"No likes ranking data found for {entity_type}.", 404)
 
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_comments_ranking", methods=["GET"])
@@ -290,18 +317,20 @@ def get_comments_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default="company")
+
         data = InfluenceHistoryService.get_comments_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
-            return error_response("No comments ranking data found for companies.", 404)
+            return error_response(f"No comments ranking data found for {entity_type}.", 404)
 
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_posts_followers_ranking", methods=["GET"])
@@ -325,9 +354,9 @@ def get_posts_followers_ranking():
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_posts_interactions_ranking", methods=["GET"])
@@ -351,9 +380,9 @@ def get_posts_interactions_ranking():
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_posts_likes_ranking", methods=["GET"])
@@ -377,9 +406,9 @@ def get_posts_likes_ranking():
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_posts_comments_ranking", methods=["GET"])
@@ -403,9 +432,9 @@ def get_posts_comments_ranking():
         return success_response(limit_ranking_for_role(role, data), 200)
 
     except (TypeError, KeyError, ValueError) as exc:
-        return error_response(
-            str(exc) if "Invalid period" in str(exc) else "Invalid request data", 400
-        )
+        message = str(exc)
+        surfaced = "Invalid period" in message or "type must be" in message
+        return error_response(message if surfaced else "Invalid request data", 400)
 
 
 @data_bp.route("/get_entity_interaction_stats", methods=["GET"])

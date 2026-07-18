@@ -414,8 +414,11 @@ Return followers progress (gain) ranking for entities over a time window.
 - `period` (optional, string; e.g. `7d`, `1m`, `3m`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+- `type` (optional; one of `company`, `influencer`, `small-business`) — restrict the ranking to a single entity kind. When omitted, all entity types are returned.
 
 ### Success Response (200)
+
+Each row also includes a `type` field (the entity's kind).
 
 ```json
 {
@@ -424,6 +427,7 @@ Return followers progress (gain) ranking for entities over a time window.
     {
       "entity_id": 1,
       "entity_name": "Tesla",
+      "type": "company",
       "followers_gained": 5000,
       "rank": 1
     }
@@ -450,10 +454,11 @@ Return company interactions ranking using post materialized views.
 ### Query Parameters
 
 - `start_date` (optional, ISO date/datetime; default = last 30 days)
+- `type` (optional; one of `company`, `influencer`, `small-business`; default `company`) — which entity kind to rank. Pass `type=influencer` for the creator/influencer ranking.
 
 ### Notes
 
-- Only entities where `type = company` and `to_scrape = true` are included.
+- By default only entities where `type = company` and `to_scrape = true` are included; pass `type=influencer` to rank influencers instead. The same applies to `get_likes_ranking` and `get_comments_ranking`.
 - Ranking is computed from `posts_mv` aggregates using platform metric weights.
 
 ### Success Response (200)

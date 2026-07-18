@@ -347,7 +347,9 @@ class PageHistoryRepository:
         return results
 
     @staticmethod
-    def get_followers_progress_snapshot(date_limit, end_date=None):
+    def get_followers_progress_snapshot(date_limit, end_date=None, entity_type=None):
+        # `entity_type` (e.g. 'influencer') optionally restricts the ranking to a
+        # single entity kind; when None, every entity type is included as before.
         query = text("""
             WITH latest AS (
                 SELECT DISTINCT ON (page_id)
@@ -384,6 +386,7 @@ class PageHistoryRepository:
                 l.page_id,
                 l.entity_id,
                 l.entity_name,
+                e.type AS entity_type,
                 l.platform,
                 l.page_name,
                 l.page_url,
@@ -393,15 +396,24 @@ class PageHistoryRepository:
                 l.current_followers,
                 p.prev_followers
             FROM latest l
+            JOIN entities e ON e.id = l.entity_id
             LEFT JOIN prev p ON p.page_id = l.page_id
+            WHERE (:entity_type IS NULL OR LOWER(COALESCE(e.type, '')) = :entity_type)
         """)
-        results = db.session.execute(query, {'date_limit': date_limit, 'end_date': end_date}).mappings().all()
+        params = {
+            'date_limit': date_limit,
+            'end_date': end_date,
+            'entity_type': entity_type.lower() if entity_type else None,
+        }
+        results = db.session.execute(query, params).mappings().all()
         return results
 
 
 
     @staticmethod
-    def get_companies_interactions_summary(date_limit: date = None, end_date: date = None):
+    def get_companies_interactions_summary(date_limit: date = None, end_date: date = None, entity_type: str = "company"):
+        # `entity_type` selects which entity kind to summarize (default 'company'
+        # preserves the original company-only behavior; pass 'influencer' etc.).
         if date_limit is None:
             date_limit = (datetime.now() - timedelta(days=30)).date()
 
@@ -445,7 +457,7 @@ class PageHistoryRepository:
             JOIN page_entity_map pem ON pem.page_id = pm.page_id
             JOIN entities e ON e.id = pem.entity_id
             LEFT JOIN entity_category_map ecm ON ecm.entity_id = pem.entity_id
-            WHERE LOWER(COALESCE(e.type, '')) = 'company'
+            WHERE LOWER(COALESCE(e.type, '')) = :entity_type
               AND pem.to_scrape
               AND e.to_scrape
               AND pm.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
@@ -455,7 +467,12 @@ class PageHistoryRepository:
             ORDER BY pem.entity_name, pm.platform
         """)
 
-        return db.session.execute(query, {'date_limit': date_limit, 'end_date': end_date}).mappings().all()
+        params = {
+            'date_limit': date_limit,
+            'end_date': end_date,
+            'entity_type': (entity_type or "company").lower(),
+        }
+        return db.session.execute(query, params).mappings().all()
 
 
 
@@ -519,6 +536,7 @@ class PageHistoryRepository:
                 Page.link,
                 Entity.name.label("entity_name"),
                 Entity.id.label("entity_id"),
+                Entity.type.label("entity_type"),
                 entity_totals_subq.c.total_followers,
                 entity_totals_subq.c.entity_rank,
                 PageHistoryRepository._profile_url_case(Page, ph_outer).label("profile_url"),
@@ -543,6 +561,7 @@ class PageHistoryRepository:
         result = {
             "entity_name": rows[0].entity_name,
             "entity_id": rows[0].entity_id,
+            "type": rows[0].entity_type,
             "total_followers": rows[0].total_followers,
             "rank": rows[0].entity_rank,
             "pages": {}
@@ -795,6 +814,7 @@ class PageHistoryRepository:
             SELECT
                 lpd.entity_id,
                 lpd.entity_name,
+                e.type AS entity_type,
                 et.total_followers,
                 et.entity_rank,
                 et.window_start,
@@ -807,6 +827,7 @@ class PageHistoryRepository:
                 lpd.followers
             FROM latest_page_data lpd
             JOIN entity_totals et ON et.entity_id = lpd.entity_id
+            JOIN entities e ON e.id = lpd.entity_id
             LEFT JOIN entity_category_map ecm ON ecm.entity_id = lpd.entity_id
             ORDER BY et.entity_rank, lpd.platform
         """)
@@ -823,6 +844,7 @@ class PageHistoryRepository:
                 result[entity_id] = {
                     "entity_id": entity_id,
                     "entity_name": row["entity_name"],
+                    "type": row["entity_type"],
                     "total_followers": row["total_followers"],
                     "rank": row["entity_rank"],
                     "category": row["category"],
@@ -902,8 +924,16 @@ class PageHistoryRepository:
             try:
                 with open(RANKING_CACHE_FILE, 'r') as f:
                     cache = json.load(f)
-                if cache.get("month") == current_month and cache.get("data"):
-                    return cache["data"]
+                cached_data = cache.get("data")
+                # Ignore caches written before the `type` field existed so the
+                # public influencer filter has something to match on.
+                cache_has_type = (
+                    isinstance(cached_data, list)
+                    and cached_data
+                    and "type" in cached_data[0]
+                )
+                if cache.get("month") == current_month and cache_has_type:
+                    return cached_data
             except (json.JSONDecodeError, KeyError):
                 pass
 

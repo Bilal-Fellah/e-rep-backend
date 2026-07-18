@@ -109,9 +109,9 @@ class InfluenceHistoryService:
         return InfluenceHistoryService.get_followers_ranking()
 
     @staticmethod
-    def get_followers_progress_ranking(period=None, start_date=None, end_date=None):
+    def get_followers_progress_ranking(period=None, start_date=None, end_date=None, entity_type=None):
         date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
-        rows = PageHistoryRepository.get_followers_progress_snapshot(date_limit=date_limit, end_date=end_dt)
+        rows = PageHistoryRepository.get_followers_progress_snapshot(date_limit=date_limit, end_date=end_dt, entity_type=entity_type)
         if not rows:
             return []
 
@@ -122,6 +122,7 @@ class InfluenceHistoryService:
                 continue
 
             entity_name = InfluenceHistoryService._row_value(row, "entity_name", None)
+            entity_type = InfluenceHistoryService._row_value(row, "entity_type", None)
             category = InfluenceHistoryService._row_value(row, "category", None)
             root_category = InfluenceHistoryService._row_value(row, "root_category", None)
             if root_category is None and category is not None:
@@ -147,6 +148,7 @@ class InfluenceHistoryService:
                 {
                     "entity_id": entity_id,
                     "entity_name": entity_name,
+                    "type": entity_type,
                     "category": category,
                     "root_category": root_category,
                     "window_start": date_limit.isoformat(),
@@ -185,16 +187,16 @@ class InfluenceHistoryService:
         return ranking
 
     @staticmethod
-    def get_interactions_ranking(period=None, start_date=None, end_date=None):
-        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_score")
+    def get_interactions_ranking(period=None, start_date=None, end_date=None, entity_type="company"):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_score", entity_type=entity_type)
 
     @staticmethod
-    def get_likes_ranking(period=None, start_date=None, end_date=None):
-        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_likes")
+    def get_likes_ranking(period=None, start_date=None, end_date=None, entity_type="company"):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_likes", entity_type=entity_type)
 
     @staticmethod
-    def get_comments_ranking(period=None, start_date=None, end_date=None):
-        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_comments")
+    def get_comments_ranking(period=None, start_date=None, end_date=None, entity_type="company"):
+        return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_comments", entity_type=entity_type)
 
     @staticmethod
     def get_posts_followers_ranking(period=None, start_date=None, end_date=None):
@@ -233,10 +235,10 @@ class InfluenceHistoryService:
         )
 
     @staticmethod
-    def _get_companies_ranking(period=None, start_date=None, end_date=None, order_by_key="total_score"):
+    def _get_companies_ranking(period=None, start_date=None, end_date=None, order_by_key="total_score", entity_type="company"):
         date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
-        # print(f"Fetching companies interactions summary from {date_limit} to {end_dt}")
-        rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit, end_date=end_dt)
+        # print(f"Fetching {entity_type} interactions summary from {date_limit} to {end_dt}")
+        rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit, end_date=end_dt, entity_type=entity_type)
         
         if not rows:
             return []
