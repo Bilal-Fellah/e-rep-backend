@@ -204,7 +204,7 @@ def get_followers_progress_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -232,7 +232,7 @@ def get_interactions_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -260,7 +260,7 @@ def get_likes_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -286,7 +286,7 @@ def get_comments_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -312,7 +312,7 @@ def get_posts_followers_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -338,7 +338,7 @@ def get_posts_interactions_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -364,7 +364,7 @@ def get_posts_likes_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
@@ -390,7 +390,7 @@ def get_posts_comments_ranking():
         period = request.args.get("period")
 
         role = current_user_role()
-        access_error = ranking_access_error(role, start_date, end_date)
+        access_error = ranking_access_error(role, period, start_date, end_date)
         if access_error:
             return error_response(access_error, 403)
 
