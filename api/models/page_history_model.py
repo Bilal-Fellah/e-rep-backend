@@ -10,7 +10,11 @@ class PageHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     data = db.Column(JSONB, nullable=False)
     recorded_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now())
-    page_id = db.Column(UUID(as_uuid=True), db.ForeignKey("pages.uuid"))
+    page_id = db.Column(
+        UUID(as_uuid=True), 
+        db.ForeignKey("pages.uuid",ondelete='CASCADE',
+        onupdate='CASCADE')        
+        )
 
     # relationship to Page (optional, if you want ORM navigation)
     page = relationship("Page", back_populates="histories", foreign_keys=[page_id])

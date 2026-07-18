@@ -524,7 +524,7 @@ class ScrapingService:
                 "platform": post.platform,
                 "post_id": post.post_id,
                 "url": post.url,
-                "caption": post.caption,
+                # "caption": post.caption,
                 "expected_comments": post.comments,
                 "scraped_comments_count": comments_got,
                 "recorded_at": post.recorded_at.isoformat() if post.recorded_at else None,

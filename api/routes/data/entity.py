@@ -126,60 +126,6 @@ def get_entity_followers_history():
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
 
-# @data_bp.route("/get_entity_followers_comparison", methods=["GET"])
-# def get_entity_followers_comparison():
-#     allowed_roles = ["admin", "subscribed", "registered"]
-
-#     try:
-#         # token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-#         # payload = jwt.decode(token, SECRET, algorithms=['HS256'])
-#         # if not payload:
-#         #     return error_response("No valid token has been sent", 401)
-#         # role = payload['role']
-#         # if role not in allowed_roles:
-#         #     return error_response("Access denied", 403)
-
-#         entity_id = request.args.get("entity_id")
-#         if not entity_id:
-#             return error_response("Missing required query param: 'entity_id'.", 400)
-#         raw_results = PageHistoryRepository.get_category_followers_competition(entity_id)
-
-#         if not raw_results or len(raw_results) < 1:
-#             return error_response("No data for this entity", 404)
-
-
-#         data = defaultdict(lambda: {"entity_id": None, "records": []})
-
-#         for idx, row in enumerate(raw_results):
-#             if row.entity_name:
-#                 if data[row.entity_name]["entity_id"] is None:
-#                     data[row.entity_name]["entity_id"] = row.entity_id
-
-#                 date = row.recorded_at.date().isoformat()
-#                 platform = row.platform
-#                 followers = row.followers
-#                 mistakes = []
-#                 # sum directly by date (all platforms included)
-#                 if followers:
-#                     data[row.entity_name]["records"].append({
-#                         'date': date,
-#                         'platform': platform,
-#                         'followers': followers
-#                     }
-#                     )
-#                 else:
-#                     mistakes.append(row.followers)
-#         return success_response(data, 200)
-#         # we get the entities or category
-#     except SQLAlchemyError as e:
-#         return error_response(f"Database error: {str(e)}", 500)
-#     except jwt.ExpiredSignatureError:
-#         return error_response("Token has expired", 401)
-#     except jwt.InvalidTokenError:
-#         return error_response("Invalid token", 401)
-#     except Exception as e:
-#         return error_response(f"Unexpected error: {str(e)}", 500)
-
 @data_bp.route("/compare_entities_followers", methods=['POST'])
 @require_role("admin", "registered", "subscribed")
 def compare_entities_followers():
