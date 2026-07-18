@@ -575,7 +575,16 @@ class EntityService:
 
             final_output.append(day_output)
 
-        day_gains = next((item for item in final_output if item["day"] == str(date)), None)
+        target_key = str(date)
+        day_gains = next((item for item in final_output if item["day"] == target_key), None)
+        if day_gains is None:
+            # The exact target day wasn't scraped (a missed day, or "today"
+            # before that day's scrape has run). Fall back to the most recent
+            # scraped day on or before the target so a single gap doesn't yield
+            # an empty "no results" response. final_output is in ascending day
+            # order, so the last qualifying entry is the closest prior day.
+            prior_days = [item for item in final_output if item["day"] <= target_key]
+            day_gains = prior_days[-1] if prior_days else None
         if day_gains:
             # Weighted score drives ordering for "top posts" of the target day.
             for post in day_gains["posts"]:
