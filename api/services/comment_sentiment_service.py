@@ -1,16 +1,23 @@
 # Business logic for comment-sentiment aggregation.
 #
-# Sentiment is stored per comment as an integer `label` (0-4) + `confidence`.
-# The 5-point scale is (by product convention, NOT encoded in the DB):
-#   0 = Very Negative, 1 = Negative, 2 = Neutral, 3 = Positive, 4 = Very Positive
+# The inference model stores a per-comment integer `label` (0-4), but the product
+# surfaces a **3-class** scale. The 5 raw labels collapse into 3 buckets:
+#   0 Very Negative, 1 Negative  -> negative
+#   2 Neutral                    -> neutral
+#   3 Positive,      4 Very Positive -> positive
 # This service turns the raw per-label counts produced by CommentRepository into
-# stable, frontend-friendly shapes (percentages, a single sentiment score,
-# positive share, trend series, and example comments).
+# stable, frontend-friendly shapes keyed by those buckets (counts, percentages,
+# a single sentiment score, positive share, trend series, and example comments).
 from api.repositories.comment_repository import CommentRepository
 
-# Labels considered "positive" for the positive-share metric.
-POSITIVE_LABELS = (3, 4)
-LABELS = range(5)
+# Raw label (0-4) -> bucket.
+LABEL_TO_BUCKET = {0: "negative", 1: "negative", 2: "neutral", 3: "positive", 4: "positive"}
+# Buckets in display order.
+BUCKETS = ("negative", "neutral", "positive")
+# Numeric value per bucket, used to compute the [-1, 1] sentiment score.
+BUCKET_SCORE = {"negative": -1, "neutral": 0, "positive": 1}
+# Raw labels that make up each bucket (for example-comment queries).
+BUCKET_LABELS = {"negative": [0, 1], "neutral": [2], "positive": [3, 4]}
 
 # Ranking is volume-aware so a brand with a couple of comments can't top a brand
 # with thousands:
@@ -46,41 +53,50 @@ def _comment_to_dict(comment) -> dict:
 
 def _shape_counts(rows: list[tuple]) -> dict:
     """
-    Turn [(label, count, avg_confidence)] into a stable summary dict:
-    per-label counts, total, per-label percentages, a sentiment score in
-    [-1, 1], and the positive share. Empty input yields total=0 (not an error).
+    Turn [(raw_label, count, avg_confidence)] into a stable summary dict bucketed
+    into negative/neutral/positive: per-bucket counts, total, per-bucket
+    percentages, a sentiment score in [-1, 1], and the positive share. Empty
+    input yields total=0 (not an error).
     """
-    counts = {label: 0 for label in LABELS}
-    confidence = {label: None for label in LABELS}
+    counts = {b: 0 for b in BUCKETS}
+    conf_weighted = {b: 0.0 for b in BUCKETS}
+    conf_n = {b: 0 for b in BUCKETS}
 
     for label, count, avg_conf in rows:
-        if label is None or label not in counts:
+        bucket = LABEL_TO_BUCKET.get(label)
+        if bucket is None:
             continue
-        counts[label] = int(count or 0)
-        confidence[label] = round(_num(avg_conf), 4) if avg_conf is not None else None
+        c = int(count or 0)
+        counts[bucket] += c
+        # Weight per-label average confidence by its count to combine labels.
+        if avg_conf is not None and c:
+            conf_weighted[bucket] += _num(avg_conf) * c
+            conf_n[bucket] += c
 
     total = sum(counts.values())
     percentages = {
-        label: (round(counts[label] / total * 100, 1) if total else 0.0)
-        for label in LABELS
+        b: (round(counts[b] / total * 100, 1) if total else 0.0) for b in BUCKETS
     }
 
     if total:
-        weighted = sum(label * counts[label] for label in LABELS)
-        avg_label = weighted / total  # 0..4
-        score = round((avg_label - 2) / 2, 4)  # map to [-1, 1]
-        positive_share = round(
-            sum(counts[label] for label in POSITIVE_LABELS) / total * 100, 1
+        score = round(
+            sum(BUCKET_SCORE[b] * counts[b] for b in BUCKETS) / total, 4
         )
+        positive_share = percentages["positive"]
     else:
         score = 0.0
         positive_share = 0.0
 
+    avg_confidence = {
+        b: (round(conf_weighted[b] / conf_n[b], 4) if conf_n[b] else None)
+        for b in BUCKETS
+    }
+
     return {
         "total": total,
-        "counts": {f"label_{label}": counts[label] for label in LABELS},
-        "percentages": {f"label_{label}": percentages[label] for label in LABELS},
-        "avg_confidence": {f"label_{label}": confidence[label] for label in LABELS},
+        "counts": counts,
+        "percentages": percentages,
+        "avg_confidence": avg_confidence,
         "score": score,
         "positive_share": positive_share,
     }
@@ -88,23 +104,22 @@ def _shape_counts(rows: list[tuple]) -> dict:
 
 def _shape_trend(rows: list[tuple]) -> list[dict]:
     """
-    Turn [(day, label, count)] into an ordered list of per-day objects:
-    [{date, label_0..label_4, total}]. Days are already ordered by the query.
+    Turn [(day, raw_label, count)] into an ordered list of per-day objects:
+    [{date, negative, neutral, positive, total}]. Days are already ordered by
+    the query.
     """
     days: dict[str, dict] = {}
     order: list[str] = []
     for day, label, count in rows:
         key = day.isoformat() if hasattr(day, "isoformat") else str(day)
         if key not in days:
-            days[key] = {
-                "date": key,
-                **{f"label_{label_i}": 0 for label_i in LABELS},
-                "total": 0,
-            }
+            days[key] = {"date": key, **{b: 0 for b in BUCKETS}, "total": 0}
             order.append(key)
-        if label in LABELS:
-            days[key][f"label_{label}"] = int(count or 0)
-            days[key]["total"] += int(count or 0)
+        bucket = LABEL_TO_BUCKET.get(label)
+        if bucket:
+            c = int(count or 0)
+            days[key][bucket] += c
+            days[key]["total"] += c
     return [days[key] for key in order]
 
 
@@ -129,14 +144,14 @@ class CommentSentimentService:
         )
 
         examples = {}
-        for label in LABELS:
-            if summary["counts"][f"label_{label}"] == 0:
-                examples[f"label_{label}"] = []
+        for bucket in BUCKETS:
+            if summary["counts"][bucket] == 0:
+                examples[bucket] = []
                 continue
             comments = CommentRepository.get_example_comments_by_entity(
-                entity_id, label, example_limit, start_date, end_date
+                entity_id, BUCKET_LABELS[bucket], example_limit, start_date, end_date
             )
-            examples[f"label_{label}"] = [_comment_to_dict(c) for c in comments]
+            examples[bucket] = [_comment_to_dict(c) for c in comments]
         summary["examples"] = examples
         return summary
 
@@ -149,14 +164,14 @@ class CommentSentimentService:
             CommentRepository.get_sentiment_counts_by_post(page_id, platform, post_id)
         )
         examples = {}
-        for label in LABELS:
-            if summary["counts"][f"label_{label}"] == 0:
-                examples[f"label_{label}"] = []
+        for bucket in BUCKETS:
+            if summary["counts"][bucket] == 0:
+                examples[bucket] = []
                 continue
             comments = CommentRepository.get_example_comments_by_post(
-                page_id, platform, post_id, label, example_limit
+                page_id, platform, post_id, BUCKET_LABELS[bucket], example_limit
             )
-            examples[f"label_{label}"] = [_comment_to_dict(c) for c in comments]
+            examples[bucket] = [_comment_to_dict(c) for c in comments]
         summary["examples"] = examples
         return summary
 

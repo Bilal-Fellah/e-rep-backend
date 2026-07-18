@@ -1,4 +1,4 @@
-# Comments API
+  # Comments API
 
 All routes in this document are prefixed with `/api/data`.
 
@@ -311,26 +311,28 @@ Get statistics about comment processing status.
 
 # Sentiment aggregation
 
-The `label` field (0-4) is a **5-point sentiment scale**. The semantic meaning is a
-product convention and is **not** encoded in the database:
+The inference model stores a raw `label` (0-4), but sentiment is aggregated and
+returned as a **3-class scale** (`negative` / `neutral` / `positive`). The raw
+labels collapse into buckets:
 
-| label | meaning        |
-|-------|----------------|
-| 0     | Very Negative  |
-| 1     | Negative       |
-| 2     | Neutral        |
-| 3     | Positive       |
-| 4     | Very Positive  |
+| raw label(s)              | bucket     |
+|---------------------------|------------|
+| 0 (Very Negative), 1      | `negative` |
+| 2                         | `neutral`  |
+| 3, 4 (Very Positive)      | `positive` |
+
+(The raw `label` 0-4 is still returned as-is by the non-aggregation endpoints
+above, e.g. `get_comments_by_post`.)
 
 The endpoints below aggregate this per entity/brand, per post, and across all
 entities (ranking). **Only labeled comments** (`label` not null) are counted.
 Each summary includes:
 
 - `total` - number of labeled comments in scope
-- `counts` / `percentages` - per-label breakdown (`label_0` … `label_4`)
-- `score` - single sentiment score in `[-1, 1]`: `(avg_label - 2) / 2`
-  (all Very Negative → -1, all Very Positive → +1, all Neutral → 0)
-- `positive_share` - percentage of comments labeled Positive or Very Positive (3 or 4)
+- `counts` / `percentages` - per-bucket breakdown (`negative` / `neutral` / `positive`)
+- `score` - single sentiment score in `[-1, 1]`: `(positive − negative) / total`
+  (all negative → -1, all positive → +1, all neutral → 0)
+- `positive_share` - percentage of comments in the `positive` bucket
 
 An empty scope returns `total: 0` with a **200** (not 404) so the frontend can render
 an "insufficient data" state.
@@ -343,7 +345,7 @@ is **all time** (no bounds).
 ## **GET /api/data/get_entity_comment_sentiment**
 
 Aggregated comment sentiment for one entity/brand, plus a daily trend series and
-highest-confidence example comments per label.
+highest-confidence example comments per bucket.
 
 ### Query Parameters
 
@@ -364,19 +366,19 @@ inclusive of the whole day).
   "data": {
     "entity_id": 42,
     "total": 320,
-    "counts": { "label_0": 20, "label_1": 40, "label_2": 60, "label_3": 120, "label_4": 80 },
-    "percentages": { "label_0": 6.3, "label_1": 12.5, "label_2": 18.8, "label_3": 37.5, "label_4": 25.0 },
-    "avg_confidence": { "label_0": 0.91, "label_1": 0.88, "label_2": 0.72, "label_3": 0.9, "label_4": 0.93 },
-    "score": 0.32,
+    "counts": { "negative": 60, "neutral": 60, "positive": 200 },
+    "percentages": { "negative": 18.8, "neutral": 18.8, "positive": 62.5 },
+    "avg_confidence": { "negative": 0.89, "neutral": 0.72, "positive": 0.91 },
+    "score": 0.44,
     "positive_share": 62.5,
     "trend": [
-      { "date": "2026-07-01", "label_0": 2, "label_1": 3, "label_2": 5, "label_3": 10, "label_4": 7, "total": 27 }
+      { "date": "2026-07-01", "negative": 5, "neutral": 5, "positive": 17, "total": 27 }
     ],
     "examples": {
-      "label_4": [
+      "positive": [
         { "id": 1, "text": "Absolutely love this!", "author_username": "user123", "confidence": 0.98, "likes_count": 12, "comment_timestamp": "2026-07-10T09:00:00" }
       ],
-      "label_0": []
+      "negative": []
     }
   }
 }
@@ -396,7 +398,7 @@ inclusive of the whole day).
 
 ## **GET /api/data/get_post_comment_sentiment**
 
-Aggregated comment sentiment for a single post, plus example comments per label.
+Aggregated comment sentiment for a single post, plus example comments per bucket.
 
 ### Query Parameters
 
@@ -411,12 +413,12 @@ Aggregated comment sentiment for a single post, plus example comments per label.
   "success": true,
   "data": {
     "total": 48,
-    "counts": { "label_0": 2, "label_1": 6, "label_2": 10, "label_3": 20, "label_4": 10 },
-    "percentages": { "label_0": 4.2, "label_1": 12.5, "label_2": 20.8, "label_3": 41.7, "label_4": 20.8 },
-    "avg_confidence": { "label_0": 0.9, "label_1": 0.85, "label_2": 0.7, "label_3": 0.92, "label_4": 0.95 },
-    "score": 0.31,
+    "counts": { "negative": 8, "neutral": 10, "positive": 30 },
+    "percentages": { "negative": 16.7, "neutral": 20.8, "positive": 62.5 },
+    "avg_confidence": { "negative": 0.87, "neutral": 0.7, "positive": 0.93 },
+    "score": 0.46,
     "positive_share": 62.5,
-    "examples": { "label_3": [], "label_4": [] }
+    "examples": { "positive": [], "negative": [] }
   }
 }
 ```
@@ -458,10 +460,10 @@ premium/admin users get the full list for any window.
       "entity_name": "Acme",
       "type": "company",
       "total": 320,
-      "counts": { "label_0": 20, "label_1": 40, "label_2": 60, "label_3": 120, "label_4": 80 },
-      "percentages": { "label_0": 6.3, "label_1": 12.5, "label_2": 18.8, "label_3": 37.5, "label_4": 25.0 },
-      "score": 0.32,
-      "ranking_score": 0.3012,
+      "counts": { "negative": 60, "neutral": 60, "positive": 200 },
+      "percentages": { "negative": 18.8, "neutral": 18.8, "positive": 62.5 },
+      "score": 0.44,
+      "ranking_score": 0.4141,
       "positive_share": 62.5,
       "rank": 1
     }

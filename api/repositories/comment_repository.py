@@ -419,11 +419,12 @@ class CommentRepository:
 
     @staticmethod
     def get_example_comments_by_entity(
-        entity_id: int, label: int, limit: int = 5, start_date=None, end_date=None
+        entity_id: int, labels: list[int], limit: int = 5, start_date=None, end_date=None
     ) -> list[Comment]:
         """
-        Highest-confidence example comments with a given label for one entity,
-        within the same [start_date, end_date] window as the aggregates.
+        Highest-confidence example comments whose label is in `labels` (a
+        sentiment bucket) for one entity, within the same [start_date, end_date]
+        window as the aggregates.
 
         Returns:
             list[Comment]: up to `limit` comments, most confident first
@@ -431,7 +432,7 @@ class CommentRepository:
         q = (
             db.session.query(Comment)
             .join(Page, cast(Page.uuid, String) == cast(Comment.page_id, String))
-            .filter(Page.entity_id == entity_id, Comment.label == label)
+            .filter(Page.entity_id == entity_id, Comment.label.in_(labels))
         )
         q = _apply_comment_window(q, start_date, end_date)
         return q.order_by(nullslast(Comment.confidence.desc())).limit(limit).all()
@@ -465,10 +466,11 @@ class CommentRepository:
 
     @staticmethod
     def get_example_comments_by_post(
-        page_id: str, platform: str, post_id: str, label: int, limit: int = 5
+        page_id: str, platform: str, post_id: str, labels: list[int], limit: int = 5
     ) -> list[Comment]:
         """
-        Highest-confidence example comments with a given label for one post.
+        Highest-confidence example comments whose label is in `labels` (a
+        sentiment bucket) for one post.
 
         Returns:
             list[Comment]: up to `limit` comments, most confident first
@@ -478,7 +480,7 @@ class CommentRepository:
                 Comment.page_id == page_id,
                 Comment.platform == platform,
                 Comment.post_id == post_id,
-                Comment.label == label,
+                Comment.label.in_(labels),
             )
             .order_by(nullslast(Comment.confidence.desc()))
             .limit(limit)
