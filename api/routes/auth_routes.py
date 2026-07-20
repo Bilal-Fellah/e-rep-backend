@@ -21,7 +21,13 @@ from api.routes.main import (
     success_response,
 )
 from api.services.auth_service import AuthService
-from api.utils.auth import ENTITIES_FILE, MAILS_FILE, _extract_token, validate_email
+from api.utils.auth import (
+    ENTITIES_FILE,
+    MAILS_FILE,
+    _extract_token,
+    append_json_list,
+    validate_email,
+)
 from api.utils.permissions import require_role
 from api.utils.rate_limit import client_ip, record_failure, too_many_failures
 from api.utils.validators import (
@@ -65,12 +71,9 @@ def register_mail():
             "status": init_status,
             "registered_at": datetime.now(timezone.utc).isoformat(),
         }
-        with open(MAILS_FILE, "r+") as f:
-            mails = json.load(f)
-
-            mails.append(email_object)
-            f.seek(0)
-            json.dump(mails, f, indent=4)
+        # Create-if-missing: the backing file is gitignored, so a fresh
+        # deployment won't have it (r+ would raise FileNotFoundError).
+        append_json_list(MAILS_FILE, email_object)
 
         return success_response(
             data={"message": f"Email {email} registered for temporary access"}
@@ -163,12 +166,8 @@ def register_entity_name():
             "registered_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        with open(ENTITIES_FILE, "r+") as f:
-            entities = json.load(f)
-
-            entities.append(entity_object)
-            f.seek(0)
-            json.dump(entities, f, indent=4)
+        # Create-if-missing (see register_mail): gitignored backing file.
+        append_json_list(ENTITIES_FILE, entity_object)
 
         return success_response(
             data={"message": f"Entity {entity_name} registered for temporary access"}

@@ -95,6 +95,9 @@ ROLE_PERMISSIONS = {
     # Entity admin extras (in the data blueprint)
     "data.update_entity": [UserRole.ADMIN.value],
     "data.set_entity_scrape": [UserRole.ADMIN.value],
+    "data.add_category": [UserRole.ADMIN.value],
+    "data.delete_category": [UserRole.ADMIN.value],
+    "data.update_category": [UserRole.ADMIN.value],
 }
 
 # ============================================================================

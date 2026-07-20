@@ -158,6 +158,11 @@ def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
 def test_data_add_category_and_get_all_categories_include_french_name(
     client, monkeypatch
 ):
+    # add_category is admin-gated; get_all_categories stays public.
+    monkeypatch.setattr(
+        "api.utils.permissions.extract_and_validate_token",
+        lambda: ({"user_id": 1, "role": "admin"}, None),
+    )
     created_category = SimpleNamespace(
         id=9,
         name="technology",
