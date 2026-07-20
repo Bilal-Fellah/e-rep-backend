@@ -33,7 +33,9 @@ if not ALLOWED_RETURN_URLS:
         FRONTEND_REDIRECT_URL,
         "https://www.brendex.net",
         "https://brendex.net",
+        "https://admin.brendex.net",
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://localhost:5000",
     }
 
