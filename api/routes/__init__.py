@@ -9,6 +9,7 @@ from .auth_routes import auth_bp
 from .google_auth import oauth_bp
 from .public_routes import public_bp
 from .scraping_routes import scraping_bp
+from .admin_routes import admin_bp
 
 try:
     from .testing import testing_bp
@@ -26,6 +27,7 @@ def register_routes(app):
     app.register_blueprint(oauth_bp, url_prefix="/api/oauth")
     app.register_blueprint(public_bp, url_prefix="/api/public")
     app.register_blueprint(scraping_bp, url_prefix="/api/scraping")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
     # The /api/testing routes are unauthenticated and mutate the DB (rewrite
     # entity categories, page URLs); never mount them in production.
     env = os.getenv("FLASK_ENV", "development").lower()

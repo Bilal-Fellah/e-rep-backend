@@ -23,6 +23,7 @@ from api.routes.main import (
 from api.services.auth_service import AuthService
 from api.utils.auth import ENTITIES_FILE, MAILS_FILE, _extract_token, validate_email
 from api.utils.permissions import require_role
+from api.utils.rate_limit import client_ip, record_failure, too_many_failures
 from api.utils.validators import (
     ALLOWED_PROFESSIONS,
     ALLOWED_ROLES,
@@ -260,9 +261,41 @@ def register_entity():
         return error_response("Entity registration failed unexpectedly", 500)
 
 
+# Per-IP login throttle to blunt password brute-forcing. Generous enough not to
+# trip up a user fumbling their password. Only FAILED attempts are counted, so a
+# successful login (or a malformed request) never consumes a shared IP's budget.
+LOGIN_MAX_FAILURES = 10
+LOGIN_WINDOW_SECONDS = 60
+
+
 @auth_bp.route("/login", methods=["POST"])
 def login():
     try:
+        # Resolve the throttle key and check the failure count. Fail OPEN: any
+        # limiter error must not lock a legitimate user out.
+        rl_key = None
+        try:
+            rl_key = f"login:{client_ip()}"
+            limited, retry_after = too_many_failures(rl_key, LOGIN_MAX_FAILURES)
+        except Exception:
+            limited, retry_after = False, 0
+        if limited:
+            response = make_response(
+                error_response(
+                    "Too many failed login attempts. Please try again later.", 429
+                )
+            )
+            response.headers["Retry-After"] = str(retry_after)
+            return response
+
+        def _record_failed_login():
+            if not rl_key:
+                return
+            try:
+                record_failure(rl_key, LOGIN_WINDOW_SECONDS)
+            except Exception:
+                pass  # best-effort; never fail the request over accounting
+
         data = request.json
         missing = validate_required_keys(data, ["email", "password"])
         if missing:
@@ -274,10 +307,12 @@ def login():
         # Reject blank passwords outright: OAuth-only accounts have no usable
         # password, and validate_required_keys treats "" as present.
         if not data.get("password"):
+            _record_failed_login()
             return error_response("Invalid credentials", status_code=401)
 
         user = UserRepository.find_by_email(data["email"].strip().lower())
         if not user or not user.check_password(data["password"]):
+            _record_failed_login()
             return error_response("Invalid credentials", status_code=401)
 
         tokens = AuthService.issue_token_pair(user)

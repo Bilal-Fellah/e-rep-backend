@@ -36,12 +36,15 @@ class EntityCategoryRepository:
         return False
     
     @staticmethod
-    def delete_by_entity(entity_id: int):
+    def delete_by_entity(entity_id: int, commit: bool = True):
         relation = EntityCategory.query.filter_by(
             entity_id=entity_id
         ).first()
         if relation:
             db.session.delete(relation)
-            db.session.commit()
+            if commit:
+                db.session.commit()
+            else:
+                db.session.flush()
             return True
         return False

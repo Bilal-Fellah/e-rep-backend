@@ -123,6 +123,16 @@ class ScrapingSessionRepository:
                 .all())
     
     @staticmethod
+    def get_recent_failed(since: datetime, limit: int = 20) -> list[ScrapingSession]:
+        """Failed sessions created at/after `since`, newest first (for alerts)."""
+        return (ScrapingSession.query
+                .filter(ScrapingSession.status == "failed")
+                .filter(ScrapingSession.created_at >= since)
+                .order_by(ScrapingSession.created_at.desc())
+                .limit(limit)
+                .all())
+
+    @staticmethod
     def get_by_date(target_date: date, platform: str = None) -> list[ScrapingSession]:
         """
         Get all sessions for a specific date.

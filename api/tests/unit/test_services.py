@@ -758,8 +758,12 @@ def test_entity_service_compare_entities_comments_default_window_and_mapping(mon
 
 
 def test_entity_service_delegates_and_timeline_youtube_branch(monkeypatch):
-    monkeypatch.setattr("api.services.entity_service.EntityRepository.create", lambda name, type_: SimpleNamespace(id=5, name=name, type=type_))
-    monkeypatch.setattr("api.services.entity_service.EntityCategoryRepository.add", lambda entity_id, category_id: {"entity_id": entity_id, "category_id": category_id})
+    # create_entity now runs inside a transaction (commit=False on the repos,
+    # then a single db.session.commit()), so the mocks accept commit and the
+    # session is stubbed.
+    monkeypatch.setattr("api.services.entity_service.db", SimpleNamespace(session=SimpleNamespace(commit=lambda: None, rollback=lambda: None)))
+    monkeypatch.setattr("api.services.entity_service.EntityRepository.create", lambda name, type_, commit=True: SimpleNamespace(id=5, name=name, type=type_))
+    monkeypatch.setattr("api.services.entity_service.EntityCategoryRepository.add", lambda entity_id, category_id, commit=True: {"entity_id": entity_id, "category_id": category_id})
     monkeypatch.setattr("api.services.entity_service.EntityRepository.get_all", lambda: ["e1"])
     monkeypatch.setattr("api.services.entity_service.EntityRepository.get_who_has_history", lambda: ["e-history"])
     monkeypatch.setattr("api.services.entity_service.EntityCategoryRepository.delete_by_entity", lambda entity_id: None)

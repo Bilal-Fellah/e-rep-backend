@@ -76,6 +76,7 @@ def create_app():
         "https://www.app.brendex.net",
         "https://brendex.net",
         "https://app.brendex.net",
+        "https://admin.brendex.net",
     ]
 
     CORS(app,

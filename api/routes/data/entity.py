@@ -9,21 +9,40 @@ from . import data_bp
 
 SECRET = os.environ.get("SECRET_KEY")
 
+ALLOWED_ENTITY_TYPES = ("company", "influencer", "small-business")
+
 @data_bp.route("/add_entity", methods=["POST"])
 @require_role("admin")
 def add_entity():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         name = data.get("name", "").strip().lower()
         entity_type = data.get("type", "").strip().lower()
         category_id = data.get("category_id")
+        pages = data.get("pages")
 
         if not name or not entity_type or not category_id:
             return error_response("Missing required fields: 'name', 'type', or 'category_id'.", status_code=400)
 
-        entity, entity_category = EntityService.create_entity(name, entity_type, category_id)
+        if entity_type not in ALLOWED_ENTITY_TYPES:
+            return error_response(
+                f"type must be one of {list(ALLOWED_ENTITY_TYPES)}.", status_code=400
+            )
 
-        return success_response({
+        if pages is not None and not isinstance(pages, list):
+            return error_response("'pages' must be a list.", status_code=400)
+
+        pages_response = None
+        if pages:
+            # Entity + category + pages are created atomically so a failure
+            # can't orphan a half-created entity (see create_entity_with_pages).
+            entity, entity_category, pages_response = EntityService.create_entity_with_pages(
+                name, entity_type, category_id, pages
+            )
+        else:
+            entity, entity_category = EntityService.create_entity(name, entity_type, category_id)
+
+        response = {
             "entity": {
                 "id": entity.id,
                 "name": entity.name,
@@ -32,10 +51,20 @@ def add_entity():
             "entity_category": {
                 "entity_id": entity_category.entity_id,
                 "category_id": entity_category.category_id,
-            }
-        }, status_code=201)
+            },
+        }
+        if pages_response is not None:
+            response["pages"] = pages_response
 
-    except (TypeError, KeyError, ValueError):
+        return success_response(response, status_code=201)
+
+    # Page/field validation raises ValueError with a specific, safe message
+    # (e.g. "Invalid page platform ...") — surface it instead of a generic 400.
+    # IntegrityError (duplicate name / taken page link / bad category) is handled
+    # centrally by the blueprint handler as a 409.
+    except ValueError as e:
+        return error_response(str(e), status_code=400)
+    except (TypeError, KeyError):
         return error_response("Invalid request data", status_code=400)
 
 @data_bp.route("/get_all_entities", methods=["GET"])
@@ -47,7 +76,7 @@ def get_all_entities():
             return error_response("No entities found.", status_code=404)
 
         data = [
-            {"id": e.id, "name": e.name, "type": e.type}
+            {"id": e.id, "name": e.name, "type": e.type, "to_scrape": e.to_scrape}
             for e in entities
         ]
         return success_response(data, 200)
@@ -85,6 +114,78 @@ def delete_entity():
             return error_response(f"No entity found with id {entity_id} or already deleted.", status_code=404)
 
         return success_response({"deleted_id": entity_id}, 200)
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
+
+@data_bp.route("/update_entity", methods=["POST"])
+@require_role("admin")
+def update_entity():
+    try:
+        data = request.get_json() or {}
+        entity_id = data.get("id")
+        if not entity_id:
+            return error_response("Missing required field: 'id'.", status_code=400)
+        try:
+            entity_id = int(entity_id)
+        except (TypeError, ValueError):
+            return error_response("'id' must be an integer.", status_code=400)
+
+        name = data.get("name")
+        if name is not None:
+            name = name.strip().lower()
+            if not name:
+                return error_response("'name' must be non-empty.", status_code=400)
+
+        entity_type = data.get("type")
+        if entity_type is not None:
+            entity_type = entity_type.strip().lower()
+            if entity_type not in ALLOWED_ENTITY_TYPES:
+                return error_response(
+                    f"type must be one of {list(ALLOWED_ENTITY_TYPES)}.", status_code=400
+                )
+
+        category_id = data.get("category_id")
+
+        entity = EntityService.update_entity(
+            entity_id, name=name, entity_type=entity_type, category_id=category_id
+        )
+        if not entity:
+            return error_response(f"No entity found with id {entity_id}.", status_code=404)
+
+        return success_response(
+            {"id": entity.id, "name": entity.name, "type": entity.type}, 200
+        )
+
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", status_code=400)
+
+@data_bp.route("/set_entity_scrape", methods=["POST"])
+@require_role("admin")
+def set_entity_scrape():
+    """Enable or disable scraping/tracking for an entity ("brand activation")."""
+    try:
+        data = request.get_json() or {}
+        entity_id = data.get("id")
+        to_scrape = data.get("to_scrape")
+        if not entity_id or to_scrape is None:
+            return error_response(
+                "Missing required fields: 'id' and 'to_scrape'.", status_code=400
+            )
+        try:
+            entity_id = int(entity_id)
+        except (TypeError, ValueError):
+            return error_response("'id' must be an integer.", status_code=400)
+        if not isinstance(to_scrape, bool):
+            return error_response("'to_scrape' must be a boolean.", status_code=400)
+
+        entity = EntityService.set_entity_scrape(entity_id, to_scrape)
+        if not entity:
+            return error_response(f"No entity found with id {entity_id}.", status_code=404)
+
+        return success_response(
+            {"id": entity.id, "to_scrape": entity.to_scrape}, 200
+        )
 
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", status_code=400)

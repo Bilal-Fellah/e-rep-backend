@@ -139,7 +139,7 @@ def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
     response = client.post("/api/data/add_entity", json={"name": "x"})
     assert response.status_code == 400
 
-    entity = SimpleNamespace(id=1, name="acme", type="brand")
+    entity = SimpleNamespace(id=1, name="acme", type="company")
     entity_category = SimpleNamespace(entity_id=1, category_id=2)
     monkeypatch.setattr(
         "api.routes.data.entity.EntityService.create_entity",
@@ -147,7 +147,7 @@ def test_data_add_entity_missing_fields_and_success(client, monkeypatch):
     )
     response = client.post(
         "/api/data/add_entity",
-        json={"name": " Acme ", "type": "Brand", "category_id": 2},
+        json={"name": " Acme ", "type": "Company", "category_id": 2},
     )
     assert response.status_code == 201
     payload = response.get_json()["data"]

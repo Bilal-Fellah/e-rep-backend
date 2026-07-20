@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from flask import current_app, has_app_context, has_request_context, jsonify, request
 import jwt
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.exceptions import BadRequest, HTTPException
 
 
@@ -154,7 +154,9 @@ def log_route_error(error, severity, status_code, public_message):
         logger.critical(serialized)
 
 
-def register_blueprint_error_handlers(blueprint, include_token_errors=False):
+def register_blueprint_error_handlers(
+    blueprint, include_token_errors=False, include_integrity_handler=False
+):
     if include_token_errors:
         @blueprint.errorhandler(jwt.ExpiredSignatureError)
         def handle_expired_signature(error):
@@ -177,6 +179,23 @@ def register_blueprint_error_handlers(blueprint, include_token_errors=False):
     def handle_invalid_data(error):
         log_route_error(error, SEVERITY_LOW, 400, "Invalid request data")
         return error_response("Invalid request data", 400)
+
+    if include_integrity_handler:
+        # Opt-in per blueprint (admin-facing data/admin routes) so the widely-used
+        # auth/oauth/scraping/public paths keep their existing 500-on-IntegrityError
+        # behavior and this change can't alter contracts other clients depend on.
+        @blueprint.errorhandler(IntegrityError)
+        def handle_integrity_error(error):
+            # Uniqueness/FK/CHECK violations are client-data conflicts, not server
+            # faults — surface a 409 instead of a generic 500. Registered alongside
+            # the SQLAlchemyError handler; Flask dispatches IntegrityError here
+            # since it's the more specific class.
+            log_route_error(error, SEVERITY_MEDIUM, 409, "Integrity constraint violated")
+            return error_response(
+                "This request violates a data constraint "
+                "(e.g. a duplicate value, an invalid reference, or a disallowed value).",
+                409,
+            )
 
     @blueprint.errorhandler(SQLAlchemyError)
     def handle_database_error(error):

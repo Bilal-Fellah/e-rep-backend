@@ -82,6 +82,19 @@ ROLE_PERMISSIONS = {
     "scraping.get_scraping_summary": [UserRole.ADMIN.value],
     "scraping.get_scraping_sessions": [UserRole.ADMIN.value],
     "scraping.get_today_posts_status": [UserRole.ADMIN.value],
+
+    # ADMIN DASHBOARD ENDPOINTS (admin only) — Brendex Admin standalone app
+    "admin.ping": [UserRole.ADMIN.value],
+    "admin.list_users": [UserRole.ADMIN.value],
+    "admin.set_user_role": [UserRole.ADMIN.value],
+    "admin.activate_user": [UserRole.ADMIN.value],
+    "admin.delete_user": [UserRole.ADMIN.value],
+    "admin.get_logs": [UserRole.ADMIN.value],
+    "admin.get_alerts": [UserRole.ADMIN.value],
+
+    # Entity admin extras (in the data blueprint)
+    "data.update_entity": [UserRole.ADMIN.value],
+    "data.set_entity_scrape": [UserRole.ADMIN.value],
 }
 
 # ============================================================================

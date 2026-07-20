@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
+from api import db
 from api.repositories.entity_category_repository import EntityCategoryRepository
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.page_history_repository import PageHistoryRepository
@@ -73,9 +74,37 @@ class EntityService:
 
     @staticmethod
     def create_entity(name, entity_type, category_id):
-        entity = EntityRepository.create(name=name, type_=entity_type)
-        entity_category = EntityCategoryRepository.add(entity_id=entity.id, category_id=category_id)
+        # Delegates to the atomic create-with-pages path (no pages) so the
+        # transaction boilerplate lives in one place.
+        entity, entity_category, _ = EntityService.create_entity_with_pages(
+            name, entity_type, category_id, pages=None
+        )
         return entity, entity_category
+
+    @staticmethod
+    def create_entity_with_pages(name, entity_type, category_id, pages=None):
+        """Create an entity, its category mapping, and its pages in a single
+        transaction. If any step fails, nothing is persisted — so a failed
+        create leaves no orphaned entity behind and can be retried safely
+        (no unique-name collision). Returns (entity, entity_category, pages)."""
+        from api.services.auth_service import AuthService
+
+        try:
+            entity = EntityRepository.create(
+                name=name, type_=entity_type, commit=False
+            )
+            entity_category = EntityCategoryRepository.add(
+                entity_id=entity.id, category_id=category_id, commit=False
+            )
+            pages_response = AuthService.create_entity_pages(
+                entity, pages or [], commit=False
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+        return entity, entity_category, pages_response
 
     @staticmethod
     def get_all_entities():
@@ -89,6 +118,48 @@ class EntityService:
     def delete_entity(entity_id):
         EntityCategoryRepository.delete_by_entity(entity_id)
         return EntityRepository.delete(entity_id)
+
+    @staticmethod
+    def update_entity(entity_id, name=None, entity_type=None, category_id=None):
+        """Update an entity's editable fields. When category_id is provided the
+        single entity<->category mapping is replaced. The field update and the
+        category swap are committed together so a failure can't leave the entity
+        renamed with its category mapping deleted. Returns the updated Entity, or
+        None if the entity does not exist."""
+        entity = EntityRepository.get_by_id(entity_id)
+        if not entity:
+            return None
+
+        fields = {}
+        if name is not None:
+            fields["name"] = name
+        if entity_type is not None:
+            fields["type"] = entity_type
+
+        try:
+            if fields:
+                EntityRepository.update(entity_id, commit=False, **fields)
+
+            if category_id is not None:
+                # This app maps each entity to a single category; swap it
+                # wholesale within the same transaction as the field update.
+                EntityCategoryRepository.delete_by_entity(entity_id, commit=False)
+                EntityCategoryRepository.add(
+                    entity_id=entity_id, category_id=category_id, commit=False
+                )
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+        return entity
+
+    @staticmethod
+    def set_entity_scrape(entity_id, to_scrape):
+        """Enable/disable scraping+tracking for an entity ("brand activation").
+        Returns the updated Entity, or None if not found."""
+        return EntityRepository.change_to_scrape(entity_id, bool(to_scrape))
 
     @staticmethod
     def get_entity_profile_card(entity_id):

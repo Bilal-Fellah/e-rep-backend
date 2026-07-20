@@ -3,7 +3,7 @@ from api.repositories.page_history_repository import PageHistoryRepository
 from api.repositories.page_repository import PageRepository
 from api.utils.data_keys import platform_metrics
 from api.utils.logging_utils import instrument_service_class
-from api.utils.page_uuid import create_page_uuid, normalize_page_link
+from api.utils.page_uuid import create_page_uuid, normalize_page_link, page_platform_error
 from api.utils.posts_utils import ensure_datetime
 from api.utils.request_parsing import parse_iso_date
 
@@ -40,6 +40,12 @@ class PageService:
 
         if not platform or not link or not entity_id:
             return None, "Missing required fields: 'platform', 'link', or 'entity_id'."
+
+        # Validate the platform up front (shared rule) so an invalid value gets a
+        # clear 400 rather than hitting the DB CHECK constraint.
+        platform_error = page_platform_error(platform)
+        if platform_error:
+            return None, platform_error
 
         new_uuid = create_page_uuid(link)
         name = data.get("name")

@@ -6,11 +6,10 @@ from api.models.user_model import User
 from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
 from api.utils.logging_utils import instrument_service_class
-from api.utils.page_uuid import create_page_uuid, normalize_page_link
+from api.utils.page_uuid import create_page_uuid, normalize_page_link, page_platform_error
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
-ALLOWED_PAGE_PLATFORMS = {"facebook", "instagram", "x", "tiktok", "linkedin", "youtube"}
 
 
 @instrument_service_class
@@ -105,10 +104,9 @@ class AuthService:
                     raise ValueError("Invalid page data, platform and link must be non-empty")
 
                 normalized_platform = platform.lower()
-                if normalized_platform not in ALLOWED_PAGE_PLATFORMS:
-                    raise ValueError(
-                        f"Invalid page platform '{platform}'. Allowed platforms are: {sorted(ALLOWED_PAGE_PLATFORMS)}"
-                    )
+                platform_error = page_platform_error(normalized_platform)
+                if platform_error:
+                    raise ValueError(platform_error)
 
                 page_uuid = AuthService.create_page_uuid(link)
                 created_page = PageRepository.create(

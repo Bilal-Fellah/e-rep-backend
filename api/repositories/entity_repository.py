@@ -52,13 +52,16 @@ class EntityRepository:
         return entity
 
     @staticmethod
-    def update(entity_id: int, **kwargs) -> Entity | None:
+    def update(entity_id: int, commit: bool = True, **kwargs) -> Entity | None:
         entity = Entity.query.get(entity_id)
         if not entity:
             return None
         for key, value in kwargs.items():
             setattr(entity, key, value)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return entity
 
     @staticmethod
@@ -69,6 +72,28 @@ class EntityRepository:
         db.session.delete(entity)
         db.session.commit()
         return True
+
+    @staticmethod
+    def _active_without_pages_query():
+        """Entities flagged for scraping (to_scrape=True) that have no pages —
+        they can never actually be scraped, so they surface as a data anomaly."""
+        return (
+            Entity.query
+            .outerjoin(Page, Page.entity_id == Entity.id)
+            .filter(Entity.to_scrape.is_(True))
+            .filter(Page.uuid.is_(None))
+        )
+
+    @staticmethod
+    def get_active_without_pages(limit: int | None = None) -> list[Entity]:
+        query = EntityRepository._active_without_pages_query()
+        if limit is not None:
+            query = query.limit(limit)
+        return query.all()
+
+    @staticmethod
+    def count_active_without_pages() -> int:
+        return EntityRepository._active_without_pages_query().count()
 
     @staticmethod
     def get_entity_posts_metrics(entity_id: int, date_limit: str=None):

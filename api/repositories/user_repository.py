@@ -1,6 +1,7 @@
 # Data-access methods for user repository.
 # repositories/user_repo.py
 from datetime import datetime
+from sqlalchemy import or_
 from api.models.user_model import User
 from api import db
 from api.utils.logging_utils import instrument_repository_class
@@ -8,6 +9,60 @@ from api.utils.logging_utils import instrument_repository_class
 
 @instrument_repository_class
 class UserRepository:
+    @staticmethod
+    def _search_query(search: str | None):
+        query = User.query
+        term = (search or "").strip().lower()
+        if term:
+            like = f"%{term}%"
+            query = query.filter(
+                or_(
+                    db.func.lower(User.email).like(like),
+                    db.func.lower(User.first_name).like(like),
+                    db.func.lower(User.last_name).like(like),
+                )
+            )
+        return query
+
+    @staticmethod
+    def list_users(
+        search: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[User]:
+        return (
+            UserRepository._search_query(search)
+            .order_by(User.created_at.desc().nullslast(), User.id.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    @staticmethod
+    def count_users(search: str | None = None) -> int:
+        return UserRepository._search_query(search).count()
+
+    @staticmethod
+    def count_unverified() -> int:
+        # is_verified is nullable; treat NULL as "not activated" too.
+        return User.query.filter(User.is_verified.isnot(True)).count()
+
+    @staticmethod
+    def list_unverified(limit: int = 10) -> list[User]:
+        return (
+            User.query.filter(User.is_verified.isnot(True))
+            .order_by(User.created_at.desc().nullslast(), User.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+    @staticmethod
+    def delete(user_id: int) -> bool:
+        user = db.session.get(User, user_id)
+        if not user:
+            return False
+        db.session.delete(user)
+        db.session.commit()
+        return True
+
     @staticmethod
     def get_by_id(user_id: int) -> User | None:
         return User.query.get(user_id)
