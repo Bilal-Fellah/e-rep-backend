@@ -1,15 +1,21 @@
 # Business workflows for the admin dashboard: log reading + alert aggregation.
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
+
+from api import db
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.log_repository import LogRepository
 from api.repositories.page_repository import PageRepository
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.repositories.user_repository import UserRepository
+from api.utils.datetime_utils import iso_utc
 from api.utils.logging_utils import instrument_service_class
 
 # How far back "recent" looks for scraping-failure alerts.
 FAILURE_WINDOW_DAYS = 7
+# A scrape is "stale" if the last successful session is older than this.
+SCRAPE_STALE_HOURS = 26
 
 
 @instrument_service_class
@@ -25,6 +31,57 @@ class AdminService:
             limit=limit,
             offset=offset,
         )
+
+    @staticmethod
+    def get_health():
+        """System health snapshot: DB reachability, scrape freshness, and the
+        recent high-severity error count. Read-only and best-effort."""
+        try:
+            db.session.execute(text("SELECT 1"))
+            db_ok = True
+        except Exception:
+            db.session.rollback()
+            db_ok = False
+
+        # The log-error count doesn't touch the DB, so report it either way.
+        # A health check must degrade to null, never 500 on a sub-check failure.
+        try:
+            error_count, _ = LogRepository.recent_high_severity(limit=1)
+        except Exception:
+            error_count = None
+
+        # If the DB is down, skip the session queries — they'd raise against the
+        # same dead connection and turn this health check into a 500.
+        scraping = {
+            "last_session_at": None,
+            "last_session_status": None,
+            "last_success_at": None,
+            "stale": True,
+        }
+        if db_ok:
+            try:
+                latest = ScrapingSessionRepository.get_latest()
+                latest_completed = ScrapingSessionRepository.get_latest_completed()
+                last_success = (
+                    latest_completed.completed_at if latest_completed else None
+                )
+                # completed_at is stored naive UTC — compare against naive UTC.
+                threshold = datetime.utcnow() - timedelta(hours=SCRAPE_STALE_HOURS)
+                scraping = {
+                    "last_session_at": iso_utc(latest.created_at) if latest else None,
+                    "last_session_status": latest.status if latest else None,
+                    "last_success_at": iso_utc(last_success),
+                    "stale": last_success is None or last_success < threshold,
+                }
+            except Exception:
+                db.session.rollback()  # leave scraping at its unknown defaults
+
+        return {
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "db_ok": db_ok,
+            "scraping": scraping,
+            "errors": {"high_severity": error_count},
+        }
 
     @staticmethod
     def get_overview():
@@ -73,7 +130,7 @@ class AdminService:
             "items": [
                 {
                     "session_id": s.session_id,
-                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                    "created_at": iso_utc(s.created_at),
                     "error": s.error_message,
                 }
                 for s in failed
@@ -93,7 +150,7 @@ class AdminService:
                     "user_id": u.id,
                     "email": u.email,
                     "name": f"{u.first_name} {u.last_name}".strip(),
-                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                    "created_at": iso_utc(u.created_at),
                 }
                 for u in unverified
             ],

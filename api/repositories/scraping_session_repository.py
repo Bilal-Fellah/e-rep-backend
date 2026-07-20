@@ -123,6 +123,23 @@ class ScrapingSessionRepository:
                 .all())
     
     @staticmethod
+    def get_latest() -> ScrapingSession | None:
+        """Most recent session by creation time (for the health check)."""
+        return ScrapingSession.query.order_by(
+            ScrapingSession.created_at.desc()
+        ).first()
+
+    @staticmethod
+    def get_latest_completed() -> ScrapingSession | None:
+        """Most recent successfully completed session (scrape-freshness check)."""
+        return (
+            ScrapingSession.query
+            .filter(ScrapingSession.status == "completed")
+            .order_by(ScrapingSession.completed_at.desc().nullslast())
+            .first()
+        )
+
+    @staticmethod
     def get_recent_failed(since: datetime, limit: int = 20) -> list[ScrapingSession]:
         """Failed sessions created at/after `since`, newest first (for alerts)."""
         return (ScrapingSession.query

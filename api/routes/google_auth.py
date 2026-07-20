@@ -7,6 +7,7 @@ import os
 from api.repositories.user_repository import UserRepository
 import secrets
 from api.routes.main import error_response, success_response, register_blueprint_error_handlers
+from api.utils.datetime_utils import iso_utc
 from api.utils.login_codes_utils import store_login_code, consume_login_code
 
 
@@ -204,7 +205,7 @@ def finalize_google_login():
                 "role": user.role,
                 "is_verified": bool(getattr(user, "is_verified", False)),
                 "profession": user.profession,
-                "created_at": user.created_at.isoformat()
+                "created_at": iso_utc(user.created_at)
             }
     }
 

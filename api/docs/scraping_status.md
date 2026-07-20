@@ -98,8 +98,8 @@ Get detailed list of all scraping sessions for a specific date.
   "data": [
     {
       "session_id": "abc-123-def",
-      "created_at": "2026-07-12T10:30:00",
-      "completed_at": "2026-07-12T10:32:15",
+      "created_at": "2026-07-12T10:30:00+00:00",
+      "completed_at": "2026-07-12T10:32:15+00:00",
       "posts_fetched": 50,
       "comments_inserted": 423,
       "status": "completed",
@@ -108,7 +108,7 @@ Get detailed list of all scraping sessions for a specific date.
     },
     {
       "session_id": "xyz-456-uvw",
-      "created_at": "2026-07-12T11:00:00",
+      "created_at": "2026-07-12T11:00:00+00:00",
       "completed_at": null,
       "posts_fetched": 30,
       "comments_inserted": 0,
@@ -117,7 +117,7 @@ Get detailed list of all scraping sessions for a specific date.
     },
     {
       "session_id": "err-789-rst",
-      "created_at": "2026-07-12T09:00:00",
+      "created_at": "2026-07-12T09:00:00+00:00",
       "completed_at": null,
       "posts_fetched": 25,
       "comments_inserted": 150,

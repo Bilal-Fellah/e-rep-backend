@@ -13,6 +13,7 @@ from api.routes.main import (
 )
 from api.repositories.user_repository import UserRepository
 from api.services.admin_service import AdminService
+from api.utils.datetime_utils import iso_utc
 from api.utils.permissions import require_role
 
 admin_bp = Blueprint("admin", __name__)
@@ -32,7 +33,7 @@ def _serialize_user(user):
         "profession": user.profession,
         "phone_number": user.phone_number,
         "is_verified": bool(getattr(user, "is_verified", False)),
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "created_at": iso_utc(user.created_at),
     }
 
 
@@ -60,18 +61,26 @@ def ping():
 @admin_bp.route("/users", methods=["GET"])
 @require_role("admin")
 def list_users():
-    """List users with optional search and pagination.
+    """List users with optional search, role filter, and pagination.
 
-    Query params: search (str), limit (int, default 50, max 200), offset (int).
+    Query params: search (str), role (registered|subscribed|admin),
+    limit (int, default 50, max 200), offset (int).
     """
     search = request.args.get("search")
+    role = request.args.get("role")
+    if role and role not in ALLOWED_USER_ROLES:
+        return error_response(
+            f"role must be one of {list(ALLOWED_USER_ROLES)}.", 400
+        )
     limit = request.args.get("limit", default=50, type=int)
     offset = request.args.get("offset", default=0, type=int)
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
 
-    users = UserRepository.list_users(search=search, limit=limit, offset=offset)
-    total = UserRepository.count_users(search=search)
+    users = UserRepository.list_users(
+        search=search, limit=limit, offset=offset, role=role
+    )
+    total = UserRepository.count_users(search=search, role=role)
 
     return success_response(
         {
@@ -182,6 +191,13 @@ def get_logs():
 def get_overview():
     """Aggregate counts for the dashboard landing (entities, pages, users)."""
     return success_response(AdminService.get_overview())
+
+
+@admin_bp.route("/health", methods=["GET"])
+@require_role("admin")
+def get_health():
+    """System health: DB reachability, scrape freshness, recent error count."""
+    return success_response(AdminService.get_health())
 
 
 @admin_bp.route("/alerts", methods=["GET"])

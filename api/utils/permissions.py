@@ -92,6 +92,7 @@ ROLE_PERMISSIONS = {
     "admin.get_logs": [UserRole.ADMIN.value],
     "admin.get_alerts": [UserRole.ADMIN.value],
     "admin.get_overview": [UserRole.ADMIN.value],
+    "admin.get_health": [UserRole.ADMIN.value],
 
     # Entity admin extras (in the data blueprint)
     "data.update_entity": [UserRole.ADMIN.value],

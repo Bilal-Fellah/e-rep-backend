@@ -10,7 +10,7 @@ from api.utils.logging_utils import instrument_repository_class
 @instrument_repository_class
 class UserRepository:
     @staticmethod
-    def _search_query(search: str | None):
+    def _search_query(search: str | None, role: str | None = None):
         query = User.query
         term = (search or "").strip().lower()
         if term:
@@ -22,14 +22,19 @@ class UserRepository:
                     db.func.lower(User.last_name).like(like),
                 )
             )
+        if role:
+            query = query.filter(User.role == role)
         return query
 
     @staticmethod
     def list_users(
-        search: str | None = None, limit: int = 50, offset: int = 0
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        role: str | None = None,
     ) -> list[User]:
         return (
-            UserRepository._search_query(search)
+            UserRepository._search_query(search, role)
             .order_by(User.created_at.desc().nullslast(), User.id.desc())
             .limit(limit)
             .offset(offset)
@@ -37,8 +42,8 @@ class UserRepository:
         )
 
     @staticmethod
-    def count_users(search: str | None = None) -> int:
-        return UserRepository._search_query(search).count()
+    def count_users(search: str | None = None, role: str | None = None) -> int:
+        return UserRepository._search_query(search, role).count()
 
     @staticmethod
     def count_unverified() -> int:

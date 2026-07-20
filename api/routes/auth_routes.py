@@ -28,6 +28,7 @@ from api.utils.auth import (
     append_json_list,
     validate_email,
 )
+from api.utils.datetime_utils import iso_utc
 from api.utils.permissions import require_role
 from api.utils.rate_limit import client_ip, record_failure, too_many_failures
 from api.utils.validators import (
@@ -351,7 +352,7 @@ def get_user_data():
                 "profession": user.profession,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "created_at": iso_utc(user.created_at),
             }
         )
     except (TypeError, KeyError, ValueError):

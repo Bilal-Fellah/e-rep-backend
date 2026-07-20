@@ -5,6 +5,7 @@ from api.repositories.post_repository import PostRepository
 from api.repositories.user_repository import UserRepository
 from flask import request
 from api.routes.main import error_response, success_response
+from api.utils.datetime_utils import iso_utc
 from . import data_bp
 
 
@@ -19,8 +20,8 @@ def _note_dict(n):
         "context_data": n.context_data,
         "visibility": n.visibility,
         "status": n.status,
-        "created_at": n.created_at.isoformat(),
-        "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+        "created_at": iso_utc(n.created_at),
+        "updated_at": iso_utc(n.updated_at),
     }
 
 

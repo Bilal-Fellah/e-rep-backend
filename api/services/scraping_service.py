@@ -4,6 +4,7 @@ from api.repositories.comment_repository import CommentRepository
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.repositories.post_repository import PostRepository
 from api.repositories.scraping_post_result_repository import ScrapingPostResultRepository
+from api.utils.datetime_utils import iso_utc
 from api.utils.logging_utils import instrument_service_class
 
 
@@ -294,8 +295,8 @@ class ScrapingService:
         
         return {
             "session_id": session.session_id,
-            "created_at": session.created_at.isoformat() if session.created_at else None,
-            "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+            "created_at": iso_utc(session.created_at),
+            "completed_at": iso_utc(session.completed_at),
             "posts_fetched": session.posts_fetched,
             "comments_inserted": session.comments_inserted,
             "status": session.status,
@@ -340,7 +341,7 @@ class ScrapingService:
         return {
             "session_id": updated.session_id,
             "status": updated.status,
-            "completed_at": updated.completed_at.isoformat() if updated.completed_at else None,
+            "completed_at": iso_utc(updated.completed_at),
             "posts_fetched": updated.posts_fetched,
             "comments_inserted": updated.comments_inserted
         }
@@ -404,8 +405,8 @@ class ScrapingService:
         for session in sessions:
             session_dict = {
                 "session_id": session.session_id,
-                "created_at": session.created_at.isoformat() if session.created_at else None,
-                "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+                "created_at": iso_utc(session.created_at),
+                "completed_at": iso_utc(session.completed_at),
                 "posts_fetched": session.posts_fetched,
                 "comments_inserted": session.comments_inserted,
                 "status": session.status,

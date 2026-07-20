@@ -26,6 +26,7 @@ List users with optional search and pagination.
 ### Query Parameters
 
 - `search` (optional) — matches email / first name / last name (case-insensitive)
+- `role` (optional) — filter by `registered` | `subscribed` | `admin`
 - `limit` (optional, default 50, max 200)
 - `offset` (optional, default 0)
 
@@ -95,6 +96,33 @@ Aggregate counts for the dashboard landing (computed in the DB).
   }
 }
 ```
+
+---
+
+## **GET /api/admin/health**
+
+System health snapshot — DB reachability, scrape freshness, and the recent
+high-severity error count. Read-only and best-effort.
+
+```json
+{
+  "success": true,
+  "data": {
+    "checked_at": "2026-07-20T10:00:00+00:00",
+    "db_ok": true,
+    "scraping": {
+      "last_session_at": "2026-07-20T04:00:00",
+      "last_session_status": "completed",
+      "last_success_at": "2026-07-20T04:00:00",
+      "stale": false
+    },
+    "errors": { "high_severity": 0 }
+  }
+}
+```
+
+`scraping.stale` is `true` when the last successful session is older than
+`SCRAPE_STALE_HOURS` (26h) or there is none.
 
 ---
 
