@@ -2,7 +2,7 @@
 from api import db
 from api.models import Page
 from api.utils.logging_utils import instrument_repository_class
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 @instrument_repository_class
@@ -24,6 +24,15 @@ class PageRepository:
         return db.session.scalars(
             select(Page).where(Page.platform == query_platform)
         ).all()
+
+    @staticmethod
+    def count_by_platform() -> dict[str, int]:
+        rows = (
+            db.session.query(Page.platform, func.count())
+            .group_by(Page.platform)
+            .all()
+        )
+        return {row[0]: row[1] for row in rows}
 
 
     @staticmethod

@@ -4,7 +4,7 @@ from api.models import Entity
 from api.models.page_history_model import PageHistory
 from api.models.page_model import Page
 from api.utils.logging_utils import instrument_repository_class
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 
 @instrument_repository_class
@@ -83,6 +83,19 @@ class EntityRepository:
             .filter(Entity.to_scrape.is_(True))
             .filter(Page.uuid.is_(None))
         )
+
+    @staticmethod
+    def count_by_type() -> dict[str, int]:
+        rows = (
+            db.session.query(Entity.type, func.count(Entity.id))
+            .group_by(Entity.type)
+            .all()
+        )
+        return {row[0]: row[1] for row in rows}
+
+    @staticmethod
+    def count_active() -> int:
+        return Entity.query.filter(Entity.to_scrape.is_(True)).count()
 
     @staticmethod
     def get_active_without_pages(limit: int | None = None) -> list[Entity]:

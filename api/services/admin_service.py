@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from api.repositories.entity_repository import EntityRepository
 from api.repositories.log_repository import LogRepository
+from api.repositories.page_repository import PageRepository
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.repositories.user_repository import UserRepository
 from api.utils.logging_utils import instrument_service_class
@@ -24,6 +25,30 @@ class AdminService:
             limit=limit,
             offset=offset,
         )
+
+    @staticmethod
+    def get_overview():
+        """Cheap aggregate counts for the dashboard landing — computed in the DB
+        so the client doesn't download full entity/page tables just to count."""
+        entities_by_type = EntityRepository.count_by_type()
+        pages_by_platform = PageRepository.count_by_platform()
+        return {
+            "entities": {
+                "total": sum(entities_by_type.values()),
+                "active": EntityRepository.count_active(),
+                "by_type": entities_by_type,
+            },
+            "pages": {
+                # platform is NOT NULL, so the grouped counts already sum to the
+                # total — no separate COUNT query needed.
+                "total": sum(pages_by_platform.values()),
+                "by_platform": pages_by_platform,
+            },
+            "users": {
+                "total": UserRepository.count_users(),
+                "unverified": UserRepository.count_unverified(),
+            },
+        }
 
     @staticmethod
     def get_alerts():

@@ -177,6 +177,13 @@ def get_logs():
     return success_response(result)
 
 
+@admin_bp.route("/overview", methods=["GET"])
+@require_role("admin")
+def get_overview():
+    """Aggregate counts for the dashboard landing (entities, pages, users)."""
+    return success_response(AdminService.get_overview())
+
+
 @admin_bp.route("/alerts", methods=["GET"])
 @require_role("admin")
 def get_alerts():
