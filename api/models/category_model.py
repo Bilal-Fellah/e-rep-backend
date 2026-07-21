@@ -2,6 +2,7 @@
 from api import db
 from sqlalchemy.orm import relationship
 
+
 class Category(db.Model):
     __tablename__ = "categories"
 
@@ -9,6 +10,8 @@ class Category(db.Model):
     name = db.Column(db.Text, unique=True, nullable=False)
     name_french = db.Column(db.Text, nullable=True)
     parent_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=True)
+    # Determines which entity type this category is for: "company" or "influencer"
+    applicable_to = db.Column(db.Text, default="company", nullable=True)
 
     # Self-referential relationship
     parent = relationship("Category", remote_side=[id], backref="subcategories")

@@ -19,12 +19,17 @@ class CategoryRepository:
         return Category.query.filter_by(is_active=True).all()
 
     @staticmethod
+    def get_all_active_by_type(applicable_to: str) -> list[Category]:
+        """Get all active categories filtered by entity type (company or influencer)."""
+        return Category.query.filter_by(is_active=True, applicable_to=applicable_to).all()
+
+    @staticmethod
     def get_all_root() -> list[Category]:
         return Category.query.filter(Category.parent_id.is_(None)).all()
 
     @staticmethod
-    def create(name: str, name_french: str | None = None, parent_id: int | None = None) -> Category:
-        category = Category(name=name, name_french=name_french, parent_id=parent_id)
+    def create(name: str, name_french: str | None = None, parent_id: int | None = None, applicable_to: str = "company") -> Category:
+        category = Category(name=name, name_french=name_french, parent_id=parent_id, applicable_to=applicable_to)
         db.session.add(category)
         db.session.commit()
         return category

@@ -13,6 +13,7 @@ def _serialize_category(category):
         "name_french": category.name_french,
         "parent_id": category.parent_id,
         "is_active": category.is_active,
+        "applicable_to": category.applicable_to,
     }
 
 @data_bp.route("/add_category", methods=["POST"])
@@ -25,11 +26,15 @@ def add_category():
         if isinstance(name_french, str):
             name_french = name_french.strip().lower() or None
         parent_id = data.get("parent_id")
+        applicable_to = data.get("applicable_to", "company").strip().lower()
+        
+        if applicable_to not in ("company", "influencer"):
+            return error_response("'applicable_to' must be one of ['company', 'influencer'].", 400)
 
         if not name:
             return error_response("Missing required field: 'name'.", 400)
 
-        category = CategoryRepository.create(name=name, name_french=name_french, parent_id=parent_id)
+        category = CategoryRepository.create(name=name, name_french=name_french, parent_id=parent_id, applicable_to=applicable_to)
         return success_response(_serialize_category(category), 201)
     except (TypeError, KeyError, ValueError):
         return error_response("Invalid request data", 400)
@@ -115,6 +120,12 @@ def update_category():
                 return error_response("'is_active' must be a boolean.", 400)
             fields["is_active"] = is_active
 
+        if "applicable_to" in data:
+            applicable_to = data.get("applicable_to")
+            if applicable_to not in ("company", "influencer"):
+                return error_response("'applicable_to' must be one of ['company', 'influencer'].", 400)
+            fields["applicable_to"] = applicable_to
+
         category = CategoryRepository.update(category_id, **fields)
         if not category:
             return error_response(f"No category found with id {category_id}", 404)
@@ -143,6 +154,25 @@ def get_active_categories():
         categories = CategoryRepository.get_all_active()
         if not categories:
             return error_response("No active categories found.", 404)
+
+        data = [_serialize_category(category) for category in categories]
+        return success_response(data, 200)
+    
+    except (TypeError, KeyError, ValueError):
+        return error_response("Invalid request data", 400)
+
+
+@data_bp.route("/get_active_categories_by_type", methods=["GET"])
+def get_active_categories_by_type():
+    """Get active categories filtered by entity type (company or influencer)."""
+    try:
+        applicable_to = request.args.get("applicable_to", "company").strip().lower()
+        if applicable_to not in ("company", "influencer"):
+            return error_response("'applicable_to' must be one of ['company', 'influencer'].", 400)
+
+        categories = CategoryRepository.get_all_active_by_type(applicable_to)
+        if not categories:
+            return error_response(f"No active categories found for type '{applicable_to}'.", 404)
 
         data = [_serialize_category(category) for category in categories]
         return success_response(data, 200)
