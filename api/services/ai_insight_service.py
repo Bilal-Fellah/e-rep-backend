@@ -1,18 +1,100 @@
 import hashlib
 import json
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 
 from api.repositories.ai_insight_repository import find_by_key, upsert
-from api.services.openrouter_client import OPENROUTER_MODEL_ID, call_llm
+from api.services.openrouter_client import call_llm, get_primary_model_id
+
+
+service_logger = logging.getLogger("service_errors")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _log_service_error(message: str, error: Exception, context: dict | None = None) -> None:
+    payload = {
+        "timestamp": _utc_now_iso(),
+        "severity": "high",
+        "category": "service_error",
+        "class_name": "ai_insight_service",
+        "method_name": "get_or_generate_insight",
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+        "context": context or {},
+    }
+    service_logger.critical(json.dumps(payload, ensure_ascii=True, default=str))
 
 
 PROMPTS = {
-    "top_brands": "You are a social media analyst. Write 4-6 bullet points: leader and why, notable gains/losses, platform patterns, one actionable insight. Use only numbers given, never invent data.",
-    "graph": "Summarize the trend: shape (spikes/drops/plateaus), brand comparison if multiple brands are present, and the most recent 7-day change with numbers. Use only numbers given.",
-    "sentiment": "Summarize sentiment: overall score and split, any day with an unusual shift in negative sentiment, overall trend direction. Use only numbers given.",
-    "posts_timeline": "Identify patterns across posts: common themes, best-performing platform by engagement, what type of content drives the most interactions.",
-}
+    "top_brands": (
+        "You are a senior social media analyst reviewing brand rankings for a telecom category "
+        "(the reader may work at one of these brands or may be a competitor doing market research — "
+        "write neutrally, without assuming you're advising any single brand's team). "
+        "Analyze the ranking data. Structure your response as:\n"
+        "1. Headline: one sentence capturing the single most important takeaway from this ranking.\n"
+        "2. What happened: who's leading and by how much, notable gains/losses across brands, with numbers.\n"
+        "3. Likely driver: a brief, clearly-labeled hypothesis for what's driving the biggest mover "
+        "(e.g. a platform-specific push, a viral post, a lull in activity) — mark it as a hypothesis, "
+        "not fact, if you're not certain.\n"
+        "4. Platform pattern: which network(s) are contributing most to gains or losses, and for which brand.\n"
+        "Order points by importance, not by table order. Use only numbers given, never invent data."
+        "Format the response in markdown: use **1. Headline:** style bold labels for each section,"
+        " and use '-' for any sub-points within a section."
+    ),
 
+    "graph": (
+        "You are a senior social media analyst reviewing trend data for a telecom brand "
+        "(the reader may work at this brand or may be a competitor doing market research — write "
+        "neutrally, without assuming you're advising the brand's own team). "
+        "Analyze the trend for this metric. Structure your response as:\n"
+        "1. Headline: one sentence capturing the single most important takeaway.\n"
+        "2. What happened: the trend shape, spikes/drops, and the most recent 7-day change with numbers.\n"
+        "3. Likely driver: a brief, clearly-labeled hypothesis for what caused the biggest movement "
+        "(e.g. campaign, platform algorithm shift, seasonal event) — mark it as a hypothesis, not fact, "
+        "if you're not certain.\n"
+        "4. Competitive read: how this brand's trend compares to others shown, if more than one is present.\n"
+        "Order points by importance, not chronological order. Use only numbers given, never invent data."
+        "Format the response in markdown: use **1. Headline:** style bold labels for each section,"
+        " and use '-' for any sub-points within a section."
+    ),
+
+    "sentiment": (
+        "You are a senior social media analyst reviewing audience sentiment for a telecom brand "
+        "(the reader may work at this brand or may be a competitor doing market research — write "
+        "neutrally, without assuming you're advising the brand's own team). "
+        "Analyze the sentiment data. Structure your response as:\n"
+        "1. Headline: one sentence capturing the single most important takeaway.\n"
+        "2. What happened: the overall score, the positive/neutral/negative split, with numbers.\n"
+        "3. Notable shift: the day or period with the most unusual change (e.g. a spike in negative "
+        "sentiment or an unusually positive day), with numbers, and a brief hypothesis for why — "
+        "mark it as a hypothesis, not fact, if you're not certain.\n"
+        "4. Trend read: whether sentiment is improving, worsening, or stable over the period, with evidence.\n"
+        "Order points by importance, not chronological order. Use only numbers given, never invent data."
+        "Format the response in markdown: use **1. Headline:** style bold labels for each section,"
+        " and use '-' for any sub-points within a section."
+    ),
+
+    "posts_timeline": (
+        "You are a senior social media analyst reviewing recent posts for a telecom brand "
+        "(the reader may work at this brand or may be a competitor doing market research — write "
+        "neutrally, without assuming you're advising the brand's own team). "
+        "Analyze the posts. Structure your response as:\n"
+        "1. Headline: one sentence capturing the single most important takeaway.\n"
+        "2. What happened: the common themes or content types across posts, and which platform is "
+        "performing best by engagement, with numbers.\n"
+        "3. Likely driver: a brief, clearly-labeled hypothesis for why the top-performing post(s) "
+        "outperformed the rest (e.g. content type, timing, platform fit) — mark it as a hypothesis, "
+        "not fact, if you're not certain.\n"
+        "4. Content pattern: what type of content appears to consistently drive more interactions "
+        "across the set, if a pattern is visible.\n"
+        "Order points by importance, not post order. Use only numbers/text given, never invent data."
+        "Format the response in markdown: use **1. Headline:** style bold labels for each section,"
+        " and use '-' for any sub-points within a section."
+    ),
+}
 
 def _normalize_for_hash(value):
     if isinstance(value, dict):
@@ -222,7 +304,18 @@ def get_or_generate_insight(view_type: str, filters: dict, raw_data) -> dict:
 
     try:
         summary = call_llm(prompt, data_block)
-    except Exception:
+    except Exception as error:
+        _log_service_error(
+            "LLM call failed",
+            error,
+            context={
+                "view_type": view_type,
+                "cache_key": cache_key,
+                "has_filters": bool(filters),
+                "data_block_length": len(data_block or ""),
+                "model": get_primary_model_id() or "unconfigured",
+            },
+        )
         return {"error": "llm_failed"}
 
     expires_at = now + timedelta(hours=24)
@@ -230,7 +323,7 @@ def get_or_generate_insight(view_type: str, filters: dict, raw_data) -> dict:
         cache_key=cache_key,
         view_type=view_type,
         summary_text=summary,
-        model_used=OPENROUTER_MODEL_ID,
+        model_used=get_primary_model_id() or "unconfigured",
         expires_at=expires_at,
     )
 
