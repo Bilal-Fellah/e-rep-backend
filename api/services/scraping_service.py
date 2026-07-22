@@ -34,13 +34,15 @@ class ScrapingService:
                 "total_available": int
             }
         """
-        from datetime import date, timedelta
+        from datetime import timedelta
         from api.models.post_model import PostMV
         from api.models.comment_model import Comment
         from api import db
-        
-        # Calculate yesterday's date range (midnight to midnight)
-        today = date.today()
+
+        # Calculate yesterday's date range (midnight to midnight).
+        # Use the UTC date so the window aligns with the UTC timestamps stored
+        # on recorded_at / scraped_at / comment recorded_at.
+        today = datetime.utcnow().date()
         yesterday_start = datetime.combine(today - timedelta(days=1), datetime.min.time())
         yesterday_end = datetime.combine(today, datetime.min.time())
 
@@ -74,12 +76,18 @@ class ScrapingService:
         today_start = datetime.combine(today, datetime.min.time())
         today_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
         
-        # Exclude posts that are in the scraped_today subquery
-        # Using ~exists() for better performance with large datasets
-        # Note: Cast page_id to String to handle UUID vs VARCHAR type mismatch
+        # Exclude posts that are already done for today.
+        # A post is "done" if EITHER:
+        #   - it has a ScrapingPostResult row recorded today (covers posts
+        #     scraped with 0 comments — these have no Comment row), OR
+        #   - it has a Comment inserted today (covers legacy/backfilled data
+        #     that predates ScrapingPostResult).
+        # Using ~exists() for performance with large datasets.
+        # Note: Cast page_id to String to handle UUID vs VARCHAR type mismatch.
         from sqlalchemy import exists, and_, cast, String
-        
-        exists_clause = exists().where(
+        from api.models.scraping_post_result_model import ScrapingPostResult
+
+        comment_exists = exists().where(
             and_(
                 cast(Comment.page_id, String) == cast(PostMV.page_id, String),
                 Comment.platform == PostMV.platform,
@@ -88,20 +96,18 @@ class ScrapingService:
                 Comment.recorded_at < today_end
             )
         )
-        
-        if platform:
-            exists_clause = exists().where(
-                and_(
-                    cast(Comment.page_id, String) == cast(PostMV.page_id, String),
-                    Comment.platform == PostMV.platform,
-                    Comment.post_id == PostMV.post_id,
-                    Comment.recorded_at >= today_start,
-                    Comment.recorded_at < today_end,
-                    Comment.platform == platform
-                )
+
+        result_exists = exists().where(
+            and_(
+                cast(ScrapingPostResult.page_id, String) == cast(PostMV.page_id, String),
+                ScrapingPostResult.platform == PostMV.platform,
+                ScrapingPostResult.post_id == PostMV.post_id,
+                ScrapingPostResult.scraped_at >= today_start,
+                ScrapingPostResult.scraped_at < today_end
             )
-        
-        query = query.filter(~exists_clause)
+        )
+
+        query = query.filter(~comment_exists, ~result_exists)
         
         # Fetch posts
         posts = query.all()
@@ -172,7 +178,7 @@ class ScrapingService:
                 "text": comment["text"],
                 "author_username": comment["username"],  # Map username -> author_username
                 "author_profile_url": comment.get("author_profile_url"),  # Optional
-                "comment_timestamp": datetime.fromtimestamp(comment["timestamp"]),  # Convert Unix to datetime
+                "comment_timestamp": datetime.utcfromtimestamp(comment["timestamp"]),  # Unix (UTC) -> naive UTC datetime
                 "likes_count": comment.get("likes", 0),
                 "replies_count": comment.get("replies_count", 0),
                 "parent_comment_id": comment.get("parent_id"),  # Map parent_id -> parent_comment_id
@@ -370,13 +376,13 @@ class ScrapingService:
             }
         """
         from datetime import date as date_type
-        
-        # Parse date or default to today
+
+        # Parse date or default to today (UTC, to match stored timestamps)
         if target_date:
             parsed_date = date_type.fromisoformat(target_date)
         else:
-            parsed_date = date_type.today()
-        
+            parsed_date = datetime.utcnow().date()
+
         return ScrapingSessionRepository.get_daily_summary(parsed_date, platform)
     
     @staticmethod
@@ -392,13 +398,13 @@ class ScrapingService:
             list[dict]: List of session details
         """
         from datetime import date as date_type
-        
-        # Parse date or default to today
+
+        # Parse date or default to today (UTC, to match stored timestamps)
         if target_date:
             parsed_date = date_type.fromisoformat(target_date)
         else:
-            parsed_date = date_type.today()
-        
+            parsed_date = datetime.utcnow().date()
+
         sessions = ScrapingSessionRepository.get_by_date(parsed_date, platform)
         
         result = []
@@ -452,12 +458,12 @@ class ScrapingService:
         from api import db
         from sqlalchemy import func
         
-        # Parse date or default to today
+        # Parse date or default to today (UTC, to match stored timestamps)
         if target_date:
             parsed_date = date_type.fromisoformat(target_date)
         else:
-            parsed_date = date_type.today()
-            
+            parsed_date = datetime.utcnow().date()
+
         # Yesterday's range (snapshot date for scheduled posts)
         yesterday_start = datetime.combine(parsed_date - timedelta(days=1), datetime.min.time())
         yesterday_end = datetime.combine(parsed_date, datetime.min.time())
