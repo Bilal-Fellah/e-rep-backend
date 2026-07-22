@@ -67,6 +67,16 @@ def create_app():
     configure_error_loggers(app)
 
     # ---- Import models so Alembic sees them ----
+    from api.models import (  # noqa: F401
+        Entity,
+        Category,
+        Page,
+        PageHistory,
+        EntityCategory,
+        User,
+        Note,
+        AiInsightCache,
+    )
 
     ALLOWED_ORIGINS = [
         "http://localhost:3000",
