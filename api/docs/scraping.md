@@ -30,6 +30,8 @@ Retrieve a list of posts from the database with optional filters.
 - `platform` (optional): Filter by platform. Valid values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`
 - `start_date` (optional): Filter posts created after this date (ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`)
 - `end_date` (optional): Filter posts created before this date (ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`)
+- `recorded_start_date` (optional): Filter post snapshots recorded after this date (ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`)
+- `recorded_end_date` (optional): Filter post snapshots recorded before this date (ISO 8601 format: `YYYY-MM-DDTHH:MM:SSZ`)
 
 **Response** (200 OK):
 ```json

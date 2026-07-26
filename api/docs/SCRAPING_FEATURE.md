@@ -57,16 +57,18 @@ pytest api/tests/integration/test_scraping_api.py -v
 
 **GET** `/api/scraping/posts`
 
-Fetches posts from yesterday's snapshot with optional filters.
+Fetches active posts matching optional filters that have not already been scraped today.
 
 **Query Parameters:**
 - `platform` (optional): Filter by platform (facebook, instagram, x, tiktok, linkedin, youtube)
-- `start_date` (optional): ISO 8601 date (e.g., `2024-01-01T00:00:00Z`)
-- `end_date` (optional): ISO 8601 date
+- `start_date` (optional): ISO 8601 date to filter post creation date (`created_at >= start_date`)
+- `end_date` (optional): ISO 8601 date to filter post creation date (`created_at <= end_date`)
+- `recorded_start_date` (optional): ISO 8601 date to filter snapshot record date (`recorded_at >= recorded_start_date`)
+- `recorded_end_date` (optional): ISO 8601 date to filter snapshot record date (`recorded_at <= recorded_end_date`)
 
 **Example:**
 ```bash
-curl -X GET "http://localhost:5000/api/scraping/posts?platform=instagram" \
+curl -X GET "http://localhost:5000/api/scraping/posts?platform=instagram&start_date=2026-01-01T00:00:00Z" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -175,9 +177,10 @@ curl -X GET "http://localhost:5000/api/scraping/sessions/550e8400-e29b-41d4-a716
 - Monitor session status (pending, completed, failed)
 
 ### 🎯 Smart Filtering
-- **Yesterday's Snapshot**: Only fetches posts recorded in yesterday's snapshot
+- **Scraped Today Exclusion**: Automatically excludes posts that have already been scraped today (comments inserted today or zero-comment result recorded today)
 - **Platform Filter**: Filter by social media platform
-- **Date Range**: Filter by post creation date
+- **Creation Date Range**: Filter by post creation date (`start_date`, `end_date`)
+- **Recorded Date Range**: Filter by post snapshot record date (`recorded_start_date`, `recorded_end_date`)
 
 ## Database Schema
 

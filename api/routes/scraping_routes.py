@@ -58,6 +58,8 @@ def fetch_posts():
         platform = request.args.get("platform")
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
+        recorded_start_date = request.args.get("recorded_start_date") or request.args.get("recorded_start")
+        recorded_end_date = request.args.get("recorded_end_date") or request.args.get("recorded_end")
         
         # Validate platform if provided
         valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
@@ -74,7 +76,9 @@ def fetch_posts():
         result = ScrapingService.fetch_posts_for_scraping(
             platform=platform,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            recorded_start_date=recorded_start_date,
+            recorded_end_date=recorded_end_date
         )
         
         return success_response(result, 200)
@@ -533,6 +537,8 @@ def get_today_posts_status():
         target_date = request.args.get("date")
         platform = request.args.get("platform")
         start_date = request.args.get("start_date")
+        recorded_start_date = request.args.get("recorded_start_date") or request.args.get("recorded_start")
+        recorded_end_date = request.args.get("recorded_end_date") or request.args.get("recorded_end")
         
         # Validate platform if provided
         valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
@@ -577,7 +583,9 @@ def get_today_posts_status():
         result = ScrapingService.get_today_scraping_status(
             platform=platform,
             target_date=target_date,
-            start_date=start_date
+            start_date=start_date,
+            recorded_start_date=recorded_start_date,
+            recorded_end_date=recorded_end_date
         )
         
         return success_response(result, 200)

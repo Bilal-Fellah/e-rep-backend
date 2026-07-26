@@ -15,16 +15,20 @@ class ScrapingService:
     @staticmethod
     def fetch_posts_for_scraping(platform: str = None, 
                                   start_date: str = None, 
-                                  end_date: str = None) -> dict:
+                                  end_date: str = None,
+                                  recorded_start_date: str = None,
+                                  recorded_end_date: str = None) -> dict:
         """
         Fetch posts matching filters and create scraping session.
-        Only returns posts that were recorded in yesterday's snapshot
-        and have not already been scraped today (i.e., no comments inserted today).
+        Only returns posts that have not already been scraped today
+        (i.e., no comments inserted today and no ScrapingPostResult today).
         
         Args:
             platform: Optional platform filter
-            start_date: Optional start date (ISO format)
-            end_date: Optional end date (ISO format)
+            start_date: Optional creation start date (ISO format)
+            end_date: Optional creation end date (ISO format)
+            recorded_start_date: Optional recorded_at start date (ISO format)
+            recorded_end_date: Optional recorded_at end date (ISO format)
             
         Returns:
             dict: {
@@ -34,56 +38,50 @@ class ScrapingService:
                 "total_available": int
             }
         """
-        from datetime import timedelta
+        from datetime import timedelta, timezone
         from api.models.post_model import PostMV
         from api.models.comment_model import Comment
         from api import db
 
-        # Calculate yesterday's date range (midnight to midnight).
-        # Use the UTC date so the window aligns with the UTC timestamps stored
-        # on recorded_at / scraped_at / comment recorded_at.
         today = datetime.utcnow().date()
-        yesterday_start = datetime.combine(today - timedelta(days=1), datetime.min.time())
-        yesterday_end = datetime.combine(today, datetime.min.time())
 
-        print(f"Fetching posts recorded between {yesterday_start} and {yesterday_end}")
-        
-        # Build query - only posts recorded yesterday
-        query = PostMV.query.filter(
-            PostMV.recorded_at >= yesterday_start,
-            PostMV.recorded_at < yesterday_end
-        )
+        def parse_iso_utc(date_str: str) -> datetime:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
+
+        # Build base query - fetch active posts
+        query = PostMV.query
         
         # Apply platform filter
         if platform:
             query = query.filter_by(platform=platform)
         
-        # Apply date filters (on post creation date, not recorded_at)
+        # Apply date filters (on post creation date, created_at)
         if start_date:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-            query = query.filter(PostMV.created_at >= start_dt)
+            query = query.filter(PostMV.created_at >= parse_iso_utc(start_date))
         
         if end_date:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-            query = query.filter(PostMV.created_at <= end_dt)
+            query = query.filter(PostMV.created_at <= parse_iso_utc(end_date))
+
+        # Apply snapshot recorded_at date filters
+        if recorded_start_date:
+            query = query.filter(PostMV.recorded_at >= parse_iso_utc(recorded_start_date))
+
+        if recorded_end_date:
+            query = query.filter(PostMV.recorded_at <= parse_iso_utc(recorded_end_date))
         
         # Get total count before applying the scraped-today filter
         total_available = query.count()
         
         # Filter out posts that already have comments inserted today
         # A post is considered "scraped today" if it has at least one comment
-        # with recorded_at within today's date range
+        # with recorded_at within today's date range, or a ScrapingPostResult row today.
         today_start = datetime.combine(today, datetime.min.time())
         today_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
         
         # Exclude posts that are already done for today.
-        # A post is "done" if EITHER:
-        #   - it has a ScrapingPostResult row recorded today (covers posts
-        #     scraped with 0 comments — these have no Comment row), OR
-        #   - it has a Comment inserted today (covers legacy/backfilled data
-        #     that predates ScrapingPostResult).
-        # Using ~exists() for performance with large datasets.
-        # Note: Cast page_id to String to handle UUID vs VARCHAR type mismatch.
         from sqlalchemy import exists, and_, cast, String
         from api.models.scraping_post_result_model import ScrapingPostResult
 
@@ -429,16 +427,22 @@ class ScrapingService:
         return result
 
     @staticmethod
-    def get_today_scraping_status(platform: str = None, target_date: str = None, start_date: str = None) -> dict:
+    def get_today_scraping_status(platform: str = None, 
+                                  target_date: str = None, 
+                                  start_date: str = None,
+                                  recorded_start_date: str = None,
+                                  recorded_end_date: str = None) -> dict:
         """
         Get the scraping status of posts scheduled for a specific date.
-        Categorizes posts scheduled for that date into scraped (already scraped today)
-        and pending (scheduled but not yet scraped).
+        Categorizes posts into scraped (already scraped on target date)
+        and pending (not yet scraped on target date).
         
         Args:
             platform: Optional platform filter
             target_date: Optional date in ISO format (YYYY-MM-DD). Defaults to today.
             start_date: Optional start date (ISO format) to filter post creation date.
+            recorded_start_date: Optional recorded_at start date (ISO format).
+            recorded_end_date: Optional recorded_at end date (ISO format).
             
         Returns:
             dict: {
@@ -452,37 +456,41 @@ class ScrapingService:
                 "pending_posts": list[dict]
             }
         """
-        from datetime import date as date_type, timedelta
+        from datetime import date as date_type, timedelta, timezone
         from api.models.post_model import PostMV
         from api.models.comment_model import Comment
         from api import db
         from sqlalchemy import func
+
+        def parse_iso_utc(date_str: str) -> datetime:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
         
         # Parse date or default to today (UTC, to match stored timestamps)
         if target_date:
             parsed_date = date_type.fromisoformat(target_date)
         else:
             parsed_date = datetime.utcnow().date()
-
-        # Yesterday's range (snapshot date for scheduled posts)
-        yesterday_start = datetime.combine(parsed_date - timedelta(days=1), datetime.min.time())
-        yesterday_end = datetime.combine(parsed_date, datetime.min.time())
         
         # Target date's range (when scraping happened)
         target_date_start = datetime.combine(parsed_date, datetime.min.time())
         target_date_end = datetime.combine(parsed_date + timedelta(days=1), datetime.min.time())
         
-        # Query posts scheduled for target_date
-        posts_query = PostMV.query.filter(
-            PostMV.recorded_at >= yesterday_start,
-            PostMV.recorded_at < yesterday_end
-        )
+        # Query active posts
+        posts_query = PostMV.query
         if platform:
             posts_query = posts_query.filter_by(platform=platform)
 
         if start_date:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-            posts_query = posts_query.filter(PostMV.created_at >= start_dt)
+            posts_query = posts_query.filter(PostMV.created_at >= parse_iso_utc(start_date))
+
+        if recorded_start_date:
+            posts_query = posts_query.filter(PostMV.recorded_at >= parse_iso_utc(recorded_start_date))
+
+        if recorded_end_date:
+            posts_query = posts_query.filter(PostMV.recorded_at <= parse_iso_utc(recorded_end_date))
 
         posts = posts_query.all()
 
