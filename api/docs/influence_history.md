@@ -159,6 +159,7 @@ Return globally ranked posts ordered by the followers of the page that published
 - `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+- `type` (optional; one of `company`, `influencer`, `small-business`) — restrict the ranking to posts belonging to a single entity kind. When omitted, posts from every entity kind are ranked together.
 
 ### Notes
 
@@ -224,6 +225,7 @@ Return globally ranked posts ordered by weighted interaction score growth.
 - `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+- `type` (optional; one of `company`, `influencer`, `small-business`) — restrict the ranking to posts belonging to a single entity kind. When omitted, posts from every entity kind are ranked together.
 
 ### Notes
 
@@ -288,6 +290,7 @@ Return globally ranked posts ordered by likes growth.
 - `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+- `type` (optional; one of `company`, `influencer`, `small-business`) — restrict the ranking to posts belonging to a single entity kind. When omitted, posts from every entity kind are ranked together.
 
 ### Notes
 
@@ -351,6 +354,7 @@ Return globally ranked posts ordered by comments growth.
 - `period` (optional, string; e.g. `yesterday`, `prev_7d`, `previous_month`) — mutually exclusive with `start_date`/`end_date`.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
+- `type` (optional; one of `company`, `influencer`, `small-business`) — restrict the ranking to posts belonging to a single entity kind. When omitted, posts from every entity kind are ranked together.
 
 ### Notes
 

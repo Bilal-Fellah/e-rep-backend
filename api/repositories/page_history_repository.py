@@ -298,14 +298,36 @@ class PageHistoryRepository:
             db.session.commit()
 
     @staticmethod
-    def get_all_entities_posts(date_limit):
-        query = text("""
-            SELECT * from page_posts_metrics_mv
-            where platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-            and date(recorded_at) >= :date_limit
-            and to_scrape
-                    """)
-        results = db.session.execute(query, {'date_limit': date_limit}).all()
+    def get_all_entities_posts(date_limit, entity_type=None):
+        # `entity_type` restricts the posts to one entity kind ('company' /
+        # 'influencer'), so the posts rankings can be split the same way the
+        # entity rankings already are. None keeps the original behavior of
+        # returning every entity's posts mixed together.
+        #
+        # The MV carries no entity type of its own, so the kind comes from the
+        # `entities` table — the same join `get_companies_interactions_summary`
+        # uses. `mv.*` is preserved so callers keep reading the same columns.
+        params = {'date_limit': date_limit}
+
+        if entity_type:
+            query = text("""
+                SELECT mv.* from page_posts_metrics_mv mv
+                JOIN entities e ON e.id = mv.entity_id
+                where mv.platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                and date(mv.recorded_at) >= :date_limit
+                and mv.to_scrape
+                and LOWER(COALESCE(e.type, '')) = :entity_type
+                        """)
+            params['entity_type'] = entity_type.lower()
+        else:
+            query = text("""
+                SELECT * from page_posts_metrics_mv
+                where platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                and date(recorded_at) >= :date_limit
+                and to_scrape
+                        """)
+
+        results = db.session.execute(query, params).all()
         return results
 
     @staticmethod

@@ -199,39 +199,43 @@ class InfluenceHistoryService:
         return InfluenceHistoryService._get_companies_ranking(period=period, start_date=start_date, end_date=end_date, order_by_key="total_comments", entity_type=entity_type)
 
     @staticmethod
-    def get_posts_followers_ranking(period=None, start_date=None, end_date=None):
+    def get_posts_followers_ranking(period=None, start_date=None, end_date=None, entity_type=None):
         return InfluenceHistoryService._get_posts_ranking(
             period=period,
             start_date=start_date,
             end_date=end_date,
             order_by_key="total_followers",
+            entity_type=entity_type,
         )
 
     @staticmethod
-    def get_posts_interactions_ranking(period=None, start_date=None, end_date=None):
+    def get_posts_interactions_ranking(period=None, start_date=None, end_date=None, entity_type=None):
         return InfluenceHistoryService._get_posts_ranking(
             period=period,
             start_date=start_date,
             end_date=end_date,
             order_by_key="total_score",
+            entity_type=entity_type,
         )
 
     @staticmethod
-    def get_posts_likes_ranking(period=None, start_date=None, end_date=None):
+    def get_posts_likes_ranking(period=None, start_date=None, end_date=None, entity_type=None):
         return InfluenceHistoryService._get_posts_ranking(
             period=period,
             start_date=start_date,
             end_date=end_date,
             order_by_key="total_likes",
+            entity_type=entity_type,
         )
 
     @staticmethod
-    def get_posts_comments_ranking(period=None, start_date=None, end_date=None):
+    def get_posts_comments_ranking(period=None, start_date=None, end_date=None, entity_type=None):
         return InfluenceHistoryService._get_posts_ranking(
             period=period,
             start_date=start_date,
             end_date=end_date,
             order_by_key="total_comments",
+            entity_type=entity_type,
         )
 
     @staticmethod
@@ -332,7 +336,7 @@ class InfluenceHistoryService:
         return ranking
 
     @staticmethod
-    def _get_posts_ranking(period=None, start_date=None, end_date=None, order_by_key="gained_score"):
+    def _get_posts_ranking(period=None, start_date=None, end_date=None, order_by_key="gained_score", entity_type=None):
         """
         Calculate posts ranking based on metric growth (difference between snapshots).
         
@@ -341,7 +345,7 @@ class InfluenceHistoryService:
         This matches the behavior of company/entity interaction rankings.
         """
         date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
-        rows = PageHistoryRepository.get_all_entities_posts(date_limit=date_limit)
+        rows = PageHistoryRepository.get_all_entities_posts(date_limit=date_limit, entity_type=entity_type)
 
         if not rows:
             return []

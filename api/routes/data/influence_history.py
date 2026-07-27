@@ -346,8 +346,10 @@ def get_posts_followers_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default=None)
+
         data = InfluenceHistoryService.get_posts_followers_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No followers ranking data found for posts.", 404)
@@ -372,8 +374,10 @@ def get_posts_interactions_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default=None)
+
         data = InfluenceHistoryService.get_posts_interactions_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No interactions ranking data found for posts.", 404)
@@ -398,8 +402,10 @@ def get_posts_likes_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default=None)
+
         data = InfluenceHistoryService.get_posts_likes_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No likes ranking data found for posts.", 404)
@@ -424,8 +430,10 @@ def get_posts_comments_ranking():
         if access_error:
             return error_response(access_error, 403)
 
+        entity_type = _parse_entity_type(default=None)
+
         data = InfluenceHistoryService.get_posts_comments_ranking(
-            period=period, start_date=start_date, end_date=end_date
+            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response("No comments ranking data found for posts.", 404)
