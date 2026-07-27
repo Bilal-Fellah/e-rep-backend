@@ -154,9 +154,9 @@ class TestFetchPosts:
         assert "posts" in data["data"]
         assert "count" in data["data"]
         
-        # Should only return 2 posts from yesterday's snapshot (not today's)
-        assert data["data"]["count"] == 2
-        assert len(data["data"]["posts"]) == 2
+        # Returns all 3 available posts that need scraping today
+        assert data["data"]["count"] == 3
+        assert len(data["data"]["posts"]) == 3
     
     def test_fetch_posts_with_platform_filter(self, client, auth_headers, sample_posts):
         """Test platform filtering."""
@@ -168,9 +168,25 @@ class TestFetchPosts:
         
         data = response.get_json()
         assert data["success"] is True
-        # Only 1 instagram post from yesterday
-        assert data["data"]["count"] == 1
-        assert data["data"]["posts"][0]["platform"] == "instagram"
+        # 2 instagram posts in sample_posts
+        assert data["data"]["count"] == 2
+        for p in data["data"]["posts"]:
+            assert p["platform"] == "instagram"
+
+    def test_fetch_posts_with_recorded_date_filter(self, client, auth_headers, sample_posts):
+        """Test recorded_start_date and recorded_end_date filtering."""
+        from datetime import date, timedelta
+        yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+        
+        # Filter for posts recorded yesterday
+        response = client.get(
+            f"/api/scraping/posts?recorded_start_date={yesterday_str}T00:00:00Z&recorded_end_date={yesterday_str}T23:59:59Z",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["count"] == 2
     
     def test_fetch_posts_invalid_platform(self, client, auth_headers):
         """Test invalid platform parameter."""
@@ -196,7 +212,7 @@ class TestFetchPosts:
         with app.app_context():
             session = ScrapingSession.query.filter_by(session_id=session_id).first()
             assert session is not None
-            assert session.posts_fetched == 2
+            assert session.posts_fetched == 3
             assert session.status == "pending"
 
 
