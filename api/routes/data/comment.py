@@ -11,6 +11,10 @@ from api.utils.permissions import (
     ranking_access_error,
 )
 
+# Mirrors the DB CheckConstraint on entities.type (same list as
+# routes/data/influence_history.py).
+ALLOWED_ENTITY_TYPES = ("company", "influencer", "small-business")
+
 
 @data_bp.route("/get_comments_by_post", methods=["GET"])
 def get_comments_by_post():
@@ -268,5 +272,18 @@ def get_sentiment_ranking():
     if window_error:
         return window_error
 
-    data = CommentSentimentService.get_ranking(start_date, end_date)
+    # Filtering by type happens before the free-tier truncation below, so a
+    # creators-only table gets the real top N creators rather than whichever
+    # creators happened to place in the combined top N.
+    entity_type = request.args.get("type")
+    if entity_type:
+        entity_type = entity_type.strip().lower()
+        if entity_type not in ALLOWED_ENTITY_TYPES:
+            return error_response(
+                f"type must be one of {list(ALLOWED_ENTITY_TYPES)}", 400
+            )
+
+    data = CommentSentimentService.get_ranking(
+        start_date, end_date, entity_type=entity_type
+    )
     return success_response(data=limit_ranking_for_role(role, data))

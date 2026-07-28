@@ -109,7 +109,7 @@ class InfluenceHistoryService:
         return InfluenceHistoryService.get_followers_ranking()
 
     @staticmethod
-    def get_followers_progress_ranking(period=None, start_date=None, end_date=None, entity_type=None):
+    def get_followers_progress_ranking(period=None, start_date=None, end_date=None, entity_type=None, sort_by="progress"):
         date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
         rows = PageHistoryRepository.get_followers_progress_snapshot(date_limit=date_limit, end_date=end_dt, entity_type=entity_type)
         if not rows:
@@ -180,7 +180,13 @@ class InfluenceHistoryService:
                 }
 
         ranking = list(entities.values())
-        ranking.sort(key=lambda x: x.get("followers_progress", 0), reverse=True)
+        # The caller decides which followers metric this ranking *is*, because
+        # rank has to be assigned here rather than in the client: free/anonymous
+        # users get the list truncated to the top N by limit_ranking_for_role,
+        # so a client that re-sorted afterwards would be re-ordering the wrong
+        # ten rows and presenting them as a complete ranking.
+        sort_key = "total_followers" if sort_by == "followers" else "followers_progress"
+        ranking.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
         for idx, row in enumerate(ranking, start=1):
             row["rank"] = idx
 

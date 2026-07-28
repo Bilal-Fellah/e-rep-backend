@@ -1,5 +1,6 @@
 from flask import Flask
 from flask_cors import CORS
+import logging
 import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -93,10 +94,23 @@ def create_app():
         resources={r"/api/*": {
             "origins": ALLOWED_ORIGINS,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization", "Accept"],
+            # X-Dev-Auth is listed so the local dev bypass survives the CORS
+            # preflight from localhost:3000. Listing the header name is inert on
+            # its own — the bypass itself is gated on FLASK_ENV + DEV_AUTH_BYPASS
+            # in api/utils/permissions.py.
+            "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Dev-Auth"],
             "supports_credentials": True
         }}
     )
+
+    from api.utils.permissions import dev_bypass_armed
+    if dev_bypass_armed():
+        logging.getLogger(__name__).warning(
+            "DEV AUTH BYPASS IS ARMED: requests carrying X-Dev-Auth are treated "
+            "as role=%s with no token. Local development only — never set "
+            "DEV_AUTH_BYPASS outside a dev machine.",
+            os.getenv("DEV_AUTH_ROLE", "admin"),
+        )
 
     from .routes import register_routes
     register_routes(app)

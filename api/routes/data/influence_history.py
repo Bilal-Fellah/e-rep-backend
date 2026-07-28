@@ -19,6 +19,28 @@ from . import data_bp
 ALLOWED_ENTITY_TYPES = ("company", "influencer", "small-business")
 
 
+# Which followers metric the ranking is ordered (and therefore ranked) by.
+# "progress" = followers gained over the window, "followers" = current total.
+ALLOWED_FOLLOWERS_SORTS = ("progress", "followers")
+
+
+def _parse_followers_sort(default="progress"):
+    """Read and validate the optional `?sort_by=` query param.
+
+    This is not cosmetic: rank is assigned server-side and the free tier is
+    truncated to the top N, so the sort has to be chosen before truncation.
+    """
+    raw = request.args.get("sort_by")
+    if raw is None or raw == "":
+        return default
+    value = raw.strip().lower()
+    if value not in ALLOWED_FOLLOWERS_SORTS:
+        raise ValueError(
+            f"sort_by must be one of {list(ALLOWED_FOLLOWERS_SORTS)}"
+        )
+    return value
+
+
 def _parse_entity_type(default=None):
     """Read and validate the optional `?type=` query param.
 
@@ -231,9 +253,11 @@ def get_followers_progress_ranking():
             return error_response(access_error, 403)
 
         entity_type = _parse_entity_type(default=None)
+        sort_by = _parse_followers_sort(default="progress")
 
         data = InfluenceHistoryService.get_followers_progress_ranking(
-            period=period, start_date=start_date, end_date=end_date, entity_type=entity_type
+            period=period, start_date=start_date, end_date=end_date,
+            entity_type=entity_type, sort_by=sort_by
         )
         if not data or (isinstance(data, list) and len(data) < 1):
             return error_response(
@@ -244,7 +268,11 @@ def get_followers_progress_ranking():
 
     except (TypeError, KeyError, ValueError) as exc:
         message = str(exc)
-        surfaced = "Invalid period" in message or "type must be" in message
+        surfaced = (
+            "Invalid period" in message
+            or "type must be" in message
+            or "sort_by must be" in message
+        )
         return error_response(message if surfaced else "Invalid request data", 400)
 
 

@@ -176,12 +176,18 @@ class CommentSentimentService:
         return summary
 
     @staticmethod
-    def get_ranking(start_date=None, end_date=None) -> list[dict]:
+    def get_ranking(start_date=None, end_date=None, entity_type=None) -> list[dict]:
         """
         One row per entity ranked by a volume-adjusted sentiment score (desc).
         Entities below RANKING_MIN_COMMENTS are excluded; each row carries the
         same summary shape as get_entity_sentiment (minus trend/examples) plus a
         `ranking_score` (the value actually used for ordering).
+
+        `entity_type` restricts the ranking to one kind of entity ("company" /
+        "influencer"). It has to be applied here rather than in the client: the
+        caller truncates the result to the free tier's top N, so a client-side
+        filter would be selecting from an already-truncated combined list and
+        renumbering whatever survived as if it were a complete ranking.
         """
         rows = CommentRepository.get_sentiment_ranking(start_date, end_date)
         if not rows:
@@ -199,6 +205,8 @@ class CommentSentimentService:
 
         ranking = []
         for entity in entities.values():
+            if entity_type and entity.get("type") != entity_type:
+                continue
             summary = _shape_counts(entity.pop("_rows"))
             summary.pop("avg_confidence", None)  # not meaningful in the ranking
             entity.update(summary)
