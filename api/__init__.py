@@ -54,11 +54,16 @@ def create_app():
 
     app.secret_key = os.getenv("SECRET_KEY")
 
+    # SameSite/Secure come from one place so the browser-rejected
+    # SameSite=None-without-Secure pair can't be emitted. Defaults are
+    # None + Secure, which is what the Google redirect needs.
+    from api.utils.cookie_policy import COOKIE_SAMESITE, COOKIE_SECURE
+
     app.config.update(
         SESSION_COOKIE_NAME="brendex_session",
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="None",  # REQUIRED for Google redirect
-        SESSION_COOKIE_SECURE=True,      # REQUIRED for SameSite=None
+        SESSION_COOKIE_SAMESITE=COOKIE_SAMESITE,
+        SESSION_COOKIE_SECURE=COOKIE_SECURE,
     )
 
 
@@ -94,23 +99,10 @@ def create_app():
         resources={r"/api/*": {
             "origins": ALLOWED_ORIGINS,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            # X-Dev-Auth is listed so the local dev bypass survives the CORS
-            # preflight from localhost:3000. Listing the header name is inert on
-            # its own — the bypass itself is gated on FLASK_ENV + DEV_AUTH_BYPASS
-            # in api/utils/permissions.py.
-            "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Dev-Auth"],
+            "allow_headers": ["Content-Type", "Authorization", "Accept"],
             "supports_credentials": True
         }}
     )
-
-    from api.utils.permissions import dev_bypass_armed
-    if dev_bypass_armed():
-        logging.getLogger(__name__).warning(
-            "DEV AUTH BYPASS IS ARMED: requests carrying X-Dev-Auth are treated "
-            "as role=%s with no token. Local development only — never set "
-            "DEV_AUTH_BYPASS outside a dev machine.",
-            os.getenv("DEV_AUTH_ROLE", "admin"),
-        )
 
     from .routes import register_routes
     register_routes(app)

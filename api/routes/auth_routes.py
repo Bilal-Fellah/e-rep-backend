@@ -28,6 +28,7 @@ from api.utils.auth import (
     append_json_list,
     validate_email,
 )
+from api.utils.cookie_policy import COOKIE_SAMESITE, COOKIE_SECURE
 from api.utils.datetime_utils import iso_utc
 from api.utils.permissions import require_role
 from api.utils.rate_limit import client_ip, record_failure, too_many_failures
@@ -48,7 +49,6 @@ FRONTEND_REDIRECT_URL = os.environ.get(
     "FRONTEND_REDIRECT_URL", "https://www.brendex.net"
 )
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
-COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() == "true"
 auth_bp = Blueprint("auth", __name__)
 ALLOWED_ENTITY_TYPES = ["company", "influencer", "small-business"]
 
@@ -389,7 +389,7 @@ def refresh():
             expires=access_exp,
             httponly=True,
             secure=COOKIE_SECURE,
-            samesite="None",
+            samesite=COOKIE_SAMESITE,
             domain=FRONTEND_COOKIE_DOMAIN or None,
             path="/",
         )
@@ -446,7 +446,7 @@ def logout():
             expires=0,
             httponly=True,
             secure=COOKIE_SECURE,
-            samesite="None",
+            samesite=COOKIE_SAMESITE,
             domain=cookie_domain,
             path="/",
         )
@@ -456,7 +456,7 @@ def logout():
             expires=0,
             httponly=True,
             secure=COOKIE_SECURE,
-            samesite="None",
+            samesite=COOKIE_SAMESITE,
             domain=cookie_domain,
             path="/",
         )
@@ -573,7 +573,7 @@ def redirect_to_app():
             expires=tokens["access_token_exp"],
             httponly=True,
             secure=COOKIE_SECURE,
-            samesite="None",
+            samesite=COOKIE_SAMESITE,
             domain=cookie_domain,
             path="/",
         )
@@ -583,7 +583,7 @@ def redirect_to_app():
             expires=tokens["refresh_token_exp"],
             httponly=True,
             secure=COOKIE_SECURE,
-            samesite="None",
+            samesite=COOKIE_SAMESITE,
             domain=cookie_domain,
             path="/",
         )

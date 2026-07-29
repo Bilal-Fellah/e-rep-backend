@@ -176,55 +176,6 @@ def can_user_access_endpoint(role: str, endpoint_blueprint: str, endpoint_name: 
     return role in allowed_roles
 
 
-# ============================================================================
-# LOCAL DEVELOPMENT AUTH BYPASS
-# Erup's `dev_skip` makes the *client* believe it is an admin, but it sends no
-# credential — so every @require_role route answered 401 and every ranking route
-# fell through to the anonymous free tier (403 on premium periods, top-10 cap).
-# This closes that gap without weakening any real auth path.
-# ============================================================================
-
-DEV_AUTH_HEADER = "X-Dev-Auth"
-_TRUTHY = ("1", "true", "yes")
-
-
-def dev_bypass_armed():
-    """True only when BOTH switches are set.
-
-    FLASK_ENV alone is deliberately not enough: it *defaults* to "development",
-    so a deployment that forgets to set it would otherwise arm the bypass. The
-    explicit opt-in var is what actually turns this on, and it is read per-call
-    (not at import) so tests and .env reloads take effect.
-    """
-    return (
-        os.getenv("FLASK_ENV", "development").strip().lower() == "development"
-        and os.getenv("DEV_AUTH_BYPASS", "").strip().lower() in _TRUTHY
-    )
-
-
-def _dev_bypass_payload():
-    """Synthetic token payload for a bypassed local request, or None."""
-    if not dev_bypass_armed():
-        return None
-    if request.headers.get(DEV_AUTH_HEADER, "").strip().lower() not in _TRUTHY:
-        return None
-
-    # user_id matters for routes that write rows keyed to a real user (notes
-    # carry an author_id FK). Point DEV_AUTH_USER_ID at a real local user or
-    # those routes will still fail — on the FK, not on auth.
-    raw_user_id = os.getenv("DEV_AUTH_USER_ID", "").strip()
-    try:
-        user_id = int(raw_user_id) if raw_user_id else None
-    except ValueError:
-        user_id = None
-
-    return {
-        "user_id": user_id,
-        "role": os.getenv("DEV_AUTH_ROLE", UserRole.ADMIN.value).strip().lower(),
-        "dev_bypass": True,
-    }
-
-
 def extract_and_validate_token():
     """
     Extract JWT token from request (Bearer header or cookie).
@@ -232,12 +183,6 @@ def extract_and_validate_token():
     Returns:
         tuple: (payload_dict, error_response) or (None, error_response) if invalid
     """
-    # Checked before the JWT path so a bypassed request needs no token at all.
-    # Inert unless dev_bypass_armed() — see above.
-    dev_payload = _dev_bypass_payload()
-    if dev_payload is not None:
-        return dev_payload, None
-
     try:
         token = _extract_token("access_token")
         if not token:

@@ -193,12 +193,15 @@ class CommentSentimentService:
         if not rows:
             return []
 
-        # Group (entity_id, name, type, label, count) rows by entity.
+        # Group (entity_id, name, type, label, count) rows by entity. `row_type`
+        # must not be named `entity_type` — that would rebind the filter argument
+        # to the last row's type and silently apply the wrong filter (or one the
+        # caller never asked for).
         entities: dict[int, dict] = {}
-        for entity_id, name, entity_type, label, count in rows:
+        for entity_id, name, row_type, label, count in rows:
             entity = entities.setdefault(
                 entity_id,
-                {"entity_id": entity_id, "entity_name": name, "type": entity_type,
+                {"entity_id": entity_id, "entity_name": name, "type": row_type,
                  "_rows": []},
             )
             entity["_rows"].append((label, count, None))

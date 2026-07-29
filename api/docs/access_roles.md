@@ -20,45 +20,19 @@ See Top posts by date and brand
 
 ---
 
-## Local development auth bypass
+## Local development auth
 
-Erup's `dev_skip` (localStorage, `NODE_ENV=development` only) makes the client
-render as a signed-in admin, but it sends no credential. Every `@require_role`
-route therefore answered **401**, and the ranking routes — which read the role
-via `current_user_role()` rather than failing closed — treated the caller as
-anonymous and applied the free tier: **403** on any period outside
-`FREE_PERIODS`, and the top-10 cap on everything else.
+There is **no auth bypass**. Every request authenticates through the normal JWT
+path, in every environment — `extract_and_validate_token()` has one code path.
 
-To close that gap locally, the backend accepts a bypass header:
+Local Erup obtains a real session at `/dev-login` (development builds only; the
+route 404s in production). It performs a genuine `POST /api/auth/login` against
+whatever `NEXT_PUBLIC_API_URL` points at — including the deployed API, which
+already allows `http://localhost:3000` with credentials — and stores the JWT.
+Local development therefore runs with a real account and its real role, and
+exercises the same entitlement rules as production rather than faking a role
+past them.
 
-```bash
-# .env on a dev machine only
-FLASK_ENV=development
-DEV_AUTH_BYPASS=1
-DEV_AUTH_USER_ID=1        # optional; must be a real user id — see below
-DEV_AUTH_ROLE=admin       # optional; defaults to admin
-```
-
-```
-X-Dev-Auth: 1   ->  request is treated as {role: DEV_AUTH_ROLE, user_id: DEV_AUTH_USER_ID}
-```
-
-**Both** switches are required. `FLASK_ENV` alone is deliberately not enough
-because it *defaults* to `development`, so a deployment that simply forgot to
-set it would otherwise arm the bypass; `DEV_AUTH_BYPASS` is the explicit opt-in.
-With either missing, the header is ignored entirely and the normal JWT path
-runs. When it is armed, `create_app()` logs a warning at startup.
-
-`X-Dev-Auth` is listed in the CORS `allow_headers` so the preflight from
-`localhost:3000` succeeds. Listing the header name is inert on its own — the
-gating above is what actually enables anything.
-
-**`DEV_AUTH_USER_ID` must point at a real local user** for routes that write
-rows keyed to one (notes carry an `author_id` foreign key). Bypassing auth does
-not create the user; those routes will still fail, on the FK rather than on
-auth.
-
-Implementation: `dev_bypass_armed()` / `_dev_bypass_payload()` in
-`api/utils/permissions.py`, checked at the top of
-`extract_and_validate_token()` — so both `@require_role` and
-`current_user_role()` honour it from one place.
+An earlier `X-Dev-Auth` / `DEV_AUTH_BYPASS` header bypass was removed: it only
+worked against a locally-run backend, and its companion `dev_skip` flag rendered
+a signed-in admin UI while every data call still 401'd against a deployed API.
