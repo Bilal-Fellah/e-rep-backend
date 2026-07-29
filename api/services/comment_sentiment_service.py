@@ -176,7 +176,9 @@ class CommentSentimentService:
         return summary
 
     @staticmethod
-    def get_ranking(start_date=None, end_date=None, entity_type=None) -> list[dict]:
+    def get_ranking(
+        start_date=None, end_date=None, entity_type=None, platform=None
+    ) -> list[dict]:
         """
         One row per entity ranked by a volume-adjusted sentiment score (desc).
         Entities below RANKING_MIN_COMMENTS are excluded; each row carries the
@@ -188,8 +190,17 @@ class CommentSentimentService:
         caller truncates the result to the free tier's top N, so a client-side
         filter would be selecting from an already-truncated combined list and
         renumbering whatever survived as if it were a complete ranking.
+
+        `platform` narrows to comments from one network, for the same reason and
+        with the same constraint. It is applied in the query so every downstream
+        number is recomputed on the narrowed set: counts, percentages, `score`,
+        the RANKING_MIN_COMMENTS cut, `ranking_score` and `rank`. Sentiment
+        differs sharply by network, so a platform-filtered row is a genuinely
+        different ranking rather than the pooled one relabelled.
         """
-        rows = CommentRepository.get_sentiment_ranking(start_date, end_date)
+        rows = CommentRepository.get_sentiment_ranking(
+            start_date, end_date, platform=platform
+        )
         if not rows:
             return []
 
