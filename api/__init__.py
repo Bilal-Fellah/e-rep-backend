@@ -1,6 +1,7 @@
 from flask import Flask
+from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
-import logging
+import math
 import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -8,6 +9,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB, JSON, UUID
+
+from .utils.logging_utils import configure_error_loggers
 
 @compiles(JSONB, "sqlite")
 def compile_jsonb_sqlite(type_, compiler, **kw):
@@ -21,7 +24,37 @@ def compile_json_sqlite(type_, compiler, **kw):
 def compile_uuid_sqlite(type_, compiler, **kw):
     return "CHAR(36)"
 
-from .utils.logging_utils import configure_error_loggers
+
+TRUNCATE_FLOAT_DECIMALS = 2
+
+
+def _truncate_float(value: float, decimals: int = TRUNCATE_FLOAT_DECIMALS) -> float:
+    factor = 10 ** decimals
+    return math.trunc(value * factor) / factor
+
+
+def _truncate_floats(value):
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return _truncate_float(value)
+        return value
+
+    if isinstance(value, dict):
+        return {key: _truncate_floats(val) for key, val in value.items()}
+
+    if isinstance(value, list):
+        return [_truncate_floats(item) for item in value]
+
+    if isinstance(value, tuple):
+        return tuple(_truncate_floats(item) for item in value)
+
+    return value
+
+
+class TruncatingJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        return super().dumps(_truncate_floats(obj), **kwargs)
+
 
 # create db object (but don't bind to app yet)
 db = SQLAlchemy()
@@ -30,6 +63,8 @@ migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
+    app.json_provider_class = TruncatingJSONProvider
+    app.json = app.json_provider_class(app)
 
     VPS_ADDRESS = os.getenv("VPS_ADDRESS")
     VPS_DB_PORT = os.getenv("VPS_DB_PORT")
