@@ -176,29 +176,51 @@ class CommentSentimentService:
         return summary
 
     @staticmethod
-    def get_ranking(start_date=None, end_date=None) -> list[dict]:
+    def get_ranking(
+        start_date=None, end_date=None, entity_type=None, platform=None
+    ) -> list[dict]:
         """
         One row per entity ranked by a volume-adjusted sentiment score (desc).
         Entities below RANKING_MIN_COMMENTS are excluded; each row carries the
         same summary shape as get_entity_sentiment (minus trend/examples) plus a
         `ranking_score` (the value actually used for ordering).
+
+        `entity_type` restricts the ranking to one kind of entity ("company" /
+        "influencer"). It has to be applied here rather than in the client: the
+        caller truncates the result to the free tier's top N, so a client-side
+        filter would be selecting from an already-truncated combined list and
+        renumbering whatever survived as if it were a complete ranking.
+
+        `platform` narrows to comments from one network, for the same reason and
+        with the same constraint. It is applied in the query so every downstream
+        number is recomputed on the narrowed set: counts, percentages, `score`,
+        the RANKING_MIN_COMMENTS cut, `ranking_score` and `rank`. Sentiment
+        differs sharply by network, so a platform-filtered row is a genuinely
+        different ranking rather than the pooled one relabelled.
         """
-        rows = CommentRepository.get_sentiment_ranking(start_date, end_date)
+        rows = CommentRepository.get_sentiment_ranking(
+            start_date, end_date, platform=platform
+        )
         if not rows:
             return []
 
-        # Group (entity_id, name, type, label, count) rows by entity.
+        # Group (entity_id, name, type, label, count) rows by entity. `row_type`
+        # must not be named `entity_type` — that would rebind the filter argument
+        # to the last row's type and silently apply the wrong filter (or one the
+        # caller never asked for).
         entities: dict[int, dict] = {}
-        for entity_id, name, entity_type, label, count in rows:
+        for entity_id, name, row_type, label, count in rows:
             entity = entities.setdefault(
                 entity_id,
-                {"entity_id": entity_id, "entity_name": name, "type": entity_type,
+                {"entity_id": entity_id, "entity_name": name, "type": row_type,
                  "_rows": []},
             )
             entity["_rows"].append((label, count, None))
 
         ranking = []
         for entity in entities.values():
+            if entity_type and entity.get("type") != entity_type:
+                continue
             summary = _shape_counts(entity.pop("_rows"))
             summary.pop("avg_confidence", None)  # not meaningful in the ranking
             entity.update(summary)

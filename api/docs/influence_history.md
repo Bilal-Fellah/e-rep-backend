@@ -419,6 +419,11 @@ Return followers progress (gain) ranking for entities over a time window.
 - `start_date` (optional, ISO date/datetime)
 - `end_date` (optional, ISO date/datetime)
 - `type` (optional; one of `company`, `influencer`, `small-business`) — restrict the ranking to a single entity kind. When omitted, all entity types are returned.
+- `sort_by` (optional; one of `progress`, `followers`; default `progress`) — which followers metric the ranking is ordered and ranked by. `progress` = followers gained over the window; `followers` = current total followers.
+
+  This is not a display preference: `rank` is assigned server-side from this ordering, and free/registered users have the response truncated to the top 10 (`limit_ranking_for_role`). A client that re-sorted the response would therefore be re-ordering the wrong ten rows and presenting them as a complete ranking. Callers must request the metric they intend to display.
+
+  Erup uses `progress` for `/Rankings` + `/Creators-Growth-Rankings`, and `followers` for `/Followers-Rankings` + `/Influencers`.
 
 ### Success Response (200)
 

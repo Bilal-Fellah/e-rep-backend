@@ -448,6 +448,13 @@ premium/admin users get the full list for any window.
 - `period` (optional) - Named window (`all`, `yesterday`, `7d`, `30d`, `prev_month`,
   `90d`, `1y`)
 - `start_date` / `end_date` (optional, ISO `YYYY-MM-DD`) - Explicit window (premium only)
+- `type` (optional; one of `company`, `influencer`, `small-business`) - Restrict the
+  ranking to a single entity kind. When omitted, all entity types are returned mixed.
+
+  Filtering happens *before* the free-tier truncation above, and `rank` is assigned
+  within the filtered set. This is why the filter cannot be applied client-side: a
+  caller that filtered the combined top-10 down to creators would be showing whichever
+  0-3 creators happened to place globally, renumbered as if they were the top creators.
 
 ### Success Response (200)
 

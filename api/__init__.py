@@ -89,11 +89,16 @@ def create_app():
 
     app.secret_key = os.getenv("SECRET_KEY")
 
+    # SameSite/Secure come from one place so the browser-rejected
+    # SameSite=None-without-Secure pair can't be emitted. Defaults are
+    # None + Secure, which is what the Google redirect needs.
+    from api.utils.cookie_policy import COOKIE_SAMESITE, COOKIE_SECURE
+
     app.config.update(
         SESSION_COOKIE_NAME="brendex_session",
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="None",  # REQUIRED for Google redirect
-        SESSION_COOKIE_SECURE=True,      # REQUIRED for SameSite=None
+        SESSION_COOKIE_SAMESITE=COOKIE_SAMESITE,
+        SESSION_COOKIE_SECURE=COOKIE_SECURE,
     )
 
 

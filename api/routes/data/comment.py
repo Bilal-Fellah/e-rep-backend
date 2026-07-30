@@ -11,6 +11,14 @@ from api.utils.permissions import (
     ranking_access_error,
 )
 
+# Mirrors the DB CheckConstraint on entities.type (same list as
+# routes/data/influence_history.py).
+ALLOWED_ENTITY_TYPES = ("company", "influencer", "small-business")
+
+# Mirrors the DB CheckConstraint on pages.platform. Validated rather than passed
+# through so an unknown value is a 400 instead of a silently empty ranking.
+ALLOWED_PLATFORMS = ("facebook", "instagram", "x", "tiktok", "linkedin", "youtube")
+
 
 @data_bp.route("/get_comments_by_post", methods=["GET"])
 def get_comments_by_post():
@@ -268,5 +276,28 @@ def get_sentiment_ranking():
     if window_error:
         return window_error
 
-    data = CommentSentimentService.get_ranking(start_date, end_date)
+    # Filtering by type happens before the free-tier truncation below, so a
+    # creators-only table gets the real top N creators rather than whichever
+    # creators happened to place in the combined top N.
+    entity_type = request.args.get("type")
+    if entity_type:
+        entity_type = entity_type.strip().lower()
+        if entity_type not in ALLOWED_ENTITY_TYPES:
+            return error_response(
+                f"type must be one of {list(ALLOWED_ENTITY_TYPES)}", 400
+            )
+
+    # Same ordering argument as `type`: narrowing to one network changes every
+    # score, so it must happen before ranking and truncation, not after.
+    platform = request.args.get("platform")
+    if platform:
+        platform = platform.strip().lower()
+        if platform not in ALLOWED_PLATFORMS:
+            return error_response(
+                f"platform must be one of {list(ALLOWED_PLATFORMS)}", 400
+            )
+
+    data = CommentSentimentService.get_ranking(
+        start_date, end_date, entity_type=entity_type, platform=platform
+    )
     return success_response(data=limit_ranking_for_role(role, data))

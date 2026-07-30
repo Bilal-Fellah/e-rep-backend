@@ -33,3 +33,22 @@ Pack policy defaults are derived from `pack_code` (`starter`, `growth`, `advance
 and stored in subscription `access_rights`. Admin can still pass explicit
 `access_rights` overrides when granting a subscription/preapproval.
 
+
+---
+
+## Local development auth
+
+There is **no auth bypass**. Every request authenticates through the normal JWT
+path, in every environment — `extract_and_validate_token()` has one code path.
+
+Local Erup obtains a real session at `/dev-login` (development builds only; the
+route 404s in production). It performs a genuine `POST /api/auth/login` against
+whatever `NEXT_PUBLIC_API_URL` points at — including the deployed API, which
+already allows `http://localhost:3000` with credentials — and stores the JWT.
+Local development therefore runs with a real account and its real role, and
+exercises the same entitlement rules as production rather than faking a role
+past them.
+
+An earlier `X-Dev-Auth` / `DEV_AUTH_BYPASS` header bypass was removed: it only
+worked against a locally-run backend, and its companion `dev_skip` flag rendered
+a signed-in admin UI while every data call still 401'd against a deployed API.

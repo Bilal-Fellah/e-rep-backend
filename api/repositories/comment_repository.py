@@ -488,13 +488,20 @@ class CommentRepository:
         )
 
     @staticmethod
-    def get_sentiment_ranking(start_date=None, end_date=None) -> list[tuple]:
+    def get_sentiment_ranking(
+        start_date=None, end_date=None, platform=None
+    ) -> list[tuple]:
         """
         Count labeled comments per (entity, label) across all entities.
 
         Args:
             start_date: Optional lower bound on comment_timestamp
             end_date: Optional (inclusive) upper bound on comment_timestamp
+            platform: Optional single platform ("instagram", "facebook", ...).
+                Filters on `Comment.platform` rather than `Page.platform`: the
+                two always agree (a page's uuid is derived from its platform),
+                but filtering the comment side lets Postgres cut rows before the
+                join instead of after it.
 
         Returns:
             list[tuple]: rows of (entity_id, entity_name, entity_type, label, count)
@@ -511,6 +518,8 @@ class CommentRepository:
             .join(Entity, Entity.id == Page.entity_id)
             .filter(Comment.label.isnot(None))
         )
+        if platform:
+            q = q.filter(Comment.platform == platform)
         q = _apply_comment_window(q, start_date, end_date)
         return q.group_by(
             Entity.id, Entity.name, Entity.type, Comment.label
