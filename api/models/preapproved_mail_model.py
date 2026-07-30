@@ -5,9 +5,12 @@ from api import db
 
 class PreapprovedMail(db.Model):
     __tablename__ = "preapproved_mails"
+    __table_args__ = (
+        db.UniqueConstraint("email", name="uq_preapproved_mails_email"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(120), nullable=False, index=True)
     status = db.Column(
         db.Enum("pending", "used", "revoked", "expired", name="preapproved_mail_status"),
         nullable=False,

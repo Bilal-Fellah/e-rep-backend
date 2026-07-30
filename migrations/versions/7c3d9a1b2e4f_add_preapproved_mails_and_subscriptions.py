@@ -7,6 +7,7 @@ Create Date: 2026-07-30 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -16,12 +17,12 @@ branch_labels = None
 depends_on = None
 
 
-preapproved_mail_status = sa.Enum(
-    'pending', 'used', 'revoked', 'expired', name='preapproved_mail_status'
+preapproved_mail_status = postgresql.ENUM(
+    'pending', 'used', 'revoked', 'expired', name='preapproved_mail_status', create_type=False
 )
 
-subscription_status = sa.Enum(
-    'pending', 'active', 'expired', 'canceled', 'revoked', name='subscription_status'
+subscription_status = postgresql.ENUM(
+    'pending', 'active', 'expired', 'canceled', 'revoked', name='subscription_status', create_type=False
 )
 
 

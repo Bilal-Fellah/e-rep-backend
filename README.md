@@ -84,6 +84,7 @@ See `api/docs/` for per-feature documentation:
 | `public.md` | `/api/public/*` — unauthenticated public endpoints |
 | `health.md` | `/health/check` — liveness probe |
 | `access_roles.md` | Role-based access summary |
+| `subscription_backfill.md` | One-time legacy subscribed-user migration guide |
 
 ## Auth Model
 
