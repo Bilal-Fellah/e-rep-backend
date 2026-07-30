@@ -16,6 +16,8 @@ import api.models.post_model
 import api.models.note_model
 import api.models.comment_model
 import api.models.scraping_session_model
+import api.models.preapproved_mail_model
+import api.models.subscription_model
 
 
 @pytest.fixture(scope="session")

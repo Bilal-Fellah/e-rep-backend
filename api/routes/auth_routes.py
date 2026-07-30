@@ -1,5 +1,5 @@
 # routes/auth_routes.py
-import json
+
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -21,6 +21,7 @@ from api.routes.main import (
     success_response,
 )
 from api.services.auth_service import AuthService
+from api.services.subscription_service import SubscriptionService
 from api.utils.auth import (
     ENTITIES_FILE,
     MAILS_FILE,
@@ -86,7 +87,7 @@ def register_mail():
 @auth_bp.route("/register_user", methods=["POST"])
 def register_user():
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         required_keys = ["full_name", "email", "password", "phone_number", "profession"]
         missing = validate_required_keys(data, required_keys)
         if missing:
@@ -182,7 +183,7 @@ def register_entity_name():
 def register_entity():
     try:
         required_keys = ["entity_name", "type", "category_id"]
-        data = request.get_json(silent=True)
+        data = request.get_json(silent=True) or {}
         missing = validate_required_keys(data, required_keys)
         if missing:
             return error_response(f"missing required key: {missing}", 400)
@@ -296,7 +297,7 @@ def login():
             except Exception:
                 pass  # best-effort; never fail the request over accounting
 
-        data = request.json
+        data = request.get_json(silent=True) or {}
         missing = validate_required_keys(data, ["email", "password"])
         if missing:
             return error_response(f"missing required key: {missing}", 400)
@@ -315,6 +316,12 @@ def login():
             _record_failed_login()
             return error_response("Invalid credentials", status_code=401)
 
+        # Keep role aligned with subscription windows before issuing tokens.
+        user, active_subscription, _ = SubscriptionService.get_effective_access_for_user(user)
+        if not user:
+            _record_failed_login()
+            return error_response("Invalid credentials", status_code=401)
+
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(
             user.id,
@@ -328,6 +335,12 @@ def login():
             tokens["refresh_token"],
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
+        response["subscription"] = {
+            "pack_code": getattr(active_subscription, "pack_code", None),
+            "status": getattr(active_subscription, "status", None),
+            "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
+            "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
+        }
 
         return success_response(response, status_code=200)
     except (TypeError, KeyError, ValueError):
@@ -339,9 +352,14 @@ def login():
 def get_user_data():
     try:
         # Auth payload is already validated by @require_role decorator
-        user = UserRepository.get_by_id(request.user_id)
+        current_user_id = getattr(request, "user_id", None)
+        if not isinstance(current_user_id, int):
+            return error_response("User not found", 404)
+        user = UserRepository.get_by_id(current_user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        user, active_subscription, _ = SubscriptionService.get_effective_access(user.id)
 
         return success_response(
             data={
@@ -353,6 +371,12 @@ def get_user_data():
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "created_at": iso_utc(user.created_at),
+                "subscription": {
+                    "pack_code": getattr(active_subscription, "pack_code", None),
+                    "status": getattr(active_subscription, "status", None),
+                    "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
+                    "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
+                },
             }
         )
     except (TypeError, KeyError, ValueError):
@@ -474,13 +498,16 @@ def validate_user_role():
     required_keys = ["user_id", "role"]
     try:
         # Auth payload is already validated by @require_role decorator
-        caller = UserRepository.get_by_id(request.user_id)
+        current_user_id = getattr(request, "user_id", None)
+        if not isinstance(current_user_id, int):
+            return error_response("User not found", 404)
+        caller = UserRepository.get_by_id(current_user_id)
         if not caller:
             return error_response("User not found", 404)
         if caller.role != "admin":
             return error_response("Access denied", 403)
 
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         for key in required_keys:
             if key not in data:
                 return error_response(f"Missing required key {key}", 400)
@@ -509,11 +536,14 @@ def complete_profile():
     """
     try:
         # Auth payload is already validated by @require_role decorator
-        user = UserRepository.get_by_id(request.user_id)
+        current_user_id = getattr(request, "user_id", None)
+        if not isinstance(current_user_id, int):
+            return error_response("User not found", 404)
+        user = UserRepository.get_by_id(current_user_id)
         if not user:
             return error_response("User not found", 404)
 
-        data = request.json
+        data = request.get_json(silent=True) or {}
         missing = validate_required_keys(data, ["phone_number", "profession"])
         if missing:
             return error_response(f"missing required key: {missing}", 400)
@@ -554,9 +584,16 @@ def redirect_to_app():
 
     try:
         # Auth payload is already validated by @require_role decorator
-        user = UserRepository.get_by_id(request.user_id)
+        current_user_id = getattr(request, "user_id", None)
+        if not isinstance(current_user_id, int):
+            return error_response("User not found", 404)
+        user = UserRepository.get_by_id(current_user_id)
         if not user:
             return error_response("User not found", 404)
+
+        user, active_subscription, _ = SubscriptionService.get_effective_access(user.id)
+        if user.role not in ("subscribed", "admin"):
+            return error_response("Active subscription required", 403)
 
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(

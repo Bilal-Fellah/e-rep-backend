@@ -3,10 +3,9 @@
 
 from enum import Enum
 from functools import wraps
-from flask import request, jsonify
+from flask import request
 import jwt
 import os
-from api.repositories.user_repository import UserRepository
 from api.utils.auth import _extract_token
 
 SECRET = os.environ.get("SECRET_KEY")
@@ -93,6 +92,10 @@ ROLE_PERMISSIONS = {
     "admin.get_alerts": [UserRole.ADMIN.value],
     "admin.get_overview": [UserRole.ADMIN.value],
     "admin.get_health": [UserRole.ADMIN.value],
+    "admin.list_user_subscriptions": [UserRole.ADMIN.value],
+    "admin.grant_subscription": [UserRole.ADMIN.value],
+    "admin.list_preapproved_mails": [UserRole.ADMIN.value],
+    "admin.upsert_preapproved_mail": [UserRole.ADMIN.value],
 
     # Entity admin extras (in the data blueprint)
     "data.update_entity": [UserRole.ADMIN.value],
@@ -225,8 +228,11 @@ def require_auth(*allowed_roles):
             if error:
                 return error_response(error[0], error[1])
 
-            # Get user role from token
-            user_role = payload.get("role")
+            # Resolve effective role from DB and active subscription window.
+            user_role, access_rights = _resolve_effective_role_and_rights(payload)
+            payload_dict = payload or {}
+            if not user_role:
+                user_role = payload_dict.get("role")
             if not user_role:
                 return error_response("Role information missing in token", 401)
 
@@ -234,10 +240,11 @@ def require_auth(*allowed_roles):
             if allowed_roles and user_role not in allowed_roles:
                 return error_response("Insufficient permissions for this action", 403)
 
-            # Store payload in request context for use in route handler
-            request.auth_payload = payload
-            request.user_role = user_role
-            request.user_id = payload.get("user_id")
+            # Store payload + effective auth context for route handlers.
+            setattr(request, "auth_payload", payload)
+            setattr(request, "user_role", user_role)
+            setattr(request, "user_id", payload_dict.get("user_id"))
+            setattr(request, "subscription_access_rights", access_rights)
 
             return f(*args, **kwargs)
 
@@ -273,10 +280,12 @@ def optional_auth(f):
     def decorated_function(*args, **kwargs):
         # Try to extract token, but don't fail if missing
         payload, _ = extract_and_validate_token()
+        role, rights = _resolve_effective_role_and_rights(payload)
 
-        request.auth_payload = payload  # Will be None if no valid token
-        request.user_role = payload.get("role") if payload else None
-        request.user_id = payload.get("user_id") if payload else None
+        setattr(request, "auth_payload", payload)  # Will be None if no valid token
+        setattr(request, "user_role", role if payload else None)
+        setattr(request, "user_id", payload.get("user_id") if payload else None)
+        setattr(request, "subscription_access_rights", rights if payload else None)
 
         return f(*args, **kwargs)
 
@@ -298,12 +307,43 @@ FREE_TOP_POSTS_LIMIT = 1
 FREE_PERIODS = {"all", "all_time", "max", "30d", "last_30d", "last_month"}
 
 
+def _resolve_effective_role_and_rights(payload):
+    if not payload:
+        return None, None
+
+    role = payload.get("role")
+    rights = None
+    user_id = payload.get("user_id")
+
+    if not user_id:
+        return role, rights
+
+    try:
+        from api.services.subscription_service import SubscriptionService
+
+        user, active, active_rights = SubscriptionService.get_effective_access(user_id)
+        role = user.role if user else role
+        rights = active_rights if active else None
+    except Exception:
+        # Best-effort: never fail auth metadata enrichment.
+        pass
+
+    return role, rights
+
+
 def current_user_role():
     """Best-effort role of the caller (from the Bearer/cookie JWT), or None when
     anonymous or the token is invalid. Lets a route apply entitlement rules
     without failing closed on unauthenticated access."""
     payload, _ = extract_and_validate_token()
-    return payload.get("role") if payload else None
+    role, _ = _resolve_effective_role_and_rights(payload)
+    return role
+
+
+def current_subscription_access_rights():
+    payload, _ = extract_and_validate_token()
+    _, rights = _resolve_effective_role_and_rights(payload)
+    return rights
 
 
 def is_premium_role(role):
@@ -312,12 +352,26 @@ def is_premium_role(role):
 
 
 def ranking_access_error(role, period=None, start_date=None, end_date=None):
-    """Entitlement check for ranking windows. Free/registered users may only use
-    the free periods (All Time / Last 30 Days); every other named period and any
-    custom start/end range is premium. Returns an error message string to deny
-    with, or None when access is allowed."""
-    if is_premium_role(role):
+    """Entitlement check for ranking windows.
+
+    - registered/free: existing free-tier restrictions.
+    - subscribed: full access by default, with optional constraints if the active
+      pack provides explicit access_rights.
+    """
+    rights = current_subscription_access_rights() if role == UserRole.SUBSCRIBED.value else None
+
+    # Anonymous callers are allowed through route-level validation rules.
+    if role is None:
         return None
+
+    if is_premium_role(role):
+        if rights:
+            if (start_date or end_date) and not bool(rights.get("allow_custom_ranges", True)):
+                return "Custom date ranges are not available for your current pack."
+            if period and period.strip().lower() not in FREE_PERIODS and not bool(rights.get("allow_premium_periods", True)):
+                return "This time period is not available for your current pack."
+        return None
+
     if start_date or end_date:
         return "Custom date ranges are available on a paid plan."
     if period and period.strip().lower() not in FREE_PERIODS:
@@ -326,8 +380,13 @@ def ranking_access_error(role, period=None, start_date=None, end_date=None):
 
 
 def limit_ranking_for_role(role, data):
-    """Cap ranking rows to the free tier's top-N (brand_rankings top_10_only)."""
+    """Cap ranking rows based on role and optional pack-level rights."""
     if is_premium_role(role):
+        if role == UserRole.SUBSCRIBED.value:
+            rights = current_subscription_access_rights() or {}
+            custom_limit = rights.get("ranking_limit")
+            if isinstance(custom_limit, int) and custom_limit > 0 and isinstance(data, list):
+                return data[:custom_limit]
         return data
     if isinstance(data, list):
         return data[:FREE_RANKING_LIMIT]
@@ -335,7 +394,12 @@ def limit_ranking_for_role(role, data):
 
 
 def top_posts_limit_for_role(role, requested):
-    """Cap the number of top posts a free user may request (top_posts rule)."""
+    """Cap the number of top posts based on role and optional pack-level rights."""
     if is_premium_role(role):
+        if role == UserRole.SUBSCRIBED.value:
+            rights = current_subscription_access_rights() or {}
+            max_items = rights.get("top_posts_limit")
+            if isinstance(max_items, int) and max_items > 0:
+                return min(max_items, requested)
         return requested
     return FREE_TOP_POSTS_LIMIT

@@ -41,7 +41,16 @@ List users with optional search and pagination.
         "user_id": 1, "first_name": "Jane", "last_name": "Doe",
         "email": "jane@example.com", "role": "admin",
         "profession": "ceo", "phone_number": null,
-        "is_verified": true, "created_at": "2026-01-10T09:00:00+00:00"
+        "is_verified": true, "created_at": "2026-01-10T09:00:00+00:00",
+        "subscription": {
+          "pack_code": "growth",
+          "status": "active",
+          "starts_at": "2026-08-01T00:00:00+00:00",
+          "ends_at": "2026-09-01T00:00:00+00:00",
+          "access_rights": {
+            "top_posts_limit": 3
+          }
+        }
       }
     ],
     "total": 1, "limit": 50, "offset": 0
@@ -51,7 +60,7 @@ List users with optional search and pagination.
 
 ---
 
-## **POST /api/admin/users/&lt;id&gt;/role**
+## **POST /api/admin/users/<id>/role**
 
 Change a user's role (`registered` | `subscribed` | `admin`). Leaves
 `is_verified` untouched. An admin cannot change their own role away from `admin`.
@@ -62,7 +71,7 @@ Errors: `role must be one of [...]` (400), `You cannot change your own admin rol
 
 ---
 
-## **POST /api/admin/users/&lt;id&gt;/activate**
+## **POST /api/admin/users/<id>/activate**
 
 Set a user's account activation flag.
 
@@ -72,7 +81,83 @@ Errors: `Missing required field: 'is_verified'.` (400), `'is_verified' must be a
 
 ---
 
-## **POST /api/admin/users/&lt;id&gt;/delete**
+## **GET /api/admin/users/<id>/subscriptions**
+
+List subscription history for a user (newest first).
+
+Query params: `limit` (default 50, max 200), `offset`.
+
+---
+
+## **POST /api/admin/users/<id>/subscriptions/grant**
+
+Grant a subscription pack to a user for a specific window.
+
+### Request
+
+```json
+{
+  "pack_code": "growth",
+  "starts_at": "2026-08-01T00:00:00Z",
+  "ends_at": "2026-09-01T00:00:00Z",
+  "access_rights": {
+    "top_posts_limit": 30,
+    "ranking_limit": 30,
+    "allow_custom_ranges": false,
+    "allow_premium_periods": true
+  }
+}
+```
+
+Notes:
+- `starts_at` is optional (defaults to now).
+- `ends_at` is optional (no expiry).
+- `pack_code` must be one of: `starter`, `growth`, `advanced`.
+- `access_rights` is optional; when omitted, defaults are derived from `pack_code`.
+
+---
+
+## **GET /api/admin/preapproved-mails**
+
+List preapproved emails.
+
+Query params:
+- `email` (contains filter)
+- `status` (`pending` | `used` | `revoked` | `expired`)
+- `limit` (default 50, max 200), `offset`
+
+---
+
+## **POST /api/admin/preapproved-mails/upsert**
+
+Create or update a preapproved email that will auto-apply during signup.
+
+### Request
+
+```json
+{
+  "email": "user@example.com",
+  "pack_code": "growth",
+  "starts_at": "2026-08-01T00:00:00Z",
+  "ends_at": "2026-09-01T00:00:00Z",
+  "access_rights": {
+    "top_posts_limit": 30,
+    "ranking_limit": 30,
+    "allow_custom_ranges": false,
+    "allow_premium_periods": true
+  },
+  "notes": "Campaign A"
+}
+```
+
+Notes:
+- On successful signup with that email, the row is marked `used` and a
+  subscription is created automatically.
+- `pack_code` must be one of: `starter`, `growth`, `advanced`.
+
+---
+
+## **POST /api/admin/users/<id>/delete**
 
 Permanently delete a user. An admin cannot delete their own account.
 

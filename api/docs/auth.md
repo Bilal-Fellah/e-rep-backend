@@ -47,6 +47,11 @@ Registers an email for temporary access.
 
 Creates a verified user account and returns tokens.
 
+If the email has a matching eligible preapproval in `preapproved_mails`, the signup
+flow automatically creates a subscription row. If that subscription window is
+already active and the pack is paid (`growth`/`advanced`), role entitlement is
+upgraded immediately.
+
 ### Request
 
 ```json
@@ -72,7 +77,13 @@ Creates a verified user account and returns tokens.
     "refresh_token": "jwt_refresh_token_here",
     "user_role": "registered",
     "user_id": 1,
-    "is_verified": true
+    "is_verified": true,
+    "subscription": {
+      "pack_code": null,
+      "status": null,
+      "starts_at": null,
+      "ends_at": null
+    }
   }
 }
 ```
@@ -238,7 +249,13 @@ Authenticates user credentials and returns token pair.
     "refresh_token": "jwt_refresh_token_here",
     "user_role": "registered",
     "user_id": 1,
-    "is_verified": true
+    "is_verified": true,
+    "subscription": {
+      "pack_code": null,
+      "status": null,
+      "starts_at": null,
+      "ends_at": null
+    }
   }
 }
 ```
@@ -272,7 +289,13 @@ Returns user profile data from authenticated access token.
     "profession": "marketing",
     "first_name": "John",
     "last_name": "Doe",
-    "created_at": "2026-04-12T08:20:30+00:00"
+    "created_at": "2026-04-12T08:20:30+00:00",
+    "subscription": {
+      "pack_code": null,
+      "status": null,
+      "starts_at": null,
+      "ends_at": null
+    }
   }
 }
 ```
