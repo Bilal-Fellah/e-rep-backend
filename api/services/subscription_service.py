@@ -289,3 +289,26 @@ class SubscriptionService:
             return user, None, None
 
         return SubscriptionService.get_effective_access(user_id)
+
+    @staticmethod
+    def revoke_subscription(subscription_id: int):
+        """Revoke a subscription and sync the user's role.
+
+        Returns:
+            tuple: (revoked_subscription, synced_user, active_subscription_after_revoke)
+            Raises:
+            ValueError: If subscription not found
+        """
+        sub = SubscriptionRepository.get_by_id(subscription_id)
+        if not sub:
+            raise ValueError("Subscription not found")
+
+        # Mark as revoked
+        revoked = SubscriptionRepository.revoke(subscription_id)
+        if not revoked:
+            raise ValueError("Failed to revoke subscription")
+
+        # Sync the user's role based on remaining active subscriptions
+        user, active = SubscriptionService._sync_user_role_from_subscriptions(sub.user_id)
+
+        return revoked, user, active

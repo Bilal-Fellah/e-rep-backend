@@ -71,3 +71,19 @@ class SubscriptionRepository:
         )
         db.session.commit()
         return int(updated or 0)
+
+    @staticmethod
+    def revoke(subscription_id: int) -> Subscription | None:
+        """Mark a subscription as revoked. Returns the updated subscription or None if not found."""
+        sub = Subscription.query.get(subscription_id)
+        if not sub:
+            return None
+        if sub.status in ("revoked", "expired", "canceled"):
+            return sub  # Already in a terminal state
+        sub.status = "revoked"
+        db.session.commit()
+        return sub
+
+    @staticmethod
+    def get_by_id(subscription_id: int) -> Subscription | None:
+        return Subscription.query.get(subscription_id)

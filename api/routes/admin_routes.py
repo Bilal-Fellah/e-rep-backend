@@ -106,7 +106,12 @@ def list_users():
 @admin_bp.route("/users/<int:user_id>/role", methods=["POST"])
 @require_role("admin")
 def set_user_role(user_id):
-    """Change a user's role (registered | subscribed | admin)."""
+    """Change a user's role (registered | admin).
+
+    Note: The 'subscribed' role cannot be set directly. It is automatically
+    derived from active paid subscriptions. Use /users/<id>/subscriptions/grant
+    to grant a subscription pack, which will sync the user's role to 'subscribed'.
+    """
     data = request.get_json() or {}
     role = data.get("role")
     if role not in ALLOWED_USER_ROLES:
@@ -114,13 +119,38 @@ def set_user_role(user_id):
             f"role must be one of {list(ALLOWED_USER_ROLES)}.", 400
         )
 
+    # Prevent direct changes to 'subscribed' role - it must come from an active subscription.
+    if role == "subscribed":
+        return error_response(
+            "Cannot directly set role to 'subscribed'. "
+            "Use /users/<id>/subscriptions/grant to grant a subscription pack, "
+            "which will automatically set the user's role to 'subscribed'.",
+            400,
+        )
+
     # Guard against an admin removing their own admin access (self-lockout).
     if user_id == getattr(request, "user_id", None) and role != "admin":
         return error_response("You cannot change your own admin role.", 400)
 
-    # Change only the role — leave is_verified alone (activation is a separate
-    # admin action). update_profile raises ValueError when the user doesn't
-    # exist; catch it for a 404 rather than a redundant pre-fetch or generic 400.
+    # Fetch the user first to check current state
+    user = UserRepository.get_by_id(user_id)
+    if not user:
+        return error_response("User not found.", 404)
+
+    # If downgrading from 'subscribed' to 'registered', sync with subscriptions first
+    # to ensure the change is legitimate (no active paid subscription exists).
+    if user.role == "subscribed" and role == "registered":
+        # Sync role from current subscriptions - if user has active paid sub, role won't change
+        synced_user, active = SubscriptionService._sync_user_role_from_subscriptions(user_id)
+        if synced_user.role == "subscribed":
+            return error_response(
+                f"Cannot downgrade to 'registered': user has an active paid subscription "
+                f"(pack: {active.pack_code}). Revoke or expire the subscription first.",
+                400,
+            )
+        return success_response(_serialize_user(synced_user))
+
+    # For admin<->registered transitions or setting registered on non-subscribed users
     try:
         updated = UserRepository.update_profile(user_id, role=role)
     except ValueError:
@@ -231,6 +261,56 @@ def grant_subscription(user_id):
                 "ends_at": iso_utc(getattr(active, "ends_at", None)),
                 "access_rights": getattr(active, "access_rights", None),
             },
+            "user": _serialize_user(synced_user),
+        }
+    )
+
+
+@admin_bp.route("/users/<int:user_id>/subscriptions/<int:subscription_id>/revoke", methods=["POST"])
+@require_role("admin")
+def revoke_subscription(user_id, subscription_id):
+    """Revoke a specific subscription and sync the user's role.
+
+    After revocation, if the user has no other active paid subscriptions,
+    their role will be downgraded to 'registered'.
+    """
+    # Verify the subscription belongs to this user
+    sub = SubscriptionRepository.get_by_id(subscription_id)
+    if not sub:
+        return error_response("Subscription not found.", 404)
+    if sub.user_id != user_id:
+        return error_response("Subscription does not belong to this user.", 400)
+
+    # Check if already in a terminal state
+    if sub.status in ("revoked", "expired", "canceled"):
+        return error_response(
+            f"Subscription is already {sub.status} and cannot be revoked.",
+            400
+        )
+
+    try:
+        revoked, synced_user, active = SubscriptionService.revoke_subscription(subscription_id)
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(
+        {
+            "subscription": {
+                "id": revoked.id,
+                "status": revoked.status,
+                "pack_code": revoked.pack_code,
+                "access_rights": revoked.access_rights,
+                "starts_at": iso_utc(revoked.starts_at),
+                "ends_at": iso_utc(revoked.ends_at),
+                "source": revoked.source,
+            },
+            "active_subscription": {
+                "pack_code": getattr(active, "pack_code", None),
+                "status": getattr(active, "status", None),
+                "starts_at": iso_utc(getattr(active, "starts_at", None)),
+                "ends_at": iso_utc(getattr(active, "ends_at", None)),
+                "access_rights": getattr(active, "access_rights", None),
+            } if active else None,
             "user": _serialize_user(synced_user),
         }
     )
