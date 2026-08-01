@@ -213,6 +213,71 @@ def list_user_subscriptions(user_id):
     return success_response({"subscriptions": data, "limit": limit, "offset": offset})
 
 
+@admin_bp.route("/subscriptions", methods=["GET"])
+@require_role("admin")
+def list_all_subscriptions():
+    """List all subscriptions with optional filters (admin only)."""
+    status = request.args.get("status")
+    pack_code = request.args.get("pack_code")
+    source = request.args.get("source")
+
+    allowed_statuses = {"pending", "active", "expired", "canceled", "revoked"}
+    if status and status not in allowed_statuses:
+        return error_response(f"status must be one of {sorted(allowed_statuses)}.", 400)
+
+    allowed_packs = {"starter", "growth", "advanced"}
+    if pack_code and pack_code not in allowed_packs:
+        return error_response(f"pack_code must be one of {sorted(allowed_packs)}.", 400)
+
+    allowed_sources = {"admin", "preapproved_mail", "stripe", "manual"}
+    if source and source not in allowed_sources:
+        return error_response(f"source must be one of {sorted(allowed_sources)}.", 400)
+
+    limit = request.args.get("limit", default=50, type=int)
+    offset = request.args.get("offset", default=0, type=int)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    rows = SubscriptionRepository.list_all(
+        status=status,
+        pack_code=pack_code,
+        source=source,
+        limit=limit,
+        offset=offset,
+    )
+    total = SubscriptionRepository.count_all(
+        status=status,
+        pack_code=pack_code,
+        source=source,
+    )
+
+    data = [
+        {
+            "id": row.id,
+            "user_id": row.user_id,
+            "status": row.status,
+            "pack_code": row.pack_code,
+            "access_rights": row.access_rights,
+            "starts_at": iso_utc(row.starts_at),
+            "ends_at": iso_utc(row.ends_at),
+            "source": row.source,
+            "preapproved_mail_id": row.preapproved_mail_id,
+            "created_by_user_id": row.created_by_user_id,
+            "created_at": iso_utc(row.created_at),
+        }
+        for row in rows
+    ]
+
+    return success_response(
+        {
+            "subscriptions": data,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )
+
+
 @admin_bp.route("/users/<int:user_id>/subscriptions/grant", methods=["POST"])
 @require_role("admin")
 def grant_subscription(user_id):

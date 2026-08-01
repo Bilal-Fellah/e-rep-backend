@@ -87,3 +87,46 @@ class SubscriptionRepository:
     @staticmethod
     def get_by_id(subscription_id: int) -> Subscription | None:
         return Subscription.query.get(subscription_id)
+
+    @staticmethod
+    def list_all(
+        status: str | None = None,
+        pack_code: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Subscription]:
+        """List all subscriptions with optional filters."""
+        query = Subscription.query
+
+        if status:
+            query = query.filter(Subscription.status == status)
+        if pack_code:
+            query = query.filter(Subscription.pack_code == pack_code)
+        if source:
+            query = query.filter(Subscription.source == source)
+
+        return (
+            query.order_by(Subscription.created_at.desc().nullslast(), Subscription.id.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    @staticmethod
+    def count_all(
+        status: str | None = None,
+        pack_code: str | None = None,
+        source: str | None = None,
+    ) -> int:
+        """Count all subscriptions with optional filters."""
+        query = Subscription.query
+
+        if status:
+            query = query.filter(Subscription.status == status)
+        if pack_code:
+            query = query.filter(Subscription.pack_code == pack_code)
+        if source:
+            query = query.filter(Subscription.source == source)
+
+        return query.count()
