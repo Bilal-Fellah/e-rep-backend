@@ -220,6 +220,7 @@ List all subscriptions with optional filters.
       {
         "id": 123,
         "user_id": 1,
+        "user_email": "jane@example.com",
         "status": "active",
         "pack_code": "growth",
         "access_rights": { "top_posts_limit": 30, "ranking_limit": 30 },

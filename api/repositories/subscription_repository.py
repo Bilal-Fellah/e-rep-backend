@@ -114,6 +114,39 @@ class SubscriptionRepository:
         )
 
     @staticmethod
+    def list_all_with_user_email(
+        status: str | None = None,
+        pack_code: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[tuple[Subscription, str]]:
+        """List all subscriptions with optional filters, including user email.
+        
+        Returns a list of tuples (subscription, user_email).
+        """
+        from api.models.user_model import User
+        
+        query = (
+            db.session.query(Subscription, User.email)
+            .join(User, Subscription.user_id == User.id)
+        )
+
+        if status:
+            query = query.filter(Subscription.status == status)
+        if pack_code:
+            query = query.filter(Subscription.pack_code == pack_code)
+        if source:
+            query = query.filter(Subscription.source == source)
+
+        return (
+            query.order_by(Subscription.created_at.desc().nullslast(), Subscription.id.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    @staticmethod
     def count_all(
         status: str | None = None,
         pack_code: str | None = None,

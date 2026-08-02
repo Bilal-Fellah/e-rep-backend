@@ -238,7 +238,7 @@ def list_all_subscriptions():
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
 
-    rows = SubscriptionRepository.list_all(
+    rows = SubscriptionRepository.list_all_with_user_email(
         status=status,
         pack_code=pack_code,
         source=source,
@@ -255,6 +255,7 @@ def list_all_subscriptions():
         {
             "id": row.id,
             "user_id": row.user_id,
+            "user_email": email,
             "status": row.status,
             "pack_code": row.pack_code,
             "access_rights": row.access_rights,
@@ -265,7 +266,7 @@ def list_all_subscriptions():
             "created_by_user_id": row.created_by_user_id,
             "created_at": iso_utc(row.created_at),
         }
-        for row in rows
+        for row, email in rows
     ]
 
     return success_response(
