@@ -41,7 +41,16 @@ List users with optional search and pagination.
         "user_id": 1, "first_name": "Jane", "last_name": "Doe",
         "email": "jane@example.com", "role": "admin",
         "profession": "ceo", "phone_number": null,
-        "is_verified": true, "created_at": "2026-01-10T09:00:00+00:00"
+        "is_verified": true, "created_at": "2026-01-10T09:00:00+00:00",
+        "subscription": {
+          "pack_code": "growth",
+          "status": "active",
+          "starts_at": "2026-08-01T00:00:00+00:00",
+          "ends_at": "2026-09-01T00:00:00+00:00",
+          "access_rights": {
+            "top_posts_limit": 3
+          }
+        }
       }
     ],
     "total": 1, "limit": 50, "offset": 0
@@ -51,18 +60,42 @@ List users with optional search and pagination.
 
 ---
 
-## **POST /api/admin/users/&lt;id&gt;/role**
+## **POST /api/admin/users/<id>/role**
 
-Change a user's role (`registered` | `subscribed` | `admin`). Leaves
-`is_verified` untouched. An admin cannot change their own role away from `admin`.
+Change a user's role (`registered` | `admin`).
 
-Request: `{ "role": "subscribed" }` → returns the updated user object.
+**Important:** The `subscribed` role cannot be set directly via this endpoint.
+It is automatically derived from active paid subscriptions. Use
+`/api/admin/users/<id>/subscriptions/grant` to grant a subscription pack,
+which will sync the user's role to `subscribed`.
 
-Errors: `role must be one of [...]` (400), `You cannot change your own admin role.` (400), `User not found.` (404).
+Similarly, to remove `subscribed` access, revoke the subscription via
+`/api/admin/users/<id>/subscriptions/<subscription_id>/revoke`.
+
+### Request
+
+```json
+{ "role": "admin" }
+```
+
+### Behavior
+
+- `registered` → `admin`: Promotes user to admin
+- `admin` → `registered`: Demotes admin to registered user
+- `subscribed` → `registered`: Blocked if user has active paid subscription
+- Any role → `subscribed`: Not allowed (use subscription grant instead)
+
+### Errors
+
+- `role must be one of [...]` (400)
+- `Cannot directly set role to 'subscribed'...` (400)
+- `Cannot downgrade to 'registered': user has an active paid subscription...` (400)
+- `You cannot change your own admin role.` (400)
+- `User not found.` (404)
 
 ---
 
-## **POST /api/admin/users/&lt;id&gt;/activate**
+## **POST /api/admin/users/<id>/activate**
 
 Set a user's account activation flag.
 
@@ -72,7 +105,189 @@ Errors: `Missing required field: 'is_verified'.` (400), `'is_verified' must be a
 
 ---
 
-## **POST /api/admin/users/&lt;id&gt;/delete**
+## **GET /api/admin/users/<id>/subscriptions**
+
+List subscription history for a user (newest first).
+
+Query params: `limit` (default 50, max 200), `offset`.
+
+---
+
+## **POST /api/admin/users/<id>/subscriptions/grant**
+
+Grant a subscription pack to a user for a specific window.
+
+### Request
+
+```json
+{
+  "pack_code": "growth",
+  "starts_at": "2026-08-01T00:00:00Z",
+  "ends_at": "2026-09-01T00:00:00Z",
+  "access_rights": {
+    "top_posts_limit": 30,
+    "ranking_limit": 30,
+    "allow_custom_ranges": false,
+    "allow_premium_periods": true
+  }
+}
+```
+
+Notes:
+- `starts_at` is optional (defaults to now).
+- `ends_at` is optional (no expiry).
+- `pack_code` must be one of: `starter`, `growth`, `advanced`.
+- `access_rights` is optional; when omitted, defaults are derived from `pack_code`.
+- After granting, the user's role is automatically synced to `subscribed` if the pack is paid (`growth` or `advanced`).
+
+---
+
+## **POST /api/admin/users/<user_id>/subscriptions/<subscription_id>/revoke**
+
+Revoke a specific subscription and sync the user's role.
+
+### Behavior
+
+- Marks the subscription as `revoked`
+- Automatically syncs the user's role based on remaining active subscriptions
+- If no other active paid subscriptions exist, role is downgraded to `registered`
+
+### Request
+
+No body required.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "subscription": {
+      "id": 123,
+      "status": "revoked",
+      "pack_code": "growth",
+      "access_rights": { "top_posts_limit": 30, "ranking_limit": 30 },
+      "starts_at": "2026-08-01T00:00:00+00:00",
+      "ends_at": "2026-09-01T00:00:00+00:00",
+      "source": "admin"
+    },
+    "active_subscription": null,
+    "user": {
+      "user_id": 1,
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane@example.com",
+      "role": "registered",
+      "profession": "ceo",
+      "phone_number": null,
+      "is_verified": true,
+      "created_at": "2026-01-10T09:00:00+00:00",
+      "subscription": null
+    }
+  }
+}
+```
+
+If the user has another active subscription after revocation, `active_subscription` will contain its details and the user's role will remain `subscribed`.
+
+### Errors
+
+- `Subscription not found.` (404)
+- `Subscription does not belong to this user.` (400)
+- `Subscription is already revoked/expired/canceled and cannot be revoked.` (400)
+
+---
+
+## **GET /api/admin/subscriptions**
+
+List all subscriptions with optional filters.
+
+### Query Parameters
+
+- `status` (optional) — filter by `pending` | `active` | `expired` | `canceled` | `revoked`
+- `pack_code` (optional) — filter by `starter` | `growth` | `advanced`
+- `source` (optional) — filter by `admin` | `preapproved_mail` | `stripe` | `manual`
+- `limit` (optional, default 50, max 200)
+- `offset` (optional, default 0)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "subscriptions": [
+      {
+        "id": 123,
+        "user_id": 1,
+        "user_email": "jane@example.com",
+        "status": "active",
+        "pack_code": "growth",
+        "access_rights": { "top_posts_limit": 30, "ranking_limit": 30 },
+        "starts_at": "2026-08-01T00:00:00+00:00",
+        "ends_at": "2026-09-01T00:00:00+00:00",
+        "source": "admin",
+        "preapproved_mail_id": null,
+        "created_by_user_id": 2,
+        "created_at": "2026-08-01T00:00:00+00:00"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+### Errors
+
+- `status must be one of [...]` (400)
+- `pack_code must be one of [...]` (400)
+- `source must be one of [...]` (400)
+
+---
+
+## **GET /api/admin/preapproved-mails**
+
+List preapproved emails.
+
+Query params:
+- `email` (contains filter)
+- `status` (`pending` | `used` | `revoked` | `expired`)
+- `limit` (default 50, max 200), `offset`
+
+---
+
+## **POST /api/admin/preapproved-mails/upsert**
+
+Create or update a preapproved email that will auto-apply during signup.
+
+### Request
+
+```json
+{
+  "email": "user@example.com",
+  "pack_code": "growth",
+  "starts_at": "2026-08-01T00:00:00Z",
+  "ends_at": "2026-09-01T00:00:00Z",
+  "access_rights": {
+    "top_posts_limit": 30,
+    "ranking_limit": 30,
+    "allow_custom_ranges": false,
+    "allow_premium_periods": true
+  },
+  "notes": "Campaign A"
+}
+```
+
+Notes:
+- On successful signup with that email, the row is marked `used` and a
+  subscription is created automatically.
+- `pack_code` must be one of: `starter`, `growth`, `advanced`.
+
+---
+
+## **POST /api/admin/users/<id>/delete**
 
 Permanently delete a user. An admin cannot delete their own account.
 

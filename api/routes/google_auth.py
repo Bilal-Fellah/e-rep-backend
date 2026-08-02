@@ -9,6 +9,7 @@ import secrets
 from api.routes.main import error_response, success_response, register_blueprint_error_handlers
 from api.utils.datetime_utils import iso_utc
 from api.utils.login_codes_utils import store_login_code, consume_login_code
+from api.services.subscription_service import SubscriptionService
 
 
 
@@ -72,6 +73,8 @@ def login_google():
     }
 
     url = requests.Request("GET", GOOGLE_AUTH_URL, params=params).prepare().url
+    if not url:
+        return error_response("Google authentication failed", 502)
     return redirect(url)
 
 
@@ -142,6 +145,7 @@ def google_callback():
             role="registered",
             is_verified=False
         )
+        SubscriptionService.apply_preapproved_subscription_for_user(user)
 
     # 🔑 generate temporary login code
     login_code = secrets.token_urlsafe(32)
@@ -168,6 +172,8 @@ def finalize_google_login():
     user = UserRepository.get_by_id(int(user_id))
     if not user:
         return error_response("User not found", 404)
+
+    user, _, _ = SubscriptionService.get_effective_access(user.id)
 
     # --- unchanged JWT logic ---
     access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)

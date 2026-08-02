@@ -117,6 +117,8 @@ def create_app():
         User,
         Note,
         AiInsightCache,
+        PreapprovedMail,
+        Subscription,
     )
 
     ALLOWED_ORIGINS = [

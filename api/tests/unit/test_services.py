@@ -40,8 +40,8 @@ def test_auth_signup_creates_user_sets_password_and_saves(monkeypatch):
 
     user = AuthService.signup("John", "john@doe.com", "top-secret", last_name="Smith", phone_number="+2126")
 
-    assert user.kwargs["first_name"] == "John"
-    assert user.kwargs["email"] == "john@doe.com"
+    assert user.first_name == "John"
+    assert user.email == "john@doe.com"
     assert user.password_set == "top-secret"
     assert created["user"] is user
 

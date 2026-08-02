@@ -7,6 +7,8 @@ from .entity_category_model import EntityCategory
 from .user_model import User
 from .note_model import Note
 from .ai_insight_cache import AiInsightCache
+from .preapproved_mail_model import PreapprovedMail
+from .subscription_model import Subscription
 
 # optional: put all models in __all__ to make imports cleaner
 __all__ = [
@@ -18,6 +20,8 @@ __all__ = [
     "User",
     "Note",
     "AiInsightCache",
+    "PreapprovedMail",
+    "Subscription",
 ]
 
 

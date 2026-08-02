@@ -7,6 +7,7 @@ from api.repositories.page_repository import PageRepository
 from api.repositories.user_repository import UserRepository
 from api.utils.logging_utils import instrument_service_class
 from api.utils.page_uuid import create_page_uuid, normalize_page_link, page_platform_error
+from api.services.subscription_service import SubscriptionService
 
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
@@ -19,18 +20,20 @@ class AuthService:
         if UserRepository.find_by_email(email):
             raise ValueError("Email already exists")
         
-        user = User(
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            role=role,
-            phone_number=phone_number,
-            profession=profession,
-            is_verified=is_verified
-        )
+        user = User()
+        user.first_name = first_name
+        user.last_name = last_name
+        user.email = email
+        user.role = role
+        user.phone_number = phone_number
+        user.profession = profession
+        user.is_verified = is_verified
 
         user.set_password(password)  
         UserRepository.save_user(user)
+
+        # Auto-apply any preapproved entitlement for this email at signup time.
+        SubscriptionService.apply_preapproved_subscription_for_user(user)
 
         return user
 
@@ -108,7 +111,7 @@ class AuthService:
                 if platform_error:
                     raise ValueError(platform_error)
 
-                page_uuid = AuthService.create_page_uuid(link)
+                page_uuid = str(AuthService.create_page_uuid(link))
                 created_page = PageRepository.create(
                     uuid=page_uuid,
                     name=entity.name,

@@ -72,6 +72,7 @@ See `api/docs/` for per-feature documentation:
 | File | Coverage |
 |---|---|
 | `auth.md` | `/api/auth/*` — registration, login, logout, token refresh |
+| `admin.md` | `/api/admin/*` — admin user management, preapprovals, subscriptions |
 | `google_login.md` | `/api/oauth/*` — Google OAuth flow |
 | `entities.md` | `/api/data/*` — entity CRUD and analytics |
 | `page.md` | `/api/data/*` — page CRUD |
@@ -83,12 +84,14 @@ See `api/docs/` for per-feature documentation:
 | `public.md` | `/api/public/*` — unauthenticated public endpoints |
 | `health.md` | `/health/check` — liveness probe |
 | `access_roles.md` | Role-based access summary |
+| `subscription_backfill.md` | One-time legacy subscribed-user migration guide |
 
 ## Auth Model
 
 - **JWT** tokens — short-lived access token (1 day) + long-lived refresh token (30 days)
 - Token is sent via `Authorization: Bearer <token>` header or `access_token` cookie
 - Roles: `registered`, `subscribed`, `admin`
+- Subscription state is persisted in `subscriptions`; pre-signup grants in `preapproved_mails`
 - Google OAuth users are created automatically on first login
 
 ## Supported Platforms
