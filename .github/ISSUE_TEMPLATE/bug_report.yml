@@ -1,0 +1,118 @@
+name: Bug report
+description: An endpoint returns the wrong thing, errors out, or behaves unexpectedly
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug.
+
+        This repo is the **Flask API**. If the data is correct in the API response but renders
+        wrong in the browser, the bug belongs in the frontend repo instead — see the links on
+        the issue chooser page.
+
+        **Never paste real JWTs, cookies, passwords, `SECRET_KEY`, or DB credentials into an
+        issue.** Redact them as `<redacted>`.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong, in a sentence or two.
+      placeholder: /api/data/entities returns entities from every category when the category filter is passed.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Auth (JWT / cookies) — /api/auth
+        - Google OAuth — /api/oauth
+        - Entities / pages / categories — /api/data
+        - Posts & rankings (posts_mv)
+        - Comments & sentiment
+        - Notes
+        - Influence history / interaction stats
+        - AI insights (OpenRouter)
+        - Scraping — /api/scraping
+        - Admin — /api/admin
+        - Public endpoints — /api/public
+        - Health / deployment (Docker, gunicorn, nginx)
+        - Database / migrations (Alembic)
+        - CORS / cross-subdomain cookies
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint
+      description: Method and path, including any query string.
+      placeholder: "GET /api/data/entities?category_id=3&platform=instagram"
+    validations:
+      required: true
+
+  - type: textarea
+    id: request
+    attributes:
+      label: Request
+      description: Body, headers, or params that matter. Redact tokens and credentials.
+      render: http
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected response
+      description: Status code and the shape you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual response
+      description: >-
+        Status code and the actual body. Responses follow the standard envelope —
+        `{"success": true, "data": ...}` or `{"success": false, "error": ...}`.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Traceback or logs
+      description: Relevant lines from the server output or `logs/`. Trim to the useful part.
+      render: shell
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Production (VPS)
+        - Local dev (python app.py)
+        - Docker (docker compose up)
+
+  - type: dropdown
+    id: caller
+    attributes:
+      label: How was it called?
+      options:
+        - Erup app (app.brendex.net)
+        - Brendex site (brendex.net)
+        - curl / Postman / direct HTTP
+        - Scraper or a script
+        - Other
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I checked `api/docs/` for this endpoint's documented contract
+        - label: I think the frontend is at fault, not the API
