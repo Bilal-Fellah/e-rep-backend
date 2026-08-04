@@ -20,7 +20,7 @@ from api.routes.main import (
     register_blueprint_error_handlers,
     success_response,
 )
-from api.services.auth_service import AuthService
+from api.services.auth_service import ACCESS_TOKEN_TTL, AuthService
 from api.services.subscription_service import SubscriptionService
 from api.utils.auth import (
     ENTITIES_FILE,
@@ -52,6 +52,8 @@ FRONTEND_REDIRECT_URL = os.environ.get(
 FRONTEND_COOKIE_DOMAIN = os.environ.get("FRONTEND_COOKIE_DOMAIN", ".brendex.net")
 auth_bp = Blueprint("auth", __name__)
 ALLOWED_ENTITY_TYPES = ["company", "influencer", "small-business"]
+# Refresh windows with less than this left are refused outright — see refresh().
+MIN_REFRESH_REMAINDER = timedelta(minutes=2)
 
 register_blueprint_error_handlers(auth_bp, include_token_errors=True)
 
@@ -387,21 +389,65 @@ def get_user_data():
 def refresh():
 
     try:
+        # Every exit from this route uses the standard envelope (see
+        # routes/main.py) — including the failures, which are the paths clients
+        # act on to send a user back to the login page.
         token = _extract_token("refresh_token")
         if not token:
-            return jsonify({"error": "Missing refresh token"}), 400
+            return error_response("Missing refresh token", 400)
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         user = UserRepository.get_by_id(payload["user_id"])
 
         if not user or user.refresh_token != token:
-            return jsonify({"error": "Invalid refresh token"}), 401
-        if user.refresh_token_exp < datetime.now(timezone.utc):
-            return jsonify({"error": "Refresh token expired"}), 401
+            return error_response("Invalid refresh token", 401)
 
+        # `refresh_token_exp` is a naive `db.DateTime` column, so it comes back
+        # from Postgres without a tzinfo even though it is written as UTC.
+        # Comparing it to an aware `now()` raised TypeError, which the
+        # blueprint's handler turned into a 400 — so *every* refresh failed and
+        # the frontends logged the user out on the spot. Normalize before
+        # comparing; this is what actually keeps a session alive between
+        # access-token expiries.
+        refresh_exp = user.refresh_token_exp
+        if refresh_exp is None:
+            return error_response("Invalid refresh token", 401)
+        if refresh_exp.tzinfo is None:
+            refresh_exp = refresh_exp.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        # Treat a window about to close as already closed. Handing back a token
+        # with seconds of life left reads as success to the clients, which store
+        # it, immediately 401 on the next call, and refresh again — a loop that
+        # only ends when the window actually expires. One clean 401 sends them
+        # to the login page instead.
+        remaining = refresh_exp - now
+        if remaining < MIN_REFRESH_REMAINDER:
+            return error_response("Refresh token expired", 401)
+
+        # Keep role aligned with subscription windows before issuing tokens,
+        # same as /login and /redirect_to_app. `require_auth` re-resolves the
+        # role from the DB on every request, so this is not the primary guard —
+        # but it is the value `require_auth` falls back to when that lookup
+        # fails, and with a 72h token a stale claim would linger for three days.
+        user, _, _ = SubscriptionService.get_effective_access_for_user(user)
+        if not user:
+            return error_response("Invalid refresh token", 401)
+
+        # Same TTL as a fresh login — a refreshed session is a session, and a
+        # shorter window here would send users back to the login page long
+        # before their 72 hours were up. Capped at the refresh window, which is
+        # the real session limit: this route doesn't rotate the stored refresh
+        # token, so an uncapped 72h access token issued just before that window
+        # closed would outlive it by up to three days.
         tokens = AuthService.issue_token_pair(
             user,
-            access_delta=timedelta(hours=2),
+            access_delta=min(ACCESS_TOKEN_TTL, remaining),
         )
+        # Only the access token is used. `tokens["refresh_token"]` is minted and
+        # deliberately dropped: the DB still holds the original, so setting the
+        # new one as a cookie *without* also persisting it would desync the two
+        # and make every later refresh fail the `user.refresh_token != token`
+        # check above. Rotate in both places or neither.
         new_access = tokens["access_token"]
         access_exp = tokens["access_token_exp"]
 
