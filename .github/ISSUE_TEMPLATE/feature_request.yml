@@ -1,0 +1,76 @@
+name: Feature request
+description: Propose a new endpoint, field, or change to API behavior
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can a consumer of this API not do today? Describe the problem, not the solution.
+      placeholder: The rankings page has to fetch every entity and filter client-side because there is no category filter on the endpoint.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: New endpoint, new field on an existing one, or changed behavior?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Auth (JWT / cookies) — /api/auth
+        - Google OAuth — /api/oauth
+        - Entities / pages / categories — /api/data
+        - Posts & rankings (posts_mv)
+        - Comments & sentiment
+        - Notes
+        - Influence history / interaction stats
+        - AI insights (OpenRouter)
+        - Scraping — /api/scraping
+        - Admin — /api/admin
+        - Public endpoints — /api/public
+        - Health / deployment (Docker, gunicorn, nginx)
+        - Database / migrations (Alembic)
+        - CORS / cross-subdomain cookies
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: contract
+    attributes:
+      label: Proposed request / response
+      description: >-
+        Sketch the endpoint. Responses use the standard envelope from `routes/main.py`:
+        `{"success": true, "data": ...}` or `{"success": false, "error": ...}`.
+      render: json
+      placeholder: |
+        GET /api/data/entities?category_id=3
+
+        {
+          "success": true,
+          "data": [{ "id": 1, "name": "...", "category_id": 3 }]
+        }
+
+  - type: textarea
+    id: consumer
+    attributes:
+      label: Who needs it
+      description: Which frontend or script consumes this, and is there an issue open there?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: Needs a database migration (Alembic)
+        - label: Needs a change to the materialized views (`api/database/posts_mv_queries.sql`)
+        - label: Breaking change for existing consumers (Erup / Brendex)
+        - label: Needs a new or updated doc in `api/docs/`

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Product app issue (app.brendex.net)
+    url: https://github.com/ebmw/Erup/issues/new/choose
+    about: Rendering, layout, or client-side bugs in the dashboard belong in the Erup repo.
+  - name: Marketing site issue (brendex.net)
+    url: https://github.com/ebmw/Brendex/issues/new
+    about: Issues with the landing page, pricing, or signup belong in the Brendex repo.
