@@ -318,18 +318,30 @@ class InfluenceHistoryService:
             entity["total_comments"] += totals["comments"]
             entity["total_shares"] += totals["shares"]
             entity["total_views"] += totals["views"]
-            entity["platforms"][platform] = {
-                "page_name": page_name,
-                "page_id": page_id,
-                "page_url": page_url,
-                "profile_image_url": profile_image_url,
-                "posts_count": posts_count,
-                "likes": totals["likes"],
-                "comments": totals["comments"],
-                "shares": totals["shares"],
-                "views": totals["views"],
-                "score": round(platform_score, 4),
-            }
+
+            # Handle multiple pages per platform: aggregate metrics and collect page details
+            if platform not in entity["platforms"]:
+                entity["platforms"][platform] = {
+                    "page_name": page_name,
+                    "page_id": page_id,
+                    "page_url": page_url,
+                    "profile_image_url": profile_image_url,
+                    "posts_count": posts_count,
+                    "likes": totals["likes"],
+                    "comments": totals["comments"],
+                    "shares": totals["shares"],
+                    "views": totals["views"],
+                    "score": round(platform_score, 4),
+                }
+            else:
+                # Aggregate metrics for additional pages on same platform
+                existing = entity["platforms"][platform]
+                existing["posts_count"] += posts_count
+                existing["likes"] += totals["likes"]
+                existing["comments"] += totals["comments"]
+                existing["shares"] += totals["shares"]
+                existing["views"] += totals["views"]
+                existing["score"] = round(existing["score"] + platform_score, 4)
 
         ranking = list(entities.values())
         for row in ranking:
