@@ -14,9 +14,9 @@ class User(db.Model):
     role = db.Column(db.Enum("registered","subscribed","admin", name="user_roles"), default="registered", nullable=False)
     profession = db.Column(db.Enum("community_manager","marketing","ceo","journalist","influencer","student","sales","other", name="user_professions"), nullable=True, default="other")
     
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     refresh_token = db.Column(db.Text)
-    refresh_token_exp = db.Column(db.DateTime)
+    refresh_token_exp = db.Column(db.DateTime(timezone=True))
 
     phone_number = db.Column(db.String(20), unique=True, nullable=True)
 

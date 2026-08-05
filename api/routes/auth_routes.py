@@ -115,14 +115,24 @@ def register_user():
         if not full_name:
             return error_response("Invalid full_name", 400)
 
+        # Validate uniqueness before hitting the DB to avoid IntegrityError
+        email = data["email"].strip().lower()
+        if UserRepository.find_by_email(email):
+            return error_response("Email already exists", 409)
+
+        phone = data["phone_number"].strip()
+        from api.models.user_model import User as UserModel
+        if UserModel.query.filter_by(phone_number=phone).first():
+            return error_response("Phone number already in use", 409)
+
         user = AuthService.signup(
             first_name=full_name.split()[0],
             last_name=" ".join(full_name.split()[1:])
             if len(full_name.split()) > 1
             else "",
-            email=data["email"].strip().lower(),
+            email=email,
             password=data["password"],
-            phone_number=data["phone_number"].strip(),
+            phone_number=phone,
             role=role,
             profession=data["profession"],
             is_verified=True,
@@ -143,7 +153,9 @@ def register_user():
         response["is_verified"] = bool(getattr(user, "is_verified", False))
 
         return success_response(data=response)
-    except (TypeError, KeyError, ValueError):
+    except ValueError as ve:
+        return error_response(str(ve), 400)
+    except (TypeError, KeyError):
         return error_response("Invalid request data", 400)
 
 
@@ -395,7 +407,11 @@ def refresh():
 
         if not user or user.refresh_token != token:
             return jsonify({"error": "Invalid refresh token"}), 401
-        if user.refresh_token_exp < datetime.now(timezone.utc):
+        # Normalize both sides to aware UTC to avoid naive-vs-aware TypeError
+        token_exp = user.refresh_token_exp
+        if token_exp is not None and token_exp.tzinfo is None:
+            token_exp = token_exp.replace(tzinfo=timezone.utc)
+        if token_exp is None or token_exp < datetime.now(timezone.utc):
             return jsonify({"error": "Refresh token expired"}), 401
 
         tokens = AuthService.issue_token_pair(
