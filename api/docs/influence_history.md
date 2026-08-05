@@ -423,7 +423,7 @@ Return followers progress (gain) ranking for entities over a time window.
 
   This is not a display preference: `rank` is assigned server-side from this ordering, and free/registered users have the response truncated to the top 10 (`limit_ranking_for_role`). A client that re-sorted the response would therefore be re-ordering the wrong ten rows and presenting them as a complete ranking. Callers must request the metric they intend to display.
 
-  Erup uses `progress` for `/Rankings` + `/Creators-Growth-Rankings`, and `followers` for `/Followers-Rankings` + `/Influencers`.
+  Erup uses `progress` for `/Rankings` + `/Creators-Growth-Rankings`, and `followers` for `/Influencers`. `/Rankings` switches to `followers` when the period control is set to "Current Followers" — that option replaced the separate `/Followers-Rankings` route, which no longer exists.
 
 ### Success Response (200)
 

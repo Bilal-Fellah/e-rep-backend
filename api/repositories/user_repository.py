@@ -1,6 +1,6 @@
 # Data-access methods for user repository.
 # repositories/user_repo.py
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import or_
 from api.models.user_model import User
 from api import db
@@ -94,12 +94,27 @@ class UserRepository:
     
     @staticmethod
     def update_refresh_token(user_id: int, token: str, exp: datetime) -> None:
-       
+
         user = db.session.get(User, user_id)
         if not user:
             raise ValueError("User not found")
 
         user.refresh_token = token
+        # `refresh_token_exp` is TIMESTAMP WITHOUT TIME ZONE, so an aware value
+        # written straight through is converted using the Postgres session's
+        # TimeZone — on a non-UTC server the column would silently hold local
+        # wall-clock, and the reader (refresh(), which reattaches UTC) would
+        # shift the whole refresh window by that offset. Convert here so what
+        # lands in the column is always UTC, whatever the server is set to.
+        #
+        # The naive type is what the model declares (`db.Column(db.DateTime)`)
+        # and is corroborated by the aware/naive TypeError that refresh() used
+        # to raise on read — but no migration creates these columns, so the
+        # live table was built out-of-band. If `\d users` ever shows
+        # `timestamp with time zone` here, this conversion is backwards and
+        # should be dropped (the reader already handles aware values).
+        if exp is not None and exp.tzinfo is not None:
+            exp = exp.astimezone(timezone.utc).replace(tzinfo=None)
         user.refresh_token_exp = exp
         db.session.commit()
 

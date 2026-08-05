@@ -316,6 +316,11 @@ Returns user profile data from authenticated access token.
 
 Validates refresh token, returns a new access token, and sets a refreshed `access_token` cookie.
 
+Token lifetimes (`ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` in `api/services/auth_service.py`, applied by every issuer — login, signup, Google OAuth, `redirect_to_app`, and this route):
+
+- **Access token: 72 hours.** This is the session length users feel, since every request is checked against it.
+- **Refresh token: 30 days.** This route does *not* rotate it, so it is the hard cap on a session: the new access token is capped at whatever is left of the refresh window, and once that window closes the user must log in again. With under 2 minutes left the route returns `401 "Refresh token expired"` rather than issuing a token that would expire almost immediately.
+
 ### Success Response (200)
 
 ```json
@@ -330,15 +335,15 @@ Validates refresh token, returns a new access token, and sets a refreshed `acces
 ### Error Responses
 
 ```json
-{ "error": "Missing refresh token" }
+{ "success": false, "error": "Missing refresh token" }
 ```
 
 ```json
-{ "error": "Invalid refresh token" }
+{ "success": false, "error": "Invalid refresh token" }
 ```
 
 ```json
-{ "error": "Refresh token expired" }
+{ "success": false, "error": "Refresh token expired" }
 ```
 
 ---

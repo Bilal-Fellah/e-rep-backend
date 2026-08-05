@@ -1,5 +1,5 @@
 # Route wiring for google auth endpoints.
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from flask import redirect, request, Blueprint, session
 import jwt
 import requests
@@ -10,6 +10,7 @@ from api.routes.main import error_response, success_response, register_blueprint
 from api.utils.datetime_utils import iso_utc
 from api.utils.login_codes_utils import store_login_code, consume_login_code
 from api.services.subscription_service import SubscriptionService
+from api.services.auth_service import ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL
 
 
 
@@ -176,7 +177,7 @@ def finalize_google_login():
     user, _, _ = SubscriptionService.get_effective_access(user.id)
 
     # --- unchanged JWT logic ---
-    access_token_exp = datetime.now(timezone.utc) + timedelta(days=1)
+    access_token_exp = datetime.now(timezone.utc) + ACCESS_TOKEN_TTL
     access_payload = {
         "user_id": user.id,
         "role": user.role,
@@ -184,7 +185,7 @@ def finalize_google_login():
     }
     access_token = jwt.encode(access_payload, SECRET, algorithm="HS256")
 
-    refresh_token_exp = datetime.now(timezone.utc) + timedelta(days=30)
+    refresh_token_exp = datetime.now(timezone.utc) + REFRESH_TOKEN_TTL
     refresh_payload = {
         "user_id": user.id,
         "exp": refresh_token_exp

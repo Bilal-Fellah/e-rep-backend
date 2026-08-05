@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, date
+from datetime import datetime, timedelta as _timedelta, timezone, date
 import json
 import os
 from types import SimpleNamespace
@@ -25,11 +25,23 @@ def test_user_repository_update_refresh_token_success_and_missing(monkeypatch):
     )
     monkeypatch.setattr("api.repositories.user_repository.db", SimpleNamespace(session=fake_session))
 
+    # Callers pass an aware UTC datetime; the column is TIMESTAMP WITHOUT TIME
+    # ZONE, so the repository stores the UTC wall-clock with the tzinfo removed
+    # rather than letting Postgres convert it using the session TimeZone.
     exp = datetime(2026, 1, 1, tzinfo=timezone.utc)
     UserRepository.update_refresh_token(1, token="r1", exp=exp)
     assert fake_user.refresh_token == "r1"
-    assert fake_user.refresh_token_exp == exp
+    assert fake_user.refresh_token_exp == datetime(2026, 1, 1)
+    assert fake_user.refresh_token_exp.tzinfo is None
     assert commits["count"] == 1
+
+    # A non-UTC aware value is converted, not merely stripped.
+    UserRepository.update_refresh_token(
+        1,
+        token="r2",
+        exp=datetime(2026, 1, 1, 3, 0, tzinfo=timezone(_timedelta(hours=3))),
+    )
+    assert fake_user.refresh_token_exp == datetime(2026, 1, 1)
 
     with pytest.raises(ValueError, match="User not found"):
         UserRepository.update_refresh_token(999, token="x", exp=exp)

@@ -12,6 +12,14 @@ from api.services.subscription_service import SubscriptionService
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
+# How long a login stays valid before the browser has to re-authenticate. The
+# access token is what every request is checked against, so this — not the
+# refresh window — is the session length users feel. Every issuer (login,
+# signup, Google OAuth, /refresh) uses it so a session can't silently be
+# shorter on one path than another.
+ACCESS_TOKEN_TTL = timedelta(hours=72)
+REFRESH_TOKEN_TTL = timedelta(days=30)
+
 
 @instrument_service_class
 class AuthService:
@@ -46,13 +54,13 @@ class AuthService:
         payload = {
             "user_id": user.id,
             "role": user.role,
-            "exp": datetime.now(timezone.utc) + timedelta(hours=2)
+            "exp": datetime.now(timezone.utc) + ACCESS_TOKEN_TTL
         }
         token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
         return token
 
     @staticmethod
-    def issue_token_pair(user, access_delta=timedelta(days=1), refresh_delta=timedelta(days=30)):
+    def issue_token_pair(user, access_delta=ACCESS_TOKEN_TTL, refresh_delta=REFRESH_TOKEN_TTL):
         access_token_exp = datetime.now(timezone.utc) + access_delta
         access_payload = {
             "user_id": user.id,
