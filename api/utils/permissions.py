@@ -316,6 +316,9 @@ def _resolve_effective_role_and_rights(payload):
     user_id = payload.get("user_id")
 
     if not user_id:
+        if role == UserRole.REGISTERED.value:
+            from api.services.subscription_service import PACK_POLICIES
+            rights = dict(PACK_POLICIES["starter"]["default_access_rights"])
         return role, rights
 
     try:
@@ -323,7 +326,7 @@ def _resolve_effective_role_and_rights(payload):
 
         user, active, active_rights = SubscriptionService.get_effective_access(user_id)
         role = user.role if user else role
-        rights = active_rights if active else None
+        rights = active_rights
     except Exception:
         # Best-effort: never fail auth metadata enrichment.
         pass

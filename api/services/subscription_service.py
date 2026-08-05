@@ -271,7 +271,12 @@ class SubscriptionService:
     @staticmethod
     def get_effective_access(user_id: int):
         user, active = SubscriptionService._sync_user_role_from_subscriptions(user_id)
-        rights = active.access_rights if active else None
+        if active and active.access_rights:
+            rights = active.access_rights
+        elif user and user.role == "registered":
+            rights = dict(PACK_POLICIES["starter"]["default_access_rights"])
+        else:
+            rights = None
         return user, active, rights
 
     @staticmethod
@@ -282,11 +287,13 @@ class SubscriptionService:
 
         user_id = getattr(user, "id", None)
         if not isinstance(user_id, int):
-            return user, None, None
+            rights = dict(PACK_POLICIES["starter"]["default_access_rights"]) if getattr(user, "role", None) == "registered" else None
+            return user, None, rights
 
         persisted = UserRepository.get_by_id(user_id)
         if not persisted:
-            return user, None, None
+            rights = dict(PACK_POLICIES["starter"]["default_access_rights"]) if getattr(user, "role", None) == "registered" else None
+            return user, None, rights
 
         return SubscriptionService.get_effective_access(user_id)
 

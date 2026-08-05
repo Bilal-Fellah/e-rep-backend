@@ -58,6 +58,20 @@ MIN_REFRESH_REMAINDER = timedelta(minutes=2)
 register_blueprint_error_handlers(auth_bp, include_token_errors=True)
 
 
+def _build_subscription_payload(user, active_subscription):
+    pack_code = getattr(active_subscription, "pack_code", None)
+    status = getattr(active_subscription, "status", None)
+    if not pack_code and getattr(user, "role", None) == "registered":
+        pack_code = "starter"
+        status = "active"
+    return {
+        "pack_code": pack_code,
+        "status": status,
+        "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
+        "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
+    }
+
+
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
     try:
@@ -140,6 +154,8 @@ def register_user():
             is_verified=True,
         )
 
+        user, active_subscription, _ = SubscriptionService.get_effective_access_for_user(user)
+
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(
             user.id,
@@ -153,6 +169,7 @@ def register_user():
             tokens["refresh_token"],
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
+        response["subscription"] = _build_subscription_payload(user, active_subscription)
 
         return success_response(data=response)
     except ValueError as ve:
@@ -349,12 +366,7 @@ def login():
             tokens["refresh_token"],
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
-        response["subscription"] = {
-            "pack_code": getattr(active_subscription, "pack_code", None),
-            "status": getattr(active_subscription, "status", None),
-            "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
-            "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
-        }
+        response["subscription"] = _build_subscription_payload(user, active_subscription)
 
         return success_response(response, status_code=200)
     except (TypeError, KeyError, ValueError):
@@ -385,12 +397,7 @@ def get_user_data():
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "created_at": iso_utc(user.created_at),
-                "subscription": {
-                    "pack_code": getattr(active_subscription, "pack_code", None),
-                    "status": getattr(active_subscription, "status", None),
-                    "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
-                    "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
-                },
+                "subscription": _build_subscription_payload(user, active_subscription),
             }
         )
     except (TypeError, KeyError, ValueError):
@@ -635,8 +642,8 @@ def complete_profile():
 @auth_bp.route("/redirect_to_app", methods=["POST"])
 @require_role("admin", "registered", "subscribed")
 def redirect_to_app():
-    """This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
-    It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens
+    """This route is called after user finishes subscription or sign-up, and now to be redirected to the app with valid tokens
+    It receives the user credentials via token/session, checks if the user exists, then generates access and refresh tokens
     and redirects the user to the app subdomain after setting those tokens in cookies
     """
 
@@ -650,8 +657,6 @@ def redirect_to_app():
             return error_response("User not found", 404)
 
         user, active_subscription, _ = SubscriptionService.get_effective_access(user.id)
-        if user.role not in ("subscribed", "admin"):
-            return error_response("Active subscription required", 403)
 
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(
