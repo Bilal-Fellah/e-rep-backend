@@ -589,8 +589,30 @@ class PageHistoryRepository:
             "pages": {}
         }
 
+        # Track platforms to handle multiple pages per platform
+        platform_page_counts = {}
+
         for row in rows:
-            result["pages"][row.platform] = {
+            platform = row.platform
+            # Track how many pages we've seen for this platform
+            if platform not in platform_page_counts:
+                platform_page_counts[platform] = 0
+            platform_page_counts[platform] += 1
+            
+            # Use platform name for first page, platform_pageId for additional pages
+            if platform_page_counts[platform] == 1:
+                page_key = platform
+            else:
+                # For additional pages, append page_id to make key unique
+                page_key = f"{platform}_{row.page_id}"
+                # Also rename the first page's key to include its page_id
+                if platform_page_counts[platform] == 2:
+                    # Find and rename the first page entry
+                    old_entry = result["pages"].pop(platform)
+                    first_page_id = old_entry.get("page_id", "1")
+                    result["pages"][f"{platform}_{first_page_id}"] = old_entry
+
+            result["pages"][page_key] = {
                 "page_id": row.page_id,
                 "followers": row.followers,
                 "profile_url": row.profile_url,

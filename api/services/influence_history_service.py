@@ -169,15 +169,23 @@ class InfluenceHistoryService:
             entity["followers_progress"] += progress
 
             if platform:
-                entity["platforms"][platform] = {
-                    "page_name": page_name,
-                    "page_id": page_id,
-                    "page_url": page_url,
-                    "profile_image_url": profile_image_url,
-                    "followers": current_followers,
-                    "previous_followers": prev_followers,
-                    "followers_progress": progress,
-                }
+                # Handle multiple pages per platform: aggregate followers and collect page details
+                if platform not in entity["platforms"]:
+                    entity["platforms"][platform] = {
+                        "page_name": page_name,
+                        "page_id": page_id,
+                        "page_url": page_url,
+                        "profile_image_url": profile_image_url,
+                        "followers": current_followers,
+                        "previous_followers": prev_followers,
+                        "followers_progress": progress,
+                    }
+                else:
+                    # Aggregate metrics for additional pages on same platform
+                    existing = entity["platforms"][platform]
+                    existing["followers"] += current_followers
+                    existing["previous_followers"] += prev_followers
+                    existing["followers_progress"] += progress
 
         ranking = list(entities.values())
         # The caller decides which followers metric this ranking *is*, because
