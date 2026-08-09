@@ -587,6 +587,7 @@ class PageHistoryRepository:
                 PageHistoryRepository._description_case(Page, ph_latest_nonzero).label("description"),
                 page_followers_nonzero.label("followers"),
             )
+            .select_from(ph_outer)
             .join(Page, Page.uuid == ph_outer.page_id)
             .join(
                 latest_history_subq,
