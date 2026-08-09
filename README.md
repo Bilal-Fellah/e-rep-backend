@@ -76,6 +76,7 @@ See `api/docs/` for per-feature documentation:
 | `google_login.md` | `/api/oauth/*` — Google OAuth flow |
 | `entities.md` | `/api/data/*` — entity CRUD and analytics |
 | `page.md` | `/api/data/*` — page CRUD |
+| `pages_history.md` | `/api/data/*` — pages_history table monitoring and filtering |
 | `categories.md` | `/api/data/*` — category CRUD |
 | `influence_history.md` | `/api/data/*` — followers and interaction rankings |
 | `interaction_stats.md` | `/api/data/*` — per-entity/competitor interaction stats |

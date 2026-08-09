@@ -519,15 +519,37 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
-        latest_history_subq = PageHistoryRepository._latest_history_subquery()
+        followers_case = PageHistoryRepository._followers_case().cast(db.Integer)
+
+        # Subquery to get the latest history record ID for each page
+        latest_history_subq = (
+            select(
+                PageHistory.page_id,
+                db.func.max(PageHistory.id).label("latest_id"),
+            )
+            .group_by(PageHistory.page_id)
+            .subquery()
+        )
+
+        # Subquery to get the latest non-zero followers history record for each page
+        latest_nonzero_subq = (
+            select(
+                PageHistory.page_id,
+                db.func.max(PageHistory.id).label("latest_nonzero_id")
+            )
+            .where(followers_case != 0)
+            .group_by(PageHistory.page_id)
+            .subquery()
+        )
 
         ph_outer = aliased(PageHistory, name="ph_outer")
         ph_sub = aliased(PageHistory, name="ph_sub")
+        ph_latest_nonzero = aliased(PageHistory, name="ph_latest_nonzero")
 
         page_followers_sub = PageHistoryRepository._followers_case(Page, ph_sub).cast(db.Integer)
-        page_followers_outer = PageHistoryRepository._followers_case(Page, ph_outer).cast(db.Integer)
+        page_followers_nonzero = PageHistoryRepository._followers_case(Page, ph_latest_nonzero).cast(db.Integer)
 
-        # Step 3: Aggregate per entity (total followers)
+        # Step 3: Aggregate per entity (total followers from latest non-zero)
         entity_totals_subq = (
             select(
                 Entity.id.label("entity_id"),
@@ -538,18 +560,18 @@ class PageHistoryRepository:
             )
             .join(Page, Page.entity_id == Entity.id)
             .join(
-                latest_history_subq,
-                latest_history_subq.c.page_id == Page.uuid
+                latest_nonzero_subq,
+                latest_nonzero_subq.c.page_id == Page.uuid
             )
             .join(
                 ph_sub,
-                ph_sub.id == latest_history_subq.c.latest_id
+                ph_sub.id == latest_nonzero_subq.c.latest_nonzero_id
             )
             .group_by(Entity.id)
             .subquery()
         )
 
-        # Step 4: Get entity + page info + join with totals
+        # Step 4: Get entity + page info with latest non-zero followers data
         stmt = (
             select(
                 Page.uuid.label("page_id"),
@@ -561,9 +583,9 @@ class PageHistoryRepository:
                 Entity.type.label("entity_type"),
                 entity_totals_subq.c.total_followers,
                 entity_totals_subq.c.entity_rank,
-                PageHistoryRepository._profile_url_case(Page, ph_outer).label("profile_url"),
-                PageHistoryRepository._description_case(Page, ph_outer).label("description"),
-                page_followers_outer.label("followers"),
+                PageHistoryRepository._profile_url_case(Page, ph_latest_nonzero).label("profile_url"),
+                PageHistoryRepository._description_case(Page, ph_latest_nonzero).label("description"),
+                page_followers_nonzero.label("followers"),
             )
             .join(Page, Page.uuid == ph_outer.page_id)
             .join(
@@ -572,6 +594,14 @@ class PageHistoryRepository:
             )
             .join(Entity, Entity.id == Page.entity_id)
             .join(entity_totals_subq, entity_totals_subq.c.entity_id == Entity.id)
+            .join(
+                ph_latest_nonzero,
+                ph_latest_nonzero.page_id == Page.uuid
+            )
+            .join(
+                latest_nonzero_subq,
+                ph_latest_nonzero.id == latest_nonzero_subq.c.latest_nonzero_id
+            )
             .where(Page.entity_id == entity_id)
         )
 
@@ -986,3 +1016,223 @@ class PageHistoryRepository:
         with open(RANKING_CACHE_FILE, 'w') as f:
             json.dump({"month": current_month, "data": data}, f, cls=_UUIDEncoder)
         return data
+
+    @staticmethod
+    def get_pages_history_filtered(
+        start_date=None,
+        end_date=None,
+        brand_id=None,
+        brand_name=None,
+        platform=None,
+        page_id=None,
+        search=None,
+        page: int = 1,
+        per_page: int = 20,
+        sort_by: str = "recorded_at",
+        sort_order: str = "desc",
+        include_data: bool = True
+    ):
+        query = (
+            select(
+                PageHistory.id,
+                PageHistory.page_id,
+                PageHistory.recorded_at,
+                PageHistory.data,
+                Page.name.label("page_name"),
+                Page.link.label("page_link"),
+                Page.platform,
+                Entity.id.label("brand_id"),
+                Entity.name.label("brand_name")
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .join(Entity, Page.entity_id == Entity.id)
+        )
+
+        conditions = []
+        if start_date:
+            conditions.append(PageHistory.recorded_at >= start_date)
+        if end_date:
+            conditions.append(PageHistory.recorded_at <= end_date)
+        if brand_id is not None:
+            conditions.append(Entity.id == brand_id)
+        if brand_name:
+            conditions.append(Entity.name.ilike(f"%{brand_name.strip()}%"))
+        if platform:
+            if isinstance(platform, (list, tuple)):
+                conditions.append(Page.platform.in_([p.strip().lower() for p in platform]))
+            else:
+                conditions.append(Page.platform == platform.strip().lower())
+        if page_id:
+            conditions.append(PageHistory.page_id == page_id)
+        if search:
+            term = f"%{search.strip()}%"
+            conditions.append(
+                db.or_(
+                    Page.name.ilike(term),
+                    Entity.name.ilike(term),
+                    Page.link.ilike(term)
+                )
+            )
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        # Count total before pagination
+        count_stmt = select(db.func.count()).select_from(query.subquery())
+        total = db.session.scalar(count_stmt) or 0
+
+        # Sorting
+        sort_column = getattr(PageHistory, sort_by, PageHistory.recorded_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc(), PageHistory.id.asc())
+        else:
+            query = query.order_by(sort_column.desc(), PageHistory.id.desc())
+
+        # Pagination
+        offset = (page - 1) * per_page
+        query = query.offset(offset).limit(per_page)
+
+        results = db.session.execute(query).all()
+
+        items = []
+        for r in results:
+            item = {
+                "id": r.id,
+                "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+                "page_id": str(r.page_id) if r.page_id else None,
+                "page_name": r.page_name,
+                "page_link": r.page_link,
+                "platform": r.platform,
+                "brand_id": r.brand_id,
+                "brand_name": r.brand_name,
+            }
+            if include_data:
+                item["data"] = r.data
+            items.append(item)
+
+        total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+
+    @staticmethod
+    def get_pages_history_by_id(history_id: int):
+        stmt = (
+            select(
+                PageHistory.id,
+                PageHistory.page_id,
+                PageHistory.recorded_at,
+                PageHistory.data,
+                Page.name.label("page_name"),
+                Page.link.label("page_link"),
+                Page.platform,
+                Entity.id.label("brand_id"),
+                Entity.name.label("brand_name")
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .join(Entity, Page.entity_id == Entity.id)
+            .where(PageHistory.id == history_id)
+        )
+        result = db.session.execute(stmt).first()
+        if not result:
+            return None
+
+        return {
+            "id": result.id,
+            "recorded_at": result.recorded_at.isoformat() if result.recorded_at else None,
+            "page_id": str(result.page_id) if result.page_id else None,
+            "page_name": result.page_name,
+            "page_link": result.page_link,
+            "platform": result.platform,
+            "brand_id": result.brand_id,
+            "brand_name": result.brand_name,
+            "data": result.data
+        }
+
+    @staticmethod
+    def get_pages_history_options():
+        platforms_stmt = (
+            select(Page.platform)
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .distinct()
+            .order_by(Page.platform)
+        )
+        platforms = [p for p in db.session.scalars(platforms_stmt).all() if p]
+
+        brands_stmt = (
+            select(Entity.id, Entity.name)
+            .join(Page, Page.entity_id == Entity.id)
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .distinct()
+            .order_by(Entity.name)
+        )
+        brands_rows = db.session.execute(brands_stmt).all()
+        brands = [{"id": b.id, "name": b.name} for b in brands_rows]
+
+        dates_stmt = select(
+            db.func.min(PageHistory.recorded_at).label("min_date"),
+            db.func.max(PageHistory.recorded_at).label("max_date"),
+            db.func.count(PageHistory.id).label("total_count")
+        )
+        dates_res = db.session.execute(dates_stmt).first()
+
+        min_date = dates_res.min_date.isoformat() if dates_res and dates_res.min_date else None
+        max_date = dates_res.max_date.isoformat() if dates_res and dates_res.max_date else None
+        total_count = dates_res.total_count if dates_res else 0
+
+        return {
+            "platforms": platforms,
+            "brands": brands,
+            "date_range": {
+                "min_date": min_date,
+                "max_date": max_date
+            },
+            "total_records": total_count
+        }
+
+    @staticmethod
+    def get_pages_history_summary():
+        now = datetime.now()
+        today_start = datetime.combine(now.date(), time.min)
+        seven_days_ago = now - timedelta(days=7)
+        thirty_days_ago = now - timedelta(days=30)
+
+        total = db.session.scalar(select(db.func.count(PageHistory.id))) or 0
+        records_today = db.session.scalar(
+            select(db.func.count(PageHistory.id)).where(PageHistory.recorded_at >= today_start)
+        ) or 0
+        records_7d = db.session.scalar(
+            select(db.func.count(PageHistory.id)).where(PageHistory.recorded_at >= seven_days_ago)
+        ) or 0
+        records_30d = db.session.scalar(
+            select(db.func.count(PageHistory.id)).where(PageHistory.recorded_at >= thirty_days_ago)
+        ) or 0
+
+        platform_counts_stmt = (
+            select(Page.platform, db.func.count(PageHistory.id).label("count"))
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .group_by(Page.platform)
+        )
+        platform_rows = db.session.execute(platform_counts_stmt).all()
+        by_platform = {r.platform: r.count for r in platform_rows if r.platform}
+
+        distinct_pages = db.session.scalar(
+            select(db.func.count(db.func.distinct(PageHistory.page_id)))
+        ) or 0
+
+        return {
+            "total_records": total,
+            "records_today": records_today,
+            "records_last_7_days": records_7d,
+            "records_last_30_days": records_30d,
+            "by_platform": by_platform,
+            "active_pages_monitored": distinct_pages
+        }
+

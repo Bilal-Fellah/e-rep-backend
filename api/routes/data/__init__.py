@@ -3,7 +3,7 @@ from api.routes.main import register_blueprint_error_handlers
 
 data_bp = Blueprint("data", __name__)
 
-from . import entity, page, category, influence_history, note, posts, comment  # import your route files
+from . import entity, page, category, influence_history, note, posts, comment, pages_history  # import your route files
 
 register_blueprint_error_handlers(
     data_bp, include_token_errors=True, include_integrity_handler=True
