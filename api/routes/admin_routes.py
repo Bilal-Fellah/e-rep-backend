@@ -16,6 +16,7 @@ from api.repositories.preapproved_mail_repository import PreapprovedMailReposito
 from api.repositories.subscription_repository import SubscriptionRepository
 from api.services.admin_service import AdminService
 from api.services.subscription_service import SubscriptionService
+from api.services.posts_created_at_service import PostsCreatedAtService
 from api.utils.datetime_utils import iso_utc
 from api.utils.permissions import require_role
 
@@ -546,3 +547,20 @@ def get_health():
 def get_alerts():
     """Aggregated operational alerts across scraping, accounts, data, and errors."""
     return success_response(AdminService.get_alerts())
+
+
+# ---------------------------------------------------------------------------
+# Posts created_at filling (read-only statistics)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/posts/created-at/stats", methods=["GET"])
+@require_role("admin")
+def get_posts_created_at_stats():
+    """
+    Get statistics about posts with missing created_at values.
+    
+    Note: The system fills missing dates in-memory when posts are retrieved.
+    This does not modify the database - it only enriches the response data.
+    """
+    stats = PostsCreatedAtService.get_missing_dates_stats()
+    return success_response(stats)

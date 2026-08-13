@@ -393,3 +393,73 @@ Read the backend JSONL error logs (newest first).
 
 Log reads are scoped to the most recent window per source/month (see
 `api/repositories/log_repository.py`).
+
+---
+
+## **GET /api/admin/posts/created-at/stats**
+
+Get statistics about posts with missing `created_at` values in the database.
+
+**Note:** This shows the raw database state. When `ENABLE_POSTS_CREATED_AT_BACKFILL=true`, these NULL values are filled in-memory before being sent to clients, so users never see missing dates. **The database is never modified** - filling happens at retrieval time only.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "enabled": true,
+    "posts_mv": {
+      "total": 15234,
+      "with_date": 14890,
+      "missing_date": 344
+    },
+    "posts_history_mv": {
+      "total": 89456,
+      "with_date": 87123,
+      "missing_date": 2333
+    }
+  }
+}
+```
+
+### Fields
+
+- `enabled` — whether `ENABLE_POSTS_CREATED_AT_BACKFILL=true` in environment
+- `posts_mv` — current state (latest snapshot per post) in database
+- `posts_history_mv` — all snapshots across time in database
+- `missing_date` — counts in database (filled in-memory when users request posts)
+
+---
+
+## In-Memory Posts Date Filling
+
+When `ENABLE_POSTS_CREATED_AT_BACKFILL=true` in environment, missing `created_at` dates are automatically filled **in-memory** when users request posts:
+
+- `GET /api/data/get_post` → fills that specific post (in response only)
+- `GET /api/data/get_posts_by_page` → fills all posts in response
+- `GET /api/data/get_posts_by_platform` → fills all posts in response
+- `GET /api/data/get_posts_by_entity` → fills all posts in response
+- `GET /api/data/get_post_history` → fills all snapshots in response
+
+**How it works:**
+1. Fetch posts from database (with potential NULL dates)
+2. Fill missing dates in-memory using history or fallback logic
+3. Return enriched data to client
+4. **Database remains unchanged**
+
+**Fill strategy:**
+- If any snapshot has `created_at` → use earliest known date for all
+- If no snapshot has `created_at` → use `min(recorded_at)` as fallback
+
+**Performance impact:**
+- Individual post: ~10ms additional latency
+- Page posts: ~50-100ms additional latency
+- Zero database modifications
+
+**Safety:**
+- Read-only operation (no database writes)
+- Errors don't crash requests
+- Can be enabled/disabled anytime without risk
+
+See [Posts created_at Fill Documentation](./posts_created_at_backfill.md) for details.
