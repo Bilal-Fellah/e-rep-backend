@@ -4,6 +4,7 @@ from api.repositories.comment_repository import CommentRepository
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.repositories.post_repository import PostRepository
 from api.repositories.scraping_post_result_repository import ScrapingPostResultRepository
+from api.repositories.page_repository import PageRepository
 from api.utils.datetime_utils import iso_utc
 from api.utils.logging_utils import instrument_service_class
 
@@ -11,6 +12,42 @@ from api.utils.logging_utils import instrument_service_class
 @instrument_service_class
 class ScrapingService:
     """Service for managing scraping operations."""
+    
+    @staticmethod
+    def get_profiles_for_scraping(platform: str = None) -> dict:
+        """
+        Get all page URLs for active entities (to_scrape=True).
+        
+        Args:
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            dict: {
+                "profiles": list[dict],  # [{name, link, platform, entity_id, entity_name}, ...]
+                "count": int,
+                "platform": str | None
+            }
+        """
+        # Get pages for active entities
+        pages = PageRepository.get_active_pages_by_platform(platform)
+        
+        # Format response
+        profiles = [
+            {
+                "name": page.name,
+                "link": page.link,
+                "platform": page.platform,
+                "entity_id": page.entity_id,
+                "entity_name": page.entity.name if page.entity else None,
+            }
+            for page in pages
+        ]
+        
+        return {
+            "profiles": profiles,
+            "count": len(profiles),
+            "platform": platform if platform else "all"
+        }
     
     @staticmethod
     def fetch_posts_for_scraping(platform: str = None, 

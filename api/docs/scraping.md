@@ -1,6 +1,6 @@
 # Scraping API Documentation
 
-This API provides endpoints for an external scraping service to integrate with the e-rep backend system. The service can fetch posts for scraping and insert scraped comments back into the database.
+This API provides endpoints for an external scraping service to integrate with the e-rep backend system. The service can fetch profiles for scraping, fetch posts for scraping, and insert scraped comments back into the database.
 
 ## Authentication
 
@@ -20,7 +20,95 @@ The API key should be configured in the `.env` file as `SCRAPING_API_KEY`.
 
 ## Endpoints
 
-### 1. Fetch Posts for Scraping
+### 1. Get Profiles for Scraping
+
+Retrieve all page URLs for active entities (entities with `to_scrape=True`). Use this to discover which profiles need to be scraped.
+
+**Endpoint**: `GET /api/scraping/profiles`
+
+**Query Parameters**:
+- `platform` (optional): Filter by platform. Valid values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "profiles": [
+      {
+        "name": "company_instagram",
+        "link": "https://instagram.com/company",
+        "platform": "instagram",
+        "entity_id": 1,
+        "entity_name": "Company Name"
+      },
+      {
+        "name": "company_facebook",
+        "link": "https://facebook.com/company",
+        "platform": "facebook",
+        "entity_id": 1,
+        "entity_name": "Company Name"
+      }
+    ],
+    "count": 2,
+    "platform": "instagram"
+  }
+}
+```
+
+**Fields**:
+- `name`: Page name in the database
+- `link`: Profile URL to scrape
+- `platform`: Social media platform
+- `entity_id`: ID of the entity this page belongs to
+- `entity_name`: Name of the entity
+- `count`: Total number of profiles returned
+- `platform`: Platform filter used (or "all" if no filter)
+
+**Error Responses**:
+- `400`: Invalid query parameters
+```json
+{
+  "success": false,
+  "error": "Invalid platform. Must be one of: facebook, instagram, x, tiktok, linkedin, youtube"
+}
+```
+- `401`: Missing or invalid API key
+```json
+{
+  "success": false,
+  "error": "Invalid or missing API key"
+}
+```
+- `500`: Database error
+```json
+{
+  "success": false,
+  "error": "An error occurred in the database."
+}
+```
+
+**Example cURL**:
+```bash
+# Get all profiles for all platforms
+curl -X GET "https://api.example.com/api/scraping/profiles" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Get only Instagram profiles
+curl -X GET "https://api.example.com/api/scraping/profiles?platform=instagram" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+**Use Case**:
+Use this endpoint to discover which profiles to scrape. The scraper can:
+1. Call `/api/scraping/profiles?platform=instagram` to get all Instagram profile URLs
+2. Scrape each profile for posts
+3. Use `/api/scraping/posts` to get which posts need comment scraping
+4. Scrape comments and send back via `/api/scraping/comments`
+
+---
+
+### 2. Fetch Posts for Scraping
 
 Retrieve a list of posts from the database with optional filters.
 
@@ -94,7 +182,7 @@ curl -X GET "https://api.example.com/api/scraping/posts?platform=instagram&start
 
 ---
 
-### 2. Insert Scraped Comments
+### 3. Insert Scraped Comments
 
 Insert a batch of scraped comments into the database. All comments are inserted as a single atomic transaction.
 An **empty `comments` array is accepted** — useful when a post has no comments, so the session can still be properly tracked.

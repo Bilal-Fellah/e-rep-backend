@@ -26,6 +26,83 @@ scraping_bp = Blueprint("scraping", __name__, url_prefix="/api/scraping")
 register_blueprint_error_handlers(scraping_bp)
 
 
+@scraping_bp.route("/profiles", methods=["GET"])
+@require_api_key
+def get_profiles():
+    """
+    Get all page URLs for active entities (to_scrape=True).
+    Used by scrapers to know which profiles to scrape.
+    
+    Query Parameters:
+        - platform (optional): Filter by platform (instagram, facebook, x, tiktok, linkedin, youtube)
+    
+    Returns:
+        200: {
+            "success": true,
+            "data": {
+                "profiles": list[dict],  # [{name, link, platform, entity_id, entity_name}, ...]
+                "count": int,
+                "platform": str
+            }
+        }
+        400: Invalid query parameters
+        401: Missing or invalid API key
+        500: Database error
+    
+    Example:
+        GET /api/scraping/profiles?platform=instagram
+        
+        Response:
+        {
+            "success": true,
+            "data": {
+                "profiles": [
+                    {
+                        "name": "company_instagram",
+                        "link": "https://instagram.com/company",
+                        "platform": "instagram",
+                        "entity_id": 1,
+                        "entity_name": "Company Name"
+                    }
+                ],
+                "count": 1,
+                "platform": "instagram"
+            }
+        }
+    """
+    try:
+        # Extract query parameters
+        platform = request.args.get("platform")
+        
+        # Validate platform if provided
+        valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
+        if platform and platform not in valid_platforms:
+            log_route_error(
+                ValueError(f"Invalid platform: {platform}"),
+                SEVERITY_LOW,
+                400,
+                "Invalid query parameters"
+            )
+            return error_response(f"Invalid platform. Must be one of: {', '.join(valid_platforms)}", 400)
+        
+        # Get profiles
+        result = ScrapingService.get_profiles_for_scraping(platform=platform)
+        
+        return success_response(result, 200)
+    
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid query parameters")
+        return error_response(str(e), 400)
+    
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during profile fetch")
+        return db_error_response(500)
+    
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during profile fetch")
+        return server_error_response(500)
+
+
 @scraping_bp.route("/posts", methods=["GET"])
 @require_api_key
 def fetch_posts():

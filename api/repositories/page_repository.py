@@ -63,3 +63,27 @@ class PageRepository:
         db.session.delete(page)
         db.session.commit()
         return True
+
+    @staticmethod
+    def get_active_pages_by_platform(platform: str = None) -> list[Page]:
+        """
+        Get all pages for active entities (to_scrape=True), optionally filtered by platform.
+        
+        Args:
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            List of Page objects belonging to active entities
+        """
+        from api.models.entity_model import Entity
+        
+        query = (
+            db.session.query(Page)
+            .join(Entity, Page.entity_id == Entity.id)
+            .filter(Entity.to_scrape.is_(True))
+        )
+        
+        if platform:
+            query = query.filter(Page.platform == platform)
+        
+        return query.all()
