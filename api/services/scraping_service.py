@@ -35,7 +35,7 @@ class ScrapingService:
         profiles = [
             {
                 "name": page.name,
-                "link": page.link,
+                "url": page.link,
                 "platform": page.platform,
                 "entity_id": page.entity_id,
                 "entity_name": page.entity.name if page.entity else None,
