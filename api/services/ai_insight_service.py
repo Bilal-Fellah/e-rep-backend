@@ -304,6 +304,23 @@ def get_or_generate_insight(view_type: str, filters: dict, raw_data) -> dict:
 
     try:
         summary = call_llm(prompt, data_block)
+    except ValueError as validation_error:
+        # Invalid response (safety message, too short, etc.) - don't cache
+        _log_service_error(
+            "LLM returned invalid response",
+            validation_error,
+            context={
+                "view_type": view_type,
+                "cache_key": cache_key,
+                "has_filters": bool(filters),
+                "data_block_length": len(data_block or ""),
+                "model": get_primary_model_id() or "unconfigured",
+            },
+        )
+        return {
+            "error": "resource_constraint",
+            "message": "Insights are temporarily unavailable due to resource constraints. Please try again.",
+        }
     except Exception as error:
         _log_service_error(
             "LLM call failed",
@@ -316,7 +333,10 @@ def get_or_generate_insight(view_type: str, filters: dict, raw_data) -> dict:
                 "model": get_primary_model_id() or "unconfigured",
             },
         )
-        return {"error": "llm_failed"}
+        return {
+            "error": "llm_failed",
+            "message": "Failed to generate insights. Please try again.",
+        }
 
     expires_at = now + timedelta(hours=24)
     upsert(
