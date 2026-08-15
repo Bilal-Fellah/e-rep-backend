@@ -519,19 +519,22 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
-        # Optimized version using materialized view instead of complex subqueries
+        # Optimized version using materialized view for fast lookups
+        # Falls back to PageHistory table for missing fields (description)
         # This resolves 504 timeout issues for entities with many pages
         query = text("""
-            WITH latest_pages AS (
+            WITH latest_pages_mv AS (
+                -- Get the latest snapshot from materialized view (fast)
                 SELECT DISTINCT ON (page_id)
                     page_id,
+                    history_id,
                     entity_name,
                     platform,
                     page_name,
                     page_url,
                     profile_url,
                     raw_followers,
-                    description
+                    recorded_at
                 FROM page_posts_metrics_mv
                 WHERE entity_id = :entity_id
                   AND to_scrape
@@ -539,10 +542,37 @@ class PageHistoryRepository:
                   AND raw_followers != 0
                 ORDER BY page_id, recorded_at DESC
             ),
+            page_descriptions AS (
+                -- Get description from pages_history for each page
+                -- Try latest snapshot first, fall back to older if missing
+                SELECT DISTINCT ON (lp.page_id)
+                    lp.page_id,
+                    CASE
+                        WHEN lp.platform = 'youtube' THEN ph.data->>'Description'
+                        WHEN lp.platform = 'x' THEN ph.data->>'biography'
+                        WHEN lp.platform = 'tiktok' THEN ph.data->>'biography'
+                        WHEN lp.platform = 'linkedin' THEN ph.data->>'about'
+                        WHEN lp.platform = 'instagram' THEN ph.data->>'biography'
+                        WHEN lp.platform = 'facebook' THEN ph.data->>'page_about'
+                        ELSE NULL
+                    END AS description
+                FROM latest_pages_mv lp
+                JOIN pages_history ph ON ph.page_id = lp.page_id
+                WHERE ph.recorded_at <= lp.recorded_at
+                  AND (
+                      (lp.platform = 'youtube' AND ph.data->>'Description' IS NOT NULL AND ph.data->>'Description' != '')
+                      OR (lp.platform = 'x' AND ph.data->>'biography' IS NOT NULL AND ph.data->>'biography' != '')
+                      OR (lp.platform = 'tiktok' AND ph.data->>'biography' IS NOT NULL AND ph.data->>'biography' != '')
+                      OR (lp.platform = 'linkedin' AND ph.data->>'about' IS NOT NULL AND ph.data->>'about' != '')
+                      OR (lp.platform = 'instagram' AND ph.data->>'biography' IS NOT NULL AND ph.data->>'biography' != '')
+                      OR (lp.platform = 'facebook' AND ph.data->>'page_about' IS NOT NULL AND ph.data->>'page_about' != '')
+                  )
+                ORDER BY lp.page_id, ph.recorded_at DESC
+            ),
             entity_total AS (
                 SELECT 
                     COALESCE(SUM(raw_followers), 0)::BIGINT AS total_followers
-                FROM latest_pages
+                FROM latest_pages_mv
             ),
             all_entities_totals AS (
                 SELECT DISTINCT ON (entity_id)
@@ -575,9 +605,10 @@ class PageHistoryRepository:
                 et.total_followers,
                 er.rank AS entity_rank,
                 lp.profile_url,
-                lp.description,
+                COALESCE(pd.description, '') AS description,
                 lp.raw_followers AS followers
-            FROM latest_pages lp
+            FROM latest_pages_mv lp
+            LEFT JOIN page_descriptions pd ON pd.page_id = lp.page_id
             CROSS JOIN entity_total et
             CROSS JOIN entity_rank er
             ORDER BY lp.platform, lp.page_id
