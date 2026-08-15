@@ -519,102 +519,83 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
-        followers_case = PageHistoryRepository._followers_case().cast(db.Integer)
-
-        # Subquery to get the latest history record ID for each page
-        latest_history_subq = (
-            select(
-                PageHistory.page_id,
-                db.func.max(PageHistory.id).label("latest_id"),
+        # Optimized version using materialized view instead of complex subqueries
+        # This resolves 504 timeout issues for entities with many pages
+        query = text("""
+            WITH latest_pages AS (
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url,
+                    raw_followers,
+                    description
+                FROM page_posts_metrics_mv
+                WHERE entity_id = :entity_id
+                  AND to_scrape
+                  AND raw_followers IS NOT NULL
+                  AND raw_followers != 0
+                ORDER BY page_id, recorded_at DESC
+            ),
+            entity_total AS (
+                SELECT 
+                    COALESCE(SUM(raw_followers), 0)::BIGINT AS total_followers
+                FROM latest_pages
+            ),
+            all_entities_totals AS (
+                SELECT DISTINCT ON (entity_id)
+                    entity_id,
+                    SUM(raw_followers) OVER (PARTITION BY entity_id)::BIGINT AS entity_total_followers
+                FROM (
+                    SELECT DISTINCT ON (entity_id, page_id)
+                        entity_id,
+                        page_id,
+                        raw_followers
+                    FROM page_posts_metrics_mv
+                    WHERE to_scrape
+                      AND raw_followers IS NOT NULL
+                      AND raw_followers != 0
+                    ORDER BY entity_id, page_id, recorded_at DESC
+                ) latest_entity_pages
+            ),
+            entity_rank AS (
+                SELECT COALESCE(COUNT(*) + 1, 1)::INTEGER AS rank
+                FROM all_entities_totals
+                WHERE entity_total_followers > (SELECT total_followers FROM entity_total)
             )
-            .group_by(PageHistory.page_id)
-            .subquery()
-        )
-
-        # Subquery to get the latest non-zero followers history record for each page
-        latest_nonzero_subq = (
-            select(
-                PageHistory.page_id,
-                db.func.max(PageHistory.id).label("latest_nonzero_id")
-            )
-            .where(followers_case != 0)
-            .group_by(PageHistory.page_id)
-            .subquery()
-        )
-
-        ph_outer = aliased(PageHistory, name="ph_outer")
-        ph_sub = aliased(PageHistory, name="ph_sub")
-        ph_latest_nonzero = aliased(PageHistory, name="ph_latest_nonzero")
-
-        page_followers_sub = PageHistoryRepository._followers_case(Page, ph_sub).cast(db.Integer)
-        page_followers_nonzero = PageHistoryRepository._followers_case(Page, ph_latest_nonzero).cast(db.Integer)
-
-        # Step 3: Aggregate per entity (total followers from latest non-zero)
-        entity_totals_subq = (
-            select(
-                Entity.id.label("entity_id"),
-                db.func.sum(page_followers_sub).label("total_followers"),
-                db.func.rank()
-                    .over(order_by=db.func.sum(page_followers_sub).desc())
-                    .label("entity_rank"),
-            )
-            .join(Page, Page.entity_id == Entity.id)
-            .join(
-                latest_nonzero_subq,
-                latest_nonzero_subq.c.page_id == Page.uuid
-            )
-            .join(
-                ph_sub,
-                ph_sub.id == latest_nonzero_subq.c.latest_nonzero_id
-            )
-            .group_by(Entity.id)
-            .subquery()
-        )
-
-        # Step 4: Get entity + page info with latest non-zero followers data
-        stmt = (
-            select(
-                Page.uuid.label("page_id"),
-                Page.platform,
-                Page.name,
-                Page.link,
-                Entity.name.label("entity_name"),
-                Entity.id.label("entity_id"),
-                Entity.type.label("entity_type"),
-                entity_totals_subq.c.total_followers,
-                entity_totals_subq.c.entity_rank,
-                PageHistoryRepository._profile_url_case(Page, ph_latest_nonzero).label("profile_url"),
-                PageHistoryRepository._description_case(Page, ph_latest_nonzero).label("description"),
-                page_followers_nonzero.label("followers"),
-            )
-            .select_from(ph_outer)
-            .join(Page, Page.uuid == ph_outer.page_id)
-            .join(
-                latest_history_subq,
-                ph_outer.id == latest_history_subq.c.latest_id
-            )
-            .join(Entity, Entity.id == Page.entity_id)
-            .join(entity_totals_subq, entity_totals_subq.c.entity_id == Entity.id)
-            .join(
-                ph_latest_nonzero,
-                ph_latest_nonzero.page_id == Page.uuid
-            )
-            .join(
-                latest_nonzero_subq,
-                ph_latest_nonzero.id == latest_nonzero_subq.c.latest_nonzero_id
-            )
-            .where(Page.entity_id == entity_id)
-        )
-
-        rows = db.session.execute(stmt).all()
+            SELECT
+                lp.page_id,
+                lp.platform,
+                lp.page_name AS name,
+                lp.page_url AS link,
+                lp.entity_name,
+                :entity_id AS entity_id,
+                et.total_followers,
+                er.rank AS entity_rank,
+                lp.profile_url,
+                lp.description,
+                lp.raw_followers AS followers
+            FROM latest_pages lp
+            CROSS JOIN entity_total et
+            CROSS JOIN entity_rank er
+            ORDER BY lp.platform, lp.page_id
+        """)
+        
+        rows = db.session.execute(query, {"entity_id": entity_id}).all()
 
         if len(rows) < 1:
             return []
         
+        # Get entity type from entities table
+        entity = db.session.get(Entity, entity_id)
+        entity_type = entity.type if entity else None
+        
         result = {
             "entity_name": rows[0].entity_name,
             "entity_id": rows[0].entity_id,
-            "type": rows[0].entity_type,
+            "type": entity_type,
             "total_followers": rows[0].total_followers,
             "rank": rows[0].entity_rank,
             "pages": {}
