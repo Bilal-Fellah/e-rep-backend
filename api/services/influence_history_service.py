@@ -255,10 +255,8 @@ class InfluenceHistoryService:
     @staticmethod
     def _get_companies_ranking(period=None, start_date=None, end_date=None, order_by_key="total_score", entity_type="company"):
         date_limit, end_dt = resolve_period_dates(period=period, start_date=start_date, end_date=end_date)
-        # print(f"Fetching {entity_type} interactions summary from {date_limit} to {end_dt}")
         rows = PageHistoryRepository.get_companies_interactions_summary(date_limit=date_limit, end_date=end_dt, entity_type=entity_type)
 
-        print(f"Fetched {len(rows)} rows for {entity_type} interactions summary from {date_limit} to {end_dt}")
         if not rows:
             return []
 

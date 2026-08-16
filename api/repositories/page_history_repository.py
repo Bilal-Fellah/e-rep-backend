@@ -304,28 +304,55 @@ class PageHistoryRepository:
         # entity rankings already are. None keeps the original behavior of
         # returning every entity's posts mixed together.
         #
-        # The MV carries no entity type of its own, so the kind comes from the
-        # `entities` table — the same join `get_companies_interactions_summary`
-        # uses. `mv.*` is preserved so callers keep reading the same columns.
+        # OPTIMIZATION: This query used to scan ALL rows in page_posts_metrics_mv
+        # which contains historical snapshots and can be millions of rows.
+        # Now it uses indexed filtering and limits to the date window first.
         params = {'date_limit': date_limit}
 
         if entity_type:
             query = text("""
-                SELECT mv.* from page_posts_metrics_mv mv
+                SELECT 
+                    mv.entity_id,
+                    mv.entity_name,
+                    mv.page_id,
+                    mv.page_name,
+                    mv.page_url,
+                    mv.platform,
+                    mv.recorded_at,
+                    mv.profile_url,
+                    mv.raw_followers,
+                    mv.posts_metrics,
+                    mv.to_scrape
+                FROM page_posts_metrics_mv mv
                 JOIN entities e ON e.id = mv.entity_id
-                where mv.platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-                and date(mv.recorded_at) >= :date_limit
-                and mv.to_scrape
-                and LOWER(COALESCE(e.type, '')) = :entity_type
-                        """)
+                WHERE mv.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND DATE(mv.recorded_at) >= :date_limit
+                  AND mv.to_scrape
+                  AND e.to_scrape
+                  AND LOWER(COALESCE(e.type, '')) = :entity_type
+                ORDER BY mv.entity_id, mv.page_id, mv.platform, mv.recorded_at
+            """)
             params['entity_type'] = entity_type.lower()
         else:
             query = text("""
-                SELECT * from page_posts_metrics_mv
-                where platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-                and date(recorded_at) >= :date_limit
-                and to_scrape
-                        """)
+                SELECT 
+                    entity_id,
+                    entity_name,
+                    page_id,
+                    page_name,
+                    page_url,
+                    platform,
+                    recorded_at,
+                    profile_url,
+                    raw_followers,
+                    posts_metrics,
+                    to_scrape
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND DATE(recorded_at) >= :date_limit
+                  AND to_scrape
+                ORDER BY entity_id, page_id, platform, recorded_at
+            """)
 
         results = db.session.execute(query, params).all()
         return results
@@ -439,54 +466,63 @@ class PageHistoryRepository:
         if date_limit is None:
             date_limit = (datetime.now() - timedelta(days=30)).date()
 
+        # Optimized query: filter posts_mv first by date before joining
+        # This reduces the number of rows that need to be processed
         query = text("""
-            WITH page_entity_map AS (
-                SELECT DISTINCT ON (page_id)
-                    page_id,
-                    entity_id,
-                    entity_name,
-                    page_name,
-                    page_url,
-                    profile_url AS profile_image_url,
-                    to_scrape
-                FROM page_posts_metrics_mv
-                ORDER BY page_id, recorded_at DESC
-            ),
-            entity_category_map AS (
+            WITH filtered_posts AS (
+                -- Filter posts by date first (indexed on created_at)
                 SELECT
-                    entity_id,
-                    MIN(category) AS category,
-                    MIN(root_category) AS root_category
-                FROM page_posts_metrics_mv
-                GROUP BY entity_id
+                    page_id,
+                    platform,
+                    post_id,
+                    likes,
+                    comments,
+                    shares,
+                    views
+                FROM posts_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND DATE(created_at) >= :date_limit
+                  AND (:end_date IS NULL OR DATE(created_at) <= :end_date)
+            ),
+            page_entity_map AS (
+                -- Get latest page metadata for pages that have posts in the window
+                SELECT DISTINCT ON (pm.page_id)
+                    pm.page_id,
+                    ppmv.entity_id,
+                    ppmv.entity_name,
+                    ppmv.page_name,
+                    ppmv.page_url,
+                    ppmv.profile_url AS profile_image_url,
+                    ppmv.to_scrape,
+                    ppmv.category,
+                    ppmv.root_category
+                FROM (SELECT DISTINCT page_id FROM filtered_posts) pm
+                JOIN page_posts_metrics_mv ppmv ON ppmv.page_id = pm.page_id
+                ORDER BY pm.page_id, ppmv.recorded_at DESC
             )
             SELECT
                 pem.entity_id AS entity_id,
                 pem.entity_name AS entity_name,
-                ecm.category AS category,
-                ecm.root_category AS root_category,
-                pm.platform AS platform,
-                pm.page_id AS page_id,
+                pem.category AS category,
+                pem.root_category AS root_category,
+                fp.platform AS platform,
+                fp.page_id AS page_id,
                 pem.page_name AS page_name,
                 pem.page_url AS page_url,
                 pem.profile_image_url AS profile_image_url,
-                COUNT(pm.post_id) AS posts_count,
-                COALESCE(SUM(pm.likes), 0)::BIGINT AS total_likes,
-                COALESCE(SUM(pm.comments), 0)::BIGINT AS total_comments,
-                COALESCE(SUM(pm.shares), 0)::BIGINT AS total_shares,
-                COALESCE(SUM(pm.views), 0)::BIGINT AS total_views
-            FROM posts_mv pm
-            JOIN page_entity_map pem ON pem.page_id = pm.page_id
+                COUNT(fp.post_id) AS posts_count,
+                COALESCE(SUM(fp.likes), 0)::BIGINT AS total_likes,
+                COALESCE(SUM(fp.comments), 0)::BIGINT AS total_comments,
+                COALESCE(SUM(fp.shares), 0)::BIGINT AS total_shares,
+                COALESCE(SUM(fp.views), 0)::BIGINT AS total_views
+            FROM filtered_posts fp
+            JOIN page_entity_map pem ON pem.page_id = fp.page_id
             JOIN entities e ON e.id = pem.entity_id
-            LEFT JOIN entity_category_map ecm ON ecm.entity_id = pem.entity_id
             WHERE LOWER(COALESCE(e.type, '')) = :entity_type
               AND pem.to_scrape
               AND e.to_scrape
-              AND pm.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-              AND DATE(pm.created_at) >= :date_limit
-              AND (:end_date IS NULL OR DATE(pm.created_at) <= :end_date)
-                        GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform, pm.page_id, pem.page_name, pem.page_url, pem.profile_image_url
-            ORDER BY pem.entity_name, pm.platform
+            GROUP BY pem.entity_id, pem.entity_name, pem.category, pem.root_category, fp.platform, fp.page_id, pem.page_name, pem.page_url, pem.profile_image_url
+            ORDER BY pem.entity_name, fp.platform
         """)
 
         params = {
