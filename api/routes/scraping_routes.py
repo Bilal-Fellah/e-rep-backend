@@ -152,6 +152,22 @@ def get_apify_profiles():
     try:
         # Extract query parameters
         platform = request.args.get("platform")
+        limit_raw = request.args.get("limit")
+        
+        limit = None
+        if limit_raw is not None:
+            try:
+                limit = int(limit_raw)
+                if limit <= 0:
+                    raise ValueError()
+            except ValueError:
+                log_route_error(
+                    ValueError(f"Invalid limit: {limit_raw}"),
+                    SEVERITY_LOW,
+                    400,
+                    "Invalid query parameters"
+                )
+                return error_response("'limit' must be a positive integer", 400)
         
         # Validate platform if provided
         valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
@@ -165,7 +181,7 @@ def get_apify_profiles():
             return error_response(f"Invalid platform. Must be one of: {', '.join(valid_platforms)}", 400)
         
         # Get failed profiles
-        result = ScrapingService.get_failed_profiles_for_scraping(platform=platform)
+        result = ScrapingService.get_failed_profiles_for_scraping(platform=platform, limit=limit)
         
         return success_response(result, 200)
     

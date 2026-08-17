@@ -709,3 +709,34 @@ class TestApifyFallbackEdgeCases:
                 PageHistory.query.filter_by(page_id=page_id).delete()
                 Page.query.filter_by(uuid=page_id).delete()
                 db.session.commit()
+
+    def test_apify_profile_scraping_with_limit_param(
+        self, client, auth_headers, test_pages_with_failed_history
+    ):
+        """
+        Test that limit parameter restricts the number of profiles returned.
+        """
+        response = client.get(
+            "/api/scraping/apify_profile_scraping?limit=1",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert len(data["data"]["profiles"]) == 1
+        assert data["data"]["count"] == 1
+
+    def test_apify_profile_scraping_with_invalid_limit_param(
+        self, client, auth_headers
+    ):
+        """
+        Test that invalid limit parameter returns 400 error.
+        """
+        response = client.get(
+            "/api/scraping/apify_profile_scraping?limit=invalid",
+            headers=auth_headers
+        )
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+        assert "'limit' must be a positive integer" in data["error"]

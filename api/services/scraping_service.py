@@ -51,12 +51,13 @@ class ScrapingService:
         }
     
     @staticmethod
-    def get_failed_profiles_for_scraping(platform: str = None) -> dict:
+    def get_failed_profiles_for_scraping(platform: str = None, limit: int = None) -> dict:
         """
         Get profiles that failed scraping validation for today.
         
         Args:
             platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            limit: Optional integer limit for number of profiles returned
             
         Returns:
             dict: {
@@ -106,6 +107,9 @@ class ScrapingService:
             if failed_page_info:
                 for key in failed_page_info["missing_keys"]:
                     scraping_issues.add(key)
+        
+        if limit and limit > 0:
+            profiles = profiles[:limit]
         
         return {
             "profiles": profiles,

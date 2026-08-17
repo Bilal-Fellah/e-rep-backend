@@ -47,26 +47,41 @@ class PageHistoryRepository:
         """
         missing_keys = []
         
-        # ── Facebook special case ─────────────────────────────────────────────
-        # Unlike every other platform, Facebook pages_history rows are NOT stored
-        # with a nested posts array. Each row IS a single post: all fields live
-        # at the top level of `data` (e.g. data["post_id"], data["likes"],
-        # data["num_comments"]).  Looking for a "posts" key would always fail
-        # for valid Facebook rows, incorrectly flagging them all as failed.
+        # ── Facebook special handling ──────────────────────────────────────────
+        # Facebook pages_history data can be stored either as a nested posts array
+        # or as a flat single-post object (e.g. data["post_id"], data["likes"], data["num_comments"]).
         if platform == "facebook":
             if data is None:
-                return ["post_id", "likes", "num_comments"]
-            # A row without post_id is not a real post row
-            if not data.get("post_id"):
-                missing_keys.append("post_id")
-            if data.get("likes") is None:
+                return ["posts"]
+            
+            # Case A: Nested posts array
+            if "posts" in data and isinstance(data.get("posts"), list):
+                posts_array = data["posts"]
+                if len(posts_array) == 0:
+                    return ["posts (empty)"]
+                first_post = posts_array[0]
+                has_likes = any(k in first_post and first_post[k] is not None for k in ["likes", "likesCount", "likeCount", "diggCount"])
+                has_comments = any(k in first_post and first_post[k] is not None for k in ["comments", "commentsCount", "commentCount", "num_comments"])
+                if not has_likes:
+                    missing_keys.append("likes")
+                if not has_comments:
+                    missing_keys.append("comments")
+                return missing_keys
+            
+            # Case B: Flat post object
+            has_likes = any(k in data and data[k] is not None for k in ["likes", "likesCount", "likeCount"])
+            has_comments = any(k in data and data[k] is not None for k in ["num_comments", "comments", "commentsCount", "commentCount"])
+            
+            if not data.get("post_id") and not has_likes and not has_comments:
+                return ["posts"]
+            
+            if not has_likes:
                 missing_keys.append("likes")
-            if data.get("num_comments") is None:
-                missing_keys.append("num_comments")
+            if not has_comments:
+                missing_keys.append("comments")
             return missing_keys
 
         # ── All other platforms: posts are stored as a sub-array ──────────────
-        # Define platform-specific post array key
         posts_key_mapping = {
             "instagram": "posts",
             "x": "posts",
@@ -95,7 +110,7 @@ class PageHistoryRepository:
         
         # Platform-specific engagement key names
         likes_keys = ["likes", "likesCount", "likeCount", "diggCount"]
-        comments_keys = ["comments", "commentsCount", "commentCount"]
+        comments_keys = ["comments", "commentsCount", "commentCount", "num_comments"]
         
         for key in likes_keys:
             if key in first_post and first_post[key] is not None:
@@ -218,8 +233,9 @@ class PageHistoryRepository:
                 ...
             ]
         """
-        today_start = datetime.combine(date.today(), time.min)
-        today_end = datetime.combine(date.today(), time.max)
+        today_utc = datetime.utcnow().date()
+        today_start = datetime.combine(today_utc, time.min)
+        today_end = datetime.combine(today_utc, time.max)
         
         # Query today's pages_history records with page join
         stmt = (

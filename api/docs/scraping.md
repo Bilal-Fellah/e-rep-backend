@@ -309,6 +309,7 @@ The endpoint analyzes today's `pages_history` records to detect incomplete scrap
 
 **Query Parameters**:
 - `platform` (optional): Filter by platform. Valid values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`
+- `limit` (optional): Limit the maximum number of profiles returned (positive integer)
 
 **Response** (200 OK):
 ```json
