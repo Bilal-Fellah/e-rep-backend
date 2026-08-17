@@ -47,19 +47,37 @@ class PageHistoryRepository:
         """
         missing_keys = []
         
-        # Define platform-specific post key mapping
+        # ── Facebook special case ─────────────────────────────────────────────
+        # Unlike every other platform, Facebook pages_history rows are NOT stored
+        # with a nested posts array. Each row IS a single post: all fields live
+        # at the top level of `data` (e.g. data["post_id"], data["likes"],
+        # data["num_comments"]).  Looking for a "posts" key would always fail
+        # for valid Facebook rows, incorrectly flagging them all as failed.
+        if platform == "facebook":
+            if data is None:
+                return ["post_id", "likes", "num_comments"]
+            # A row without post_id is not a real post row
+            if not data.get("post_id"):
+                missing_keys.append("post_id")
+            if data.get("likes") is None:
+                missing_keys.append("likes")
+            if data.get("num_comments") is None:
+                missing_keys.append("num_comments")
+            return missing_keys
+
+        # ── All other platforms: posts are stored as a sub-array ──────────────
+        # Define platform-specific post array key
         posts_key_mapping = {
             "instagram": "posts",
-            "facebook": "posts",
             "x": "posts",
             "tiktok": "top_videos",
             "linkedin": "updates",
             "youtube": "top_videos"
         }
-        
+
         posts_key = posts_key_mapping.get(platform, "posts")
-        
-        # Check if posts array exists
+
+        # Check if posts array exists for other platforms
         if data is None or posts_key not in data or not isinstance(data.get(posts_key), list):
             missing_keys.append(posts_key)
             return missing_keys  # Early exit - no posts to validate
