@@ -21,3 +21,5 @@ api/routes/testing/*
 # Runtime state / PII — must never be committed (registrations, login codes)
 api/database/*.json
 .coverage
+
+api/tests/*
