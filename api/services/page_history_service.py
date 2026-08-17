@@ -1,5 +1,5 @@
 # Business workflows for page history monitoring service.
-from datetime import datetime
+from datetime import datetime, date
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.utils.logging_utils import instrument_service_class
 from api.utils.request_parsing import parse_iso_date
@@ -26,7 +26,11 @@ class PageHistoryService:
         parsed_end = parse_iso_date(end_date) if end_date else None
 
         if end_date and parsed_end and isinstance(end_date, str) and "T" not in end_date and ":" not in end_date:
-            parsed_end = datetime.combine(parsed_end.date(), datetime.max.time())
+            # parsed_end is already a date object from parse_iso_date, so use it directly
+            if isinstance(parsed_end, date) and not isinstance(parsed_end, datetime):
+                parsed_end = datetime.combine(parsed_end, datetime.max.time())
+            else:
+                parsed_end = datetime.combine(parsed_end.date(), datetime.max.time())
 
         if brand_id is not None and not isinstance(brand_id, int):
             try:
