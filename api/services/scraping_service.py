@@ -5,6 +5,7 @@ from api.repositories.scraping_session_repository import ScrapingSessionReposito
 from api.repositories.post_repository import PostRepository
 from api.repositories.scraping_post_result_repository import ScrapingPostResultRepository
 from api.repositories.page_repository import PageRepository
+from api.repositories.page_history_repository import PageHistoryRepository
 from api.utils.datetime_utils import iso_utc
 from api.utils.logging_utils import instrument_service_class
 
@@ -47,6 +48,70 @@ class ScrapingService:
             "profiles": profiles,
             "count": len(profiles),
             "platform": platform if platform else "all"
+        }
+    
+    @staticmethod
+    def get_failed_profiles_for_scraping(platform: str = None) -> dict:
+        """
+        Get profiles that failed scraping validation for today.
+        
+        Args:
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            dict: {
+                "profiles": list[dict],  # [{name, url, platform, entity_id, entity_name}, ...]
+                "count": int,
+                "platform": str,
+                "scraping_issues": list[str]  # List of detected issues
+            }
+        """
+        # Step 1: Get failed page IDs from today's pages_history
+        failed_pages = PageHistoryRepository.get_failed_pages_for_today()
+        
+        # Step 2: Extract page IDs
+        page_ids = [failed_page["page_id"] for failed_page in failed_pages]
+        
+        # Step 3: Handle empty case
+        if not page_ids:
+            return {
+                "profiles": [],
+                "count": 0,
+                "platform": platform if platform else "all",
+                "scraping_issues": []
+            }
+        
+        # Step 4: Fetch full page details with entity filtering
+        pages = PageRepository.get_pages_by_ids(page_ids, platform)
+        
+        # Step 5: Format response and collect unique scraping issues
+        profiles = []
+        scraping_issues = set()
+        
+        for page in pages:
+            profile = {
+                "name": page.name,
+                "url": page.link,
+                "platform": page.platform,
+                "entity_id": page.entity_id,
+                "entity_name": page.entity.name if page.entity else None,
+            }
+            profiles.append(profile)
+            
+            # Collect unique scraping issues
+            failed_page_info = next(
+                (fp for fp in failed_pages if fp["page_id"] == page.uuid),
+                None
+            )
+            if failed_page_info:
+                for key in failed_page_info["missing_keys"]:
+                    scraping_issues.add(key)
+        
+        return {
+            "profiles": profiles,
+            "count": len(profiles),
+            "platform": platform if platform else "all",
+            "scraping_issues": sorted(list(scraping_issues))  # Sort for consistent output
         }
     
     @staticmethod

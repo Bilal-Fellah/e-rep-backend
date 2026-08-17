@@ -29,6 +29,75 @@ class _UUIDEncoder(json.JSONEncoder):
 @instrument_repository_class
 class PageHistoryRepository:
     @staticmethod
+    def validate_data_structure(data: dict, platform: str) -> list[str]:
+        """
+        Validate platform-specific JSONB data structure for required keys.
+        
+        Checks for missing keys:
+        - posts/top_videos/updates (platform-specific)
+        - likes field within posts (supports multiple field name variations)
+        - comments field within posts (supports multiple field name variations)
+        
+        Args:
+            data: JSONB data dictionary from pages_history
+            platform: Platform name (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            List of missing key names. Empty list means validation passed.
+        """
+        missing_keys = []
+        
+        # Define platform-specific post key mapping
+        posts_key_mapping = {
+            "instagram": "posts",
+            "facebook": "posts",
+            "x": "posts",
+            "tiktok": "top_videos",
+            "linkedin": "updates",
+            "youtube": "top_videos"
+        }
+        
+        posts_key = posts_key_mapping.get(platform, "posts")
+        
+        # Check if posts array exists
+        if data is None or posts_key not in data or not isinstance(data.get(posts_key), list):
+            missing_keys.append(posts_key)
+            return missing_keys  # Early exit - no posts to validate
+        
+        posts_array = data[posts_key]
+        
+        if len(posts_array) == 0:
+            missing_keys.append(f"{posts_key} (empty)")
+            return missing_keys
+        
+        # Check first post for required engagement fields
+        first_post = posts_array[0]
+        has_likes = False
+        has_comments = False
+        
+        # Platform-specific engagement key names
+        likes_keys = ["likes", "likesCount", "likeCount", "diggCount"]
+        comments_keys = ["comments", "commentsCount", "commentCount"]
+        
+        for key in likes_keys:
+            if key in first_post and first_post[key] is not None:
+                has_likes = True
+                break
+        
+        for key in comments_keys:
+            if key in first_post and first_post[key] is not None:
+                has_comments = True
+                break
+        
+        if not has_likes:
+            missing_keys.append("likes")
+        
+        if not has_comments:
+            missing_keys.append("comments")
+        
+        return missing_keys
+
+    @staticmethod
     def _followers_case(page_alias=Page, history_alias=PageHistory):
         return case(
             (page_alias.platform == "youtube", history_alias.data["subscribers"].astext),
@@ -109,6 +178,69 @@ class PageHistoryRepository:
         return db.session.scalars(
             select(PageHistory).where(db.func.date(PageHistory.recorded_at) == today)
         ).all()
+    
+    @staticmethod
+    def get_failed_pages_for_today() -> list[dict]:
+        """
+        Get page_ids where today's pages_history data is missing required keys.
+        
+        Checks data JSONB field for missing keys:
+        - posts (or platform-specific: updates, top_videos)
+        - likes (posts[*].likes or similar)
+        - comments (posts[*].comments or similar)
+        
+        Returns:
+            list[dict]: [
+                {
+                    "page_id": UUID,
+                    "platform": str,
+                    "missing_keys": list[str],
+                    "recorded_at": datetime
+                },
+                ...
+            ]
+        """
+        today_start = datetime.combine(date.today(), time.min)
+        today_end = datetime.combine(date.today(), time.max)
+        
+        # Query today's pages_history records with page join
+        stmt = (
+            select(
+                PageHistory.page_id,
+                PageHistory.data,
+                PageHistory.recorded_at,
+                Page.platform
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .where(
+                and_(
+                    PageHistory.recorded_at >= today_start,
+                    PageHistory.recorded_at <= today_end
+                )
+            )
+        )
+        
+        history_records = db.session.execute(stmt).all()
+        failed_pages = []
+        
+        # Analyze each record for missing keys
+        for record in history_records:
+            # Validate data structure for this platform
+            missing_keys = PageHistoryRepository.validate_data_structure(
+                record.data, 
+                record.platform
+            )
+            
+            # If validation found missing keys, add to failed pages
+            if missing_keys:
+                failed_pages.append({
+                    "page_id": record.page_id,
+                    "platform": record.platform,
+                    "missing_keys": missing_keys,
+                    "recorded_at": record.recorded_at
+                })
+        
+        return failed_pages
     
     @staticmethod
     def get_followers_history_by_entity(entity_id: int):

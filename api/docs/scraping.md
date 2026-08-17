@@ -299,7 +299,111 @@ curl -X POST "https://api.example.com/api/scraping/comments" \
 
 ---
 
-### 3. Get Session Details
+### 3. Get Failed Profiles for Apify Fallback Scraping
+
+Retrieve profiles that failed scraping validation for the current day. This endpoint is specifically designed for the Apify fallback scraper to identify which profiles need to be re-scraped after the primary scraping service failed to collect complete data.
+
+The endpoint analyzes today's `pages_history` records to detect incomplete scraping (missing `posts`, `likes`, or `comments` keys in the data JSONB field) and returns filtered profiles for retry.
+
+**Endpoint**: `GET /api/scraping/apify_profile_scraping`
+
+**Query Parameters**:
+- `platform` (optional): Filter by platform. Valid values: `facebook`, `instagram`, `x`, `tiktok`, `linkedin`, `youtube`
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "profiles": [
+      {
+        "name": "nike_instagram",
+        "url": "https://instagram.com/nike",
+        "platform": "instagram",
+        "entity_id": 5,
+        "entity_name": "Nike"
+      },
+      {
+        "name": "adidas_instagram",
+        "url": "https://instagram.com/adidas",
+        "platform": "instagram",
+        "entity_id": 8,
+        "entity_name": "Adidas"
+      }
+    ],
+    "count": 2,
+    "platform": "instagram",
+    "scraping_issues": ["comments", "likes"]
+  }
+}
+```
+
+**Response Fields**:
+- `profiles`: Array of profile objects that failed validation
+  - `name`: Page name in the database
+  - `url`: Profile URL to re-scrape
+  - `platform`: Social media platform
+  - `entity_id`: ID of the entity this page belongs to
+  - `entity_name`: Name of the entity
+- `count`: Total number of failed profiles returned
+- `platform`: Platform filter used (or "all" if no filter)
+- `scraping_issues`: Unique list of detected data validation issues (e.g., missing keys in scraped data)
+
+**Validation Criteria**:
+The endpoint identifies profiles as "failed" when today's `pages_history` record is missing required data:
+- **Instagram/Facebook/X**: Must contain `posts` array with `likes` and `comments` fields
+- **TikTok/YouTube**: Must contain `top_videos` array with `likes` and `comments` fields
+- **LinkedIn**: Must contain `updates` array with `likes` and `comments` fields
+
+**Error Responses**:
+- `400`: Invalid query parameters
+```json
+{
+  "success": false,
+  "error": "Invalid platform. Must be one of: facebook, instagram, x, tiktok, linkedin, youtube"
+}
+```
+- `401`: Missing or invalid API key
+```json
+{
+  "success": false,
+  "error": "Invalid or missing API key"
+}
+```
+- `500`: Database error
+```json
+{
+  "success": false,
+  "error": "An error occurred in the database."
+}
+```
+
+**Example cURL**:
+```bash
+# Get all failed profiles for all platforms
+curl -X GET "https://api.example.com/api/scraping/apify_profile_scraping" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Get only failed Instagram profiles
+curl -X GET "https://api.example.com/api/scraping/apify_profile_scraping?platform=instagram" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+**Use Cases**:
+1. **Automatic Fallback**: Apify scraper periodically calls this endpoint to discover profiles that need re-scraping
+2. **Selective Retry**: Filter by platform to focus fallback scraping on specific social media channels
+3. **Quality Monitoring**: Check `scraping_issues` to identify patterns in scraping failures
+4. **Daily Validation**: Run after primary scraping completes to identify any gaps in data collection
+
+**Notes**:
+- Only returns profiles for pages belonging to active entities (`to_scrape=True`)
+- Analyzes only today's `pages_history` records (resets daily)
+- Returns empty `profiles` array when all scraping was successful
+- The `scraping_issues` field helps diagnose what data is missing (e.g., "posts", "comments", "likes")
+
+---
+
+### 4. Get Session Details
 
 Retrieve details about a specific scraping session.
 
@@ -371,7 +475,7 @@ curl -X GET "https://api.example.com/api/scraping/sessions/550e8400-e29b-41d4-a7
 
 ---
 
-### 4. Complete a Scraping Session
+### 5. Complete a Scraping Session
 
 Explicitly mark a scraping session as **completed**. The external scraper should call this after finishing all posts in a session, even if no comments were found.
 Only sessions in **`pending`** state can be completed.
@@ -442,7 +546,7 @@ curl -X POST "https://api.example.com/api/scraping/sessions/550e8400-e29b-41d4-a
 
 ---
 
-### 4. Get Today's Scraping Status
+### 6. Get Today's Scraping Status
 
 Retrieve the status of posts scheduled for scraping today (or a specific date). Categorizes posts scheduled for that date into scraped (already scraped today) and pending (scheduled but not yet scraped).
 
