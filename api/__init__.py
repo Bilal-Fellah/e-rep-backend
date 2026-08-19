@@ -147,7 +147,7 @@ def create_app():
     # ---- CLI: refresh the metrics materialized view after a daily scrape ----
     @app.cli.command("refresh-mv")
     def refresh_mv():
-        """Refresh page_posts_metrics_mv so API reads reflect the latest scrape.
+        """Refresh page_posts_metrics_mv, posts_history_mv, and posts_mv so API reads reflect the latest scrape.
 
         Run this from the same cron as the daily scrape, e.g.:
             flask refresh-mv
@@ -155,8 +155,8 @@ def create_app():
         from api.repositories.page_history_repository import PageHistoryRepository
 
         PageHistoryRepository.refresh_metrics_mv()
-        app.logger.info("page_posts_metrics_mv refreshed")
-        print("page_posts_metrics_mv refreshed")
+        app.logger.info("Materialized views (page_posts_metrics_mv, posts_history_mv, posts_mv) refreshed successfully")
+        print("Materialized views refreshed successfully")
 
     @app.errorhandler(SQLAlchemyError)
     def handle_database_error(error):

@@ -439,29 +439,29 @@ class PageHistoryRepository:
     @staticmethod
     def refresh_metrics_mv():
         """
-        Refresh the page_posts_metrics_mv materialized view so API reads reflect
-        the latest scraped pages_history rows.
+        Refresh the page_posts_metrics_mv, posts_history_mv, and posts_mv materialized views
+        so API reads reflect the latest scraped pages_history rows.
 
-        The scraper loads pages_history out-of-band; without this refresh the MV
-        stays frozen on an old snapshot, which is why profile image URLs (signed
+        The scraper loads pages_history out-of-band; without this refresh the MVs
+        stay frozen on an old snapshot, which is why profile image URLs (signed
         + short-lived) expire and recent-window rankings return no data. Call
         this right after each daily scrape (see `flask refresh-mv`).
 
-        Tries CONCURRENTLY first (non-blocking; needs the unique index
-        idx_ppmm_unique and an already-populated view). Falls back to a plain
-        REFRESH if CONCURRENTLY isn't possible (e.g. first populate).
+        Tries CONCURRENTLY first (non-blocking; needs unique indexes and an
+        already-populated view). Falls back to plain REFRESH if CONCURRENTLY isn't possible.
         """
-        try:
-            db.session.execute(
-                text("REFRESH MATERIALIZED VIEW CONCURRENTLY page_posts_metrics_mv")
-            )
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            db.session.execute(
-                text("REFRESH MATERIALIZED VIEW page_posts_metrics_mv")
-            )
-            db.session.commit()
+        for mv in ["page_posts_metrics_mv", "posts_history_mv", "posts_mv"]:
+            try:
+                db.session.execute(
+                    text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}")
+                )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                db.session.execute(
+                    text(f"REFRESH MATERIALIZED VIEW {mv}")
+                )
+                db.session.commit()
 
     @staticmethod
     def get_all_entities_posts(date_limit, entity_type=None):
