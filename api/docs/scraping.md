@@ -301,9 +301,11 @@ curl -X POST "https://api.example.com/api/scraping/comments" \
 
 ### 3. Get Failed Profiles for Apify Fallback Scraping
 
-Retrieve profiles that failed scraping validation for the current day. This endpoint is specifically designed for the Apify fallback scraper to identify which profiles need to be re-scraped after the primary scraping service failed to collect complete data.
+Retrieve profiles that failed scraping validation in the recent time window. This endpoint is specifically designed for the Apify fallback scraper to identify which profiles need to be re-scraped after the primary scraping service failed to collect complete data.
 
-The endpoint analyzes today's `pages_history` records to detect incomplete scraping (missing `posts`, `likes`, or `comments` keys in the data JSONB field) and returns filtered profiles for retry.
+The endpoint analyzes `pages_history` records from **yesterday at 10pm (22:00) UTC until now** to detect incomplete scraping (missing `posts`, `likes`, or `comments` keys in the data JSONB field) and returns filtered profiles for retry.
+
+**Time Window**: Yesterday 10pm UTC → Current time (~26 hour rolling window)
 
 **Endpoint**: `GET /api/scraping/apify_profile_scraping`
 
@@ -351,10 +353,18 @@ The endpoint analyzes today's `pages_history` records to detect incomplete scrap
 - `scraping_issues`: Unique list of detected data validation issues (e.g., missing keys in scraped data)
 
 **Validation Criteria**:
-The endpoint identifies profiles as "failed" when today's `pages_history` record is missing required data:
+The endpoint identifies profiles as "failed" when `pages_history` records (from yesterday 10pm until now) are missing required data:
 - **Instagram/Facebook/X**: Must contain `posts` array with `likes` and `comments` fields
 - **TikTok/YouTube**: Must contain `top_videos` array with `likes` and `comments` fields
 - **LinkedIn**: Must contain `updates` array with `likes` and `comments` fields
+
+**Time Window Details**:
+- **Start**: Yesterday at 22:00:00 UTC (10pm)
+- **End**: Current time (now)
+- **Duration**: Rolling ~26 hour window (varies based on current time)
+- **Example**: If current time is 3pm, window is yesterday 10pm → today 3pm (~17 hours)
+
+This window is optimal for typical scraping schedules that run in the late evening (around 10pm-midnight).
 
 **Error Responses**:
 - `400`: Invalid query parameters
@@ -362,6 +372,12 @@ The endpoint identifies profiles as "failed" when today's `pages_history` record
 {
   "success": false,
   "error": "Invalid platform. Must be one of: facebook, instagram, x, tiktok, linkedin, youtube"
+}
+```
+```json
+{
+  "success": false,
+  "error": "'limit' must be a positive integer"
 }
 ```
 - `401`: Missing or invalid API key
@@ -388,19 +404,36 @@ curl -X GET "https://api.example.com/api/scraping/apify_profile_scraping" \
 # Get only failed Instagram profiles
 curl -X GET "https://api.example.com/api/scraping/apify_profile_scraping?platform=instagram" \
   -H "Authorization: Bearer YOUR_API_KEY"
+
+# Limit to first 5 failed profiles
+curl -X GET "https://api.example.com/api/scraping/apify_profile_scraping?limit=5" \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Use Cases**:
 1. **Automatic Fallback**: Apify scraper periodically calls this endpoint to discover profiles that need re-scraping
 2. **Selective Retry**: Filter by platform to focus fallback scraping on specific social media channels
 3. **Quality Monitoring**: Check `scraping_issues` to identify patterns in scraping failures
-4. **Daily Validation**: Run after primary scraping completes to identify any gaps in data collection
+4. **Recent Validation**: Captures failures from the last scraping run (typically previous evening)
 
 **Notes**:
 - Only returns profiles for pages belonging to active entities (`to_scrape=True`)
-- Analyzes only today's `pages_history` records (resets daily)
-- Returns empty `profiles` array when all scraping was successful
+- Analyzes `pages_history` records from yesterday 10pm UTC until current time
+- Returns empty `profiles` array when all scraping in the time window was successful
 - The `scraping_issues` field helps diagnose what data is missing (e.g., "posts", "comments", "likes")
+- Time window resets daily as "yesterday" rolls forward
+
+**Diagnostic Tool**:
+A diagnostic script is available to inspect the database and understand why the endpoint returns specific results:
+```bash
+python check_scraping_status.py
+```
+
+This shows:
+- Full-day breakdown for yesterday and today
+- The exact active window (yesterday 10pm → now) that the API uses
+- Which records have missing data and what's missing
+- Entity active status for each failed page
 
 ---
 

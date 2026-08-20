@@ -215,7 +215,8 @@ class PageHistoryRepository:
     @staticmethod
     def get_failed_pages_for_today() -> list[dict]:
         """
-        Get page_ids where today's pages_history data is missing required keys.
+        Get page_ids where pages_history data is missing required keys.
+        Checks from yesterday at 10pm (22:00) UTC until now.
         
         Checks data JSONB field for missing keys:
         - posts (or platform-specific: updates, top_videos)
@@ -233,11 +234,14 @@ class PageHistoryRepository:
                 ...
             ]
         """
-        today_utc = datetime.utcnow().date()
-        today_start = datetime.combine(today_utc, time.min)
-        today_end = datetime.combine(today_utc, time.max)
+        now_utc = datetime.utcnow()
+        yesterday_utc = now_utc.date() - timedelta(days=1)
         
-        # Query today's pages_history records with page join
+        # Start from yesterday at 10pm (22:00), end at current time
+        start_time = datetime.combine(yesterday_utc, time(22, 0, 0))
+        end_time = now_utc
+        
+        # Query pages_history records from yesterday 10pm until now
         stmt = (
             select(
                 PageHistory.page_id,
@@ -248,8 +252,8 @@ class PageHistoryRepository:
             .join(Page, PageHistory.page_id == Page.uuid)
             .where(
                 and_(
-                    PageHistory.recorded_at >= today_start,
-                    PageHistory.recorded_at <= today_end
+                    PageHistory.recorded_at >= start_time,
+                    PageHistory.recorded_at <= end_time
                 )
             )
         )

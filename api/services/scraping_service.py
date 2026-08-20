@@ -53,7 +53,7 @@ class ScrapingService:
     @staticmethod
     def get_failed_profiles_for_scraping(platform: str = None, limit: int = None) -> dict:
         """
-        Get profiles that failed scraping validation for today.
+        Get profiles that failed scraping validation from yesterday 10pm UTC until now.
         
         Args:
             platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
@@ -67,7 +67,7 @@ class ScrapingService:
                 "scraping_issues": list[str]  # List of detected issues
             }
         """
-        # Step 1: Get failed page IDs from today's pages_history
+        # Step 1: Get failed page IDs from yesterday 10pm until now
         failed_pages = PageHistoryRepository.get_failed_pages_for_today()
         
         # Step 2: Extract page IDs

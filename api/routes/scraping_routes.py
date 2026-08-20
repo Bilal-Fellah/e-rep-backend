@@ -107,7 +107,7 @@ def get_profiles():
 @require_api_key
 def get_apify_profiles():
     """
-    Get profiles that failed scraping validation for today.
+    Get profiles that failed scraping validation from yesterday 10pm UTC until now.
     Used by Apify fallback scraper to retry failed profiles.
     
     Query Parameters:
