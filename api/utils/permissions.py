@@ -107,6 +107,17 @@ ROLE_PERMISSIONS = {
     "data.add_category": [UserRole.ADMIN.value],
     "data.delete_category": [UserRole.ADMIN.value],
     "data.update_category": [UserRole.ADMIN.value],
+
+    # Alerts (user-facing)
+    "data.list_alerts": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.unread_alert_count": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.mark_alert_read": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.dismiss_alert": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.mark_all_alerts_read": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.list_alert_rules": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.create_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.update_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.delete_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
 }
 
 # ============================================================================

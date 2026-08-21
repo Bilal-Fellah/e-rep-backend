@@ -9,6 +9,11 @@ from .note_model import Note
 from .ai_insight_cache import AiInsightCache
 from .preapproved_mail_model import PreapprovedMail
 from .subscription_model import Subscription
+from .alert_rule_model import AlertRule
+from .alert_rule_keyword_model import AlertRuleKeyword
+from .alert_event_model import AlertEvent
+from .user_alert_model import UserAlert
+from .alert_detector_checkpoint_model import AlertDetectorCheckpoint
 
 # optional: put all models in __all__ to make imports cleaner
 __all__ = [
@@ -22,6 +27,11 @@ __all__ = [
     "AiInsightCache",
     "PreapprovedMail",
     "Subscription",
+    "AlertRule",
+    "AlertRuleKeyword",
+    "AlertEvent",
+    "UserAlert",
+    "AlertDetectorCheckpoint",
 ]
 
 

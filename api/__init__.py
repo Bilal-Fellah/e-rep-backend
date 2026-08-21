@@ -119,6 +119,11 @@ def create_app():
         AiInsightCache,
         PreapprovedMail,
         Subscription,
+        AlertRule,
+        AlertRuleKeyword,
+        AlertEvent,
+        UserAlert,
+        AlertDetectorCheckpoint,
     )
 
     ALLOWED_ORIGINS = [
@@ -153,8 +158,10 @@ def create_app():
             flask refresh-mv
         """
         from api.repositories.page_history_repository import PageHistoryRepository
+        from api.services.alert_engine_service import AlertEngineService
 
         PageHistoryRepository.refresh_metrics_mv()
+        AlertEngineService.mark_mv_refreshed()
         app.logger.info("Materialized views (page_posts_metrics_mv, posts_history_mv, posts_mv) refreshed successfully")
         print("Materialized views refreshed successfully")
 

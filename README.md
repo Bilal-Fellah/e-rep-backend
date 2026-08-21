@@ -39,6 +39,14 @@ logs/               # Rotating JSONL log files (route, service, repository error
 | `FRONTEND_COOKIE_DOMAIN` | Cookie domain (e.g. `.brendex.net`) |
 | `COOKIE_SECURE` | Set to `true` in production |
 | `ALLOWED_OAUTH_RETURN_URLS` | Comma-separated list of allowed OAuth return URLs |
+| `ALERTS_ENGINE_API_KEY` | Service API key for `/api/alerts/engine/*` endpoints |
+| `ALERTS_READINESS_FRESHNESS_MINUTES` | Optional readiness freshness limit (default: 180) |
+| `ALERTS_READINESS_MAX_UNPROCESSED` | Optional max unprocessed comments for readiness (default: 0) |
+| `ALERTS_ENGAGEMENT_LOOKBACK_DAYS` | Optional lookback for engagement anomaly detector (default: 8) |
+| `ALERTS_ENGAGEMENT_MIN_BASELINE` | Optional min baseline for engagement anomaly detector (default: 20) |
+| `ALERTS_ENGAGEMENT_THRESHOLD_UP` | Optional increase threshold ratio (default: 0.50) |
+| `ALERTS_ENGAGEMENT_THRESHOLD_DOWN` | Optional drop threshold ratio (default: 0.50) |
+| `ALERTS_ENGAGEMENT_MIN_ABS_CHANGE` | Optional min absolute change for anomaly alerts (default: 10) |
 
 ## Running Locally
 
@@ -82,6 +90,7 @@ See `api/docs/` for per-feature documentation:
 | `interaction_stats.md` | `/api/data/*` — per-entity/competitor interaction stats |
 | `notes.md` | `/api/data/*` — user notes on posts and graphs |
 | `posts.md` | `/api/data/*` — post data and history |
+| `alerts.md` | `/api/data/alerts*` + `/api/alerts/engine/*` — user alerts, rules, and detector orchestration |
 | `public.md` | `/api/public/*` — unauthenticated public endpoints |
 | `health.md` | `/health/check` — liveness probe |
 | `access_roles.md` | Role-based access summary |
