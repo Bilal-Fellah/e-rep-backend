@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import String, cast
+from sqlalchemy import String, cast, func
 
 from api import db
 from api.models.comment_model import Comment
@@ -13,7 +13,7 @@ from api.repositories.alert_detector_checkpoint_repository import (
 )
 from api.repositories.alert_event_repository import AlertEventRepository
 from api.repositories.alert_rule_repository import AlertRuleRepository
-from api.repositories.comment_repository import CommentRepository
+
 from api.services.alert_service import AlertService, normalize_keyword
 from api.utils.logging_utils import instrument_service_class
 
@@ -118,14 +118,23 @@ class AlertEngineService:
                 },
             }
 
-        unprocessed = CommentRepository.count_unprocessed()
-        if unprocessed > max_unprocessed:
+        # Readiness should be based on the latest ingestion cycle, not global
+        # historical backlog. We use unlabeled count in the latest completed
+        # scraping session as the "labeling finished" signal.
+        unlabeled_in_latest_session = (
+            Comment.query.filter(
+                Comment.scraping_session_id == latest.session_id,
+                Comment.label.is_(None),
+            ).count()
+        )
+        if unlabeled_in_latest_session > max_unprocessed:
             return {
                 "ready": False,
-                "reason": "Unprocessed comments backlog is above threshold",
+                "reason": "Latest session still has unlabeled comments above threshold",
                 "context": {
-                    "unprocessed_comments_count": unprocessed,
-                    "max_allowed_unprocessed": max_unprocessed,
+                    "latest_session_id": latest.session_id,
+                    "unlabeled_comments_in_latest_session": unlabeled_in_latest_session,
+                    "max_allowed_unlabeled": max_unprocessed,
                 },
             }
 
@@ -159,7 +168,7 @@ class AlertEngineService:
                 "latest_completed_at": latest.completed_at.isoformat(),
                 "comments_in_session": comment_count,
                 "post_results_in_session": result_count,
-                "unprocessed_comments_count": unprocessed,
+                "unlabeled_comments_in_latest_session": unlabeled_in_latest_session,
                 "last_mv_refresh_at": mv_marker.cursor_ts.isoformat(),
             },
         }
@@ -245,10 +254,11 @@ class AlertEngineService:
     @staticmethod
     def _run_negative_comment_detector(dry_run: bool = False) -> dict:
         cursor = AlertDetectorCheckpointRepository.get_cursor_ts(DETECTOR_NEGATIVE)
-        q = Comment.query.filter(Comment.label.in_([0, 1]), Comment.label_updated_at.isnot(None))
+        event_ts_expr = func.coalesce(Comment.label_updated_at, Comment.recorded_at)
+        q = Comment.query.filter(Comment.label.in_([0, 1]))
         if cursor:
-            q = q.filter(Comment.label_updated_at > cursor)
-        rows = q.order_by(Comment.label_updated_at.asc()).all()
+            q = q.filter(event_ts_expr > cursor)
+        rows = q.order_by(event_ts_expr.asc()).all()
 
         if not rows:
             return {
@@ -302,8 +312,9 @@ class AlertEngineService:
                     dry_run=False,
                 )
 
-            if row.label_updated_at and (max_ts is None or row.label_updated_at > max_ts):
-                max_ts = row.label_updated_at
+            row_event_ts = row.label_updated_at or row.recorded_at
+            if row_event_ts and (max_ts is None or row_event_ts > max_ts):
+                max_ts = row_event_ts
 
         if max_ts and not dry_run:
             AlertDetectorCheckpointRepository.upsert(DETECTOR_NEGATIVE, cursor_ts=max_ts)

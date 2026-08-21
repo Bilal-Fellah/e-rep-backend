@@ -1,259 +1,256 @@
-# Alerts Feature
+# Alerts API
 
-This document covers the implemented backend alerts system, how to run it in
-production with an external systemd timer runner, and what remains to be done
-outside this repository.
+All routes in this document are backend routes for the alerts feature.
 
----
-
-## 1) What is implemented
-
-### Event families
-
-- `negative_comment`
-  - Trigger: comment label updated to `0` or `1`
-- `keyword_mention`
-  - Trigger: configured keyword matched in:
-    - comment text
-    - post caption (`posts_mv.caption`)
-- `engagement_anomaly`
-  - Trigger: abnormal increase/drop in post engagement history
-  - Mandatory noise guard: suspicious zeros are ignored (e.g. non-zero -> 0)
-
-### Persistence model
-
-Implemented tables:
-
-- `alert_rules`
-- `alert_rule_keywords`
-- `alert_events`
-- `user_alerts`
-- `alert_detector_checkpoints`
-
-And a new column on `comments`:
-
-- `label_updated_at`
-
-Migration file:
-
-- `migrations/versions/h9i0j1k2l3m4_add_alerts_feature_tables.py`
+- User-facing routes are prefixed with `/api/data`
+- Engine/orchestrator routes are prefixed with `/api/alerts/engine`
 
 ---
 
-## 2) API surface
+## Authentication
 
-## 2.1 User-facing APIs (JWT)
+## 1) User-facing routes (`/api/data/*`)
 
-Prefix: `/api/data`
+Use JWT auth (same as other protected data endpoints):
 
-- `GET /alerts`
-- `GET /alerts/unread-count`
-- `POST /alerts/{user_alert_id}/read`
-- `POST /alerts/{user_alert_id}/dismiss`
-- `POST /alerts/read-all`
+- `Authorization: Bearer <access_token>`
 
-Rules:
-
-- `GET /alert-rules`
-- `POST /alert-rules`
-- `PUT /alert-rules/{rule_id}`
-- `DELETE /alert-rules/{rule_id}`
-
-Auth roles allowed:
+Allowed roles:
 
 - `registered`, `subscribed`, `admin`
 
-## 2.2 Engine/orchestration APIs (service API key)
+## 2) Engine routes (`/api/alerts/engine/*`)
 
-Prefix: `/api/alerts/engine`
-
-- `GET /readiness`
-- `POST /run`
-
-Used by the external timer service.
-
----
-
-## 3) Security model for external runner
-
-Implemented a dedicated API-key decorator:
-
-- `require_alerts_engine_api_key`
-
-Expected header:
+Use service API key:
 
 - `Authorization: Bearer <ALERTS_ENGINE_API_KEY>`
 
-Do not reuse scraping key. Keep separate:
+---
 
-- `SCRAPING_API_KEY`: scraping service endpoints
-- `ALERTS_ENGINE_API_KEY`: alerts engine endpoints
+## Event Types
 
-Both use constant-time comparison and in-memory per-key rate limiting.
+Supported event types:
+
+- `negative_comment`
+- `keyword_mention`
+- `engagement_anomaly`
 
 ---
 
-## 4) Readiness logic (no pipeline checkpoint table)
+## Rule Payload Reference
 
-Per your chosen design, there is **no** `pipeline_checkpoints` table.
+`alert-rules` create/update endpoints use this payload shape:
 
-`GET /api/alerts/engine/readiness` returns ready only if all checks pass:
-
-1. Latest scraping session exists and is `completed`
-2. Latest completed session is fresh enough
-3. Latest session has data evidence:
-   - comments for that session OR scraping post-results for that session
-4. Unprocessed comments backlog is not above threshold
-5. Materialized view refresh marker exists and is newer than latest completed scrape
-
-The MV marker is persisted in `alert_detector_checkpoints` under
-`detector_name = "mv_refresh"`, updated from `flask refresh-mv`.
-
-### Readiness config
-
-- `ALERTS_READINESS_FRESHNESS_MINUTES` (default `180`)
-- `ALERTS_READINESS_MAX_UNPROCESSED` (default `0`)
-
----
-
-## 5) Keyword matching details
-
-Keyword rules support match modes:
-
-- `contains` (default)
-- `exact`
-- `regex`
-
-Normalization used for non-case-sensitive matching:
-
-1. trim
-2. collapse multiple spaces
-3. lowercase
-
-Matching behavior:
-
-- If `is_case_sensitive = false`:
-  - compares normalized text and normalized keyword
-- If `is_case_sensitive = true`:
-  - compares normalized spacing but preserves case
-
-Keyword events use dedupe keys:
-
-- comment: `kw:c:{comment_pk}:{keyword_normalized}`
-- post: `kw:p:{page_id}:{platform}:{post_id}:{keyword_normalized}`
-
----
-
-## 6) Engagement anomaly detector
-
-Detector name: `engagement_anomaly`
-
-Source: `posts_history_mv` grouped by `(page_id, platform, post_id)`
-
-Metrics evaluated:
-
-- `likes`, `comments`, `shares`, `views`
-
-Method:
-
-- Build a baseline from previous valid points (median)
-- Compare latest point against baseline
-- Trigger on configured thresholds for increase/drop
-
-### Zero-value noise protection (implemented)
-
-A metric point is treated as suspicious and ignored when:
-
-- previous valid value > 0
-- current value == 0
-
-Such points are excluded from:
-
-- anomaly trigger
-- baseline construction
-
-This prevents scraper-error zeros from creating false drop alerts.
-
-### Engagement config
-
-- `ALERTS_ENGAGEMENT_LOOKBACK_DAYS` (default `8`)
-- `ALERTS_ENGAGEMENT_MIN_BASELINE` (default `20`)
-- `ALERTS_ENGAGEMENT_THRESHOLD_UP` (default `0.50` => +50%)
-- `ALERTS_ENGAGEMENT_THRESHOLD_DOWN` (default `0.50` => -50%)
-- `ALERTS_ENGAGEMENT_MIN_ABS_CHANGE` (default `10`)
-
----
-
-## 7) External systemd runner (what you must set up)
-
-This repo now provides the APIs and includes a runnable script template:
-
-- `scripts/alerts_engine_runner.py`
-
-Deploy that script on the external timer host.
-
-## 7.1 Minimal runner flow
-
-1. `GET /api/alerts/engine/readiness`
-2. if `ready=false`: exit 0
-3. if `ready=true`: `POST /api/alerts/engine/run`
-4. log summary
-
-## 7.2 Suggested env file on runner host
-
-`/etc/brendex/alerts-runner.env`
-
-```env
-BACKEND_URL=https://your-backend-url
-ALERTS_ENGINE_API_KEY=your-strong-secret
-RUN_DRY=false
+```json
+{
+  "name": "Brand risk keywords",
+  "event_type": "keyword_mention",
+  "is_active": true,
+  "severity_min": "warning",
+  "entity_scope": {
+    "entity_ids": [12, 31]
+  },
+  "cooldown_minutes": 60,
+  "match_mode": "contains",
+  "is_case_sensitive": false,
+  "keywords": ["boycott", "fraud", "scam"]
+}
 ```
 
-## 7.3 systemd unit/timer (example)
+Notes:
 
-`/etc/systemd/system/brendex-alert-runner.service`
+- `keywords` is required for `keyword_mention` rules.
+- `match_mode` allowed: `contains`, `exact`, `regex`
+- `entity_scope.entity_ids` is optional. If omitted, rule applies globally.
+- `cooldown_minutes` must be `>= 0`.
 
-```ini
-[Unit]
-Description=Brendex Alerts Runner
-After=network-online.target
+---
 
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/brendex/alerts-runner.env
-ExecStart=/usr/bin/python3 /opt/brendex-alert-runner/run_alerts.py
-User=brendex
-Group=brendex
+# User-facing Routes (`/api/data`)
+
+## **GET /api/data/alerts**
+
+List current user's alerts.
+
+### Query Parameters
+
+- `status` (optional): `unread`, `read`, `dismissed`
+- `event_type` (optional): `negative_comment`, `keyword_mention`, `engagement_anomaly`
+- `limit` (optional, default `50`, max `200`)
+- `offset` (optional, default `0`)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "user_alert_id": 101,
+      "status": "unread",
+      "created_at": "2026-08-21T19:50:10.112345",
+      "read_at": null,
+      "dismissed_at": null,
+      "event": {
+        "id": 55,
+        "event_type": "keyword_mention",
+        "severity": "warning",
+        "event_at": "2026-08-21T19:49:59.000000",
+        "entity_id": 12,
+        "page_id": "f3d3a8e8-5f9f-41a7-9f44-6e3f3e2458e2",
+        "platform": "instagram",
+        "post_id": "C123456",
+        "comment_pk": 9001,
+        "label": null,
+        "matched_keyword": "fraud",
+        "payload": {
+          "source": "comment",
+          "text": "this looks like fraud",
+          "keyword_normalized": "fraud",
+          "rule_id": 8
+        }
+      }
+    }
+  ]
+}
 ```
 
-`/etc/systemd/system/brendex-alert-runner.timer`
+### Error Responses
 
-```ini
-[Unit]
-Description=Run Brendex Alerts Runner every 10 minutes
-
-[Timer]
-OnCalendar=*:0/10
-Persistent=true
-Unit=brendex-alert-runner.service
-
-[Install]
-WantedBy=timers.target
+```json
+{ "success": false, "error": "No valid token provided" }
 ```
 
-Enable:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now brendex-alert-runner.timer
-sudo systemctl status brendex-alert-runner.timer
+```json
+{ "success": false, "error": "Insufficient permissions for this action" }
 ```
 
 ---
 
-## 8) Rule payload examples
+## **GET /api/data/alerts/unread-count**
 
-### 8.1 Negative comments for all entities
+Get unread alerts count for current user.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "unread": 7
+  }
+}
+```
+
+---
+
+## **POST /api/data/alerts/{user_alert_id}/read**
+
+Mark one alert as read.
+
+### Path Parameters
+
+- `user_alert_id` (required, integer)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "updated": true
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Alert not found" }
+```
+
+---
+
+## **POST /api/data/alerts/{user_alert_id}/dismiss**
+
+Dismiss one alert.
+
+### Path Parameters
+
+- `user_alert_id` (required, integer)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "updated": true
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Alert not found" }
+```
+
+---
+
+## **POST /api/data/alerts/read-all**
+
+Mark all unread alerts as read.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "updated_count": 12
+  }
+}
+```
+
+---
+
+## **GET /api/data/alert-rules**
+
+List current user's alert rules.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 8,
+      "user_id": 42,
+      "name": "Brand risk keywords",
+      "event_type": "keyword_mention",
+      "is_active": true,
+      "severity_min": "warning",
+      "entity_scope": { "entity_ids": [12, 31] },
+      "cooldown_minutes": 60,
+      "match_mode": "contains",
+      "is_case_sensitive": false,
+      "created_at": "2026-08-21T19:00:00",
+      "updated_at": "2026-08-21T19:05:00",
+      "keywords": ["boycott", "fraud", "scam"]
+    }
+  ]
+}
+```
+
+---
+
+## **POST /api/data/alert-rules**
+
+Create an alert rule for current user.
+
+### Request Body Example
 
 ```json
 {
@@ -264,86 +261,268 @@ sudo systemctl status brendex-alert-runner.timer
 }
 ```
 
-### 8.2 Keyword mentions scoped to entities
+Keyword example:
 
 ```json
 {
-  "name": "Brand risk keywords",
+  "name": "Risk keywords",
   "event_type": "keyword_mention",
-  "keywords": ["boycott", "scam", "fraud"],
+  "keywords": ["boycott", "fraud"],
   "match_mode": "contains",
   "is_case_sensitive": false,
-  "entity_scope": {"entity_ids": [12, 31]},
+  "entity_scope": { "entity_ids": [12] },
   "cooldown_minutes": 60
 }
 ```
 
-### 8.3 Engagement anomalies
+### Success Response (201)
 
 ```json
 {
-  "name": "Engagement anomalies",
-  "event_type": "engagement_anomaly",
-  "entity_scope": {"entity_ids": [12]},
-  "cooldown_minutes": 120
+  "success": true,
+  "data": {
+    "id": 9,
+    "user_id": 42,
+    "name": "Risk keywords",
+    "event_type": "keyword_mention",
+    "is_active": true,
+    "severity_min": null,
+    "entity_scope": { "entity_ids": [12] },
+    "cooldown_minutes": 60,
+    "match_mode": "contains",
+    "is_case_sensitive": false,
+    "created_at": "2026-08-21T20:10:00",
+    "updated_at": "2026-08-21T20:10:00",
+    "keywords": ["boycott", "fraud"]
+  }
 }
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "event_type must be one of ['engagement_anomaly', 'keyword_mention', 'negative_comment']" }
+```
+
+```json
+{ "success": false, "error": "keywords is required for keyword_mention rules" }
 ```
 
 ---
 
-## 9) Notes on idempotency
+## **PUT /api/data/alert-rules/{rule_id}**
 
-- `alert_events.dedupe_key` is unique
-- `user_alerts` has a uniqueness constraint on `(user_id, event_id, rule_id)`
-- detector checkpoints persist cursor timestamps per detector
+Update an existing alert rule for current user.
 
-This makes repeated timer calls safe.
+### Path Parameters
+
+- `rule_id` (required, integer)
+
+### Request Body Example
+
+```json
+{
+  "name": "Risk keywords (strict)",
+  "match_mode": "exact",
+  "keywords": ["fraud", "scam"],
+  "cooldown_minutes": 120,
+  "is_active": true
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 9,
+    "user_id": 42,
+    "name": "Risk keywords (strict)",
+    "event_type": "keyword_mention",
+    "is_active": true,
+    "severity_min": null,
+    "entity_scope": { "entity_ids": [12] },
+    "cooldown_minutes": 120,
+    "match_mode": "exact",
+    "is_case_sensitive": false,
+    "created_at": "2026-08-21T20:10:00",
+    "updated_at": "2026-08-21T20:15:00",
+    "keywords": ["fraud", "scam"]
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Rule not found" }
+```
+
+```json
+{ "success": false, "error": "match_mode must be one of ['contains', 'exact', 'regex']" }
+```
 
 ---
 
-## 10) Remaining tasks for full production readiness
+## **DELETE /api/data/alert-rules/{rule_id}**
 
-These are outside code already added here:
+Delete one alert rule for current user.
 
-1. Set `ALERTS_ENGINE_API_KEY` in backend environment
-2. Deploy + run DB migration
-3. Ensure your daily/intraday pipeline always runs `flask refresh-mv`
-   - this now updates the MV refresh marker used by readiness
-4. Deploy external runner host/script/systemd timer
-5. Add frontend alerts UI page + polling
-6. Add observability dashboards/alerts for:
-   - readiness false reasons
-   - detector run errors
-   - events per detector over time
+### Path Parameters
+
+- `rule_id` (required, integer)
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "deleted": true
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Rule not found" }
+```
 
 ---
 
-## 11) Files added/changed
+# Engine Routes (`/api/alerts/engine`)
 
-### Added
+These routes are for external orchestrator/timer service.
 
-- `api/models/alert_rule_model.py`
-- `api/models/alert_rule_keyword_model.py`
-- `api/models/alert_event_model.py`
-- `api/models/user_alert_model.py`
-- `api/models/alert_detector_checkpoint_model.py`
-- `api/repositories/alert_rule_repository.py`
-- `api/repositories/alert_event_repository.py`
-- `api/repositories/alert_detector_checkpoint_repository.py`
-- `api/services/alert_service.py`
-- `api/services/alert_engine_service.py`
-- `api/routes/alerts_engine_routes.py`
-- `api/routes/data/alerts.py`
-- `migrations/versions/h9i0j1k2l3m4_add_alerts_feature_tables.py`
+## **GET /api/alerts/engine/readiness**
 
-### Updated
+Check if pipeline data is ready for detector execution.
 
-- `api/models/comment_model.py`
-- `api/repositories/comment_repository.py`
-- `api/models/__init__.py`
-- `api/__init__.py`
-- `api/routes/__init__.py`
-- `api/routes/data/__init__.py`
-- `api/utils/api_key_auth.py`
-- `api/utils/permissions.py`
-- `README.md`
+### Success Response (200)
+
+Ready example:
+
+```json
+{
+  "success": true,
+  "data": {
+    "ready": true,
+    "reason": null,
+    "context": {
+      "latest_completed_scraping_session": "2cb6b7bb-f016-44ec-b91d-a9c2537066de",
+      "latest_completed_at": "2026-08-21T18:55:00",
+      "comments_in_session": 1240,
+      "post_results_in_session": 450,
+      "unprocessed_comments_count": 0,
+      "last_mv_refresh_at": "2026-08-21T18:58:00"
+    }
+  }
+}
+```
+
+Not-ready example:
+
+```json
+{
+  "success": true,
+  "data": {
+    "ready": false,
+    "reason": "Latest scraping session is not completed",
+    "context": {
+      "latest_session_id": "2cb6b7bb-f016-44ec-b91d-a9c2537066de",
+      "latest_session_status": "pending"
+    }
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "Invalid or missing alerts engine API key" }
+```
+
+---
+
+## **POST /api/alerts/engine/run**
+
+Run detectors (normally called only when readiness is true).
+
+### Request Body
+
+All detectors:
+
+```json
+{
+  "dry_run": false
+}
+```
+
+Selected detectors:
+
+```json
+{
+  "detectors": ["negative_comment", "keyword_comment", "keyword_post", "engagement_anomaly"],
+  "dry_run": false
+}
+```
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "run_at": "2026-08-21T20:25:00.123456",
+    "dry_run": false,
+    "detectors": {
+      "negative_comment": {
+        "scanned": 35,
+        "events_created": 12,
+        "user_alerts_created": 22,
+        "cursor_advanced_to": "2026-08-21T20:24:20"
+      },
+      "keyword_comment": {
+        "scanned": 120,
+        "events_created": 9,
+        "user_alerts_created": 9,
+        "cursor_advanced_to": "2026-08-21T20:24:58"
+      },
+      "keyword_post": {
+        "scanned": 40,
+        "events_created": 2,
+        "user_alerts_created": 2,
+        "cursor_advanced_to": "2026-08-21T20:24:50"
+      },
+      "engagement_anomaly": {
+        "scanned": 500,
+        "events_created": 3,
+        "user_alerts_created": 4,
+        "cursor_advanced_to": "2026-08-21T20:00:00"
+      }
+    },
+    "events_created": 26,
+    "user_alerts_created": 37
+  }
+}
+```
+
+### Error Responses
+
+```json
+{ "success": false, "error": "detectors must be an array" }
+```
+
+```json
+{ "success": false, "error": "Invalid or missing alerts engine API key" }
+```
+
+---
+
+## Operational Notes
+
+- Engagement anomalies ignore suspicious zero metrics (non-zero -> zero transitions).
+- Readiness does **not** use a pipeline checkpoint table; it is inferred from existing scraping/comments/MV signals.
+- MV refresh marker is written by `flask refresh-mv` and used by readiness checks.
