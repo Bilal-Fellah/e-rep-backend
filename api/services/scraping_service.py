@@ -24,6 +24,110 @@ class ScrapingService:
     """Service for managing scraping operations."""
     
     @staticmethod
+    def get_profiles_for_scraping(platform: str = None) -> dict:
+        """
+        Get all page URLs for active entities (to_scrape=True).
+        
+        Args:
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            dict: {
+                "profiles": list[dict],  # [{name, link, platform, entity_id, entity_name}, ...]
+                "count": int,
+                "platform": str | None
+            }
+        """
+        # Get pages for active entities
+        pages = PageRepository.get_active_pages_by_platform(platform)
+        
+        # Format response
+        profiles = [
+            {
+                "name": page.name,
+                "url": page.link,
+                "platform": page.platform,
+                "entity_id": page.entity_id,
+                "entity_name": page.entity.name if page.entity else None,
+            }
+            for page in pages
+        ]
+        
+        return {
+            "profiles": profiles,
+            "count": len(profiles),
+            "platform": platform if platform else "all"
+        }
+    
+    @staticmethod
+    def get_failed_profiles_for_scraping(platform: str = None, limit: int = None) -> dict:
+        """
+        Get profiles that failed scraping validation from yesterday 10pm UTC until now.
+        
+        Args:
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            limit: Optional integer limit for number of profiles returned
+            
+        Returns:
+            dict: {
+                "profiles": list[dict],  # [{name, url, platform, entity_id, entity_name}, ...]
+                "count": int,
+                "platform": str,
+                "scraping_issues": list[str]  # List of detected issues
+            }
+        """
+        # Step 1: Get failed page IDs from yesterday 10pm until now
+        failed_pages = PageHistoryRepository.get_failed_pages_for_today()
+        
+        # Step 2: Extract page IDs
+        page_ids = [failed_page["page_id"] for failed_page in failed_pages]
+        
+        # Step 3: Handle empty case
+        if not page_ids:
+            return {
+                "profiles": [],
+                "count": 0,
+                "platform": platform if platform else "all",
+                "scraping_issues": []
+            }
+        
+        # Step 4: Fetch full page details with entity filtering
+        pages = PageRepository.get_pages_by_ids(page_ids, platform)
+        
+        # Step 5: Format response and collect unique scraping issues
+        profiles = []
+        scraping_issues = set()
+        
+        for page in pages:
+            profile = {
+                "name": page.name,
+                "url": page.link,
+                "platform": page.platform,
+                "entity_id": page.entity_id,
+                "entity_name": page.entity.name if page.entity else None,
+            }
+            profiles.append(profile)
+            
+            # Collect unique scraping issues
+            failed_page_info = next(
+                (fp for fp in failed_pages if fp["page_id"] == page.uuid),
+                None
+            )
+            if failed_page_info:
+                for key in failed_page_info["missing_keys"]:
+                    scraping_issues.add(key)
+        
+        if limit and limit > 0:
+            profiles = profiles[:limit]
+        
+        return {
+            "profiles": profiles,
+            "count": len(profiles),
+            "platform": platform if platform else "all",
+            "scraping_issues": sorted(list(scraping_issues))  # Sort for consistent output
+        }
+    
+    @staticmethod
     def fetch_posts_for_scraping(platform: str = None, 
                                   start_date: str = None, 
                                   end_date: str = None,

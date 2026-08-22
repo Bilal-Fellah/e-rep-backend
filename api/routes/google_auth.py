@@ -174,7 +174,7 @@ def finalize_google_login():
     if not user:
         return error_response("User not found", 404)
 
-    user, _, _ = SubscriptionService.get_effective_access(user.id)
+    user, active_subscription, _ = SubscriptionService.get_effective_access(user.id)
 
     # --- unchanged JWT logic ---
     access_token_exp = datetime.now(timezone.utc) + ACCESS_TOKEN_TTL
@@ -198,7 +198,11 @@ def finalize_google_login():
         exp=refresh_token_exp
     )
 
-    
+    pack_code = getattr(active_subscription, "pack_code", None)
+    status = getattr(active_subscription, "status", None)
+    if not pack_code and getattr(user, "role", None) == "registered":
+        pack_code = "starter"
+        status = "active"
 
     response = {
             "access_token": access_token,
@@ -212,7 +216,13 @@ def finalize_google_login():
                 "role": user.role,
                 "is_verified": bool(getattr(user, "is_verified", False)),
                 "profession": user.profession,
-                "created_at": iso_utc(user.created_at)
+                "created_at": iso_utc(user.created_at),
+                "subscription": {
+                    "pack_code": pack_code,
+                    "status": status,
+                    "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
+                    "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
+                }
             }
     }
 

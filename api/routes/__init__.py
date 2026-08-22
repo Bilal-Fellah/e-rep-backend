@@ -11,6 +11,7 @@ from .public_routes import public_bp
 from .scraping_routes import scraping_bp
 from .admin_routes import admin_bp
 from .ai_insight_routes import bp as ai_insight_bp
+from .alerts_engine_routes import alerts_engine_bp
 
 try:
     from .testing import testing_bp
@@ -30,6 +31,7 @@ def register_routes(app):
     app.register_blueprint(scraping_bp, url_prefix="/api/scraping")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(ai_insight_bp)
+    app.register_blueprint(alerts_engine_bp)
     # The /api/testing routes are unauthenticated and mutate the DB (rewrite
     # entity categories, page URLs); never mount them in production.
     env = os.getenv("FLASK_ENV", "development").lower()

@@ -12,6 +12,11 @@ from .subscription_model import Subscription
 from .data_correction_model import DataCorrection
 from .scrape_attempt_model import ScrapeAttempt
 from .scraping_profile_result_model import ScrapingProfileResult
+from .alert_rule_model import AlertRule
+from .alert_rule_keyword_model import AlertRuleKeyword
+from .alert_event_model import AlertEvent
+from .user_alert_model import UserAlert
+from .alert_detector_checkpoint_model import AlertDetectorCheckpoint
 
 # optional: put all models in __all__ to make imports cleaner
 __all__ = [
@@ -28,6 +33,11 @@ __all__ = [
     "DataCorrection",
     "ScrapeAttempt",
     "ScrapingProfileResult",
+    "AlertRule",
+    "AlertRuleKeyword",
+    "AlertEvent",
+    "UserAlert",
+    "AlertDetectorCheckpoint",
 ]
 
 

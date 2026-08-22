@@ -67,6 +67,10 @@ ROLE_PERMISSIONS = {
     "data.get_all_pages": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.get_pages_by_platform": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.get_page_interaction_stats": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.get_pages_history": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.get_pages_history_by_id": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.get_pages_history_options": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.get_pages_history_summary": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
 
     # CATEGORY ENDPOINTS
     "data.get_all_categories": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
@@ -108,6 +112,17 @@ ROLE_PERMISSIONS = {
     "data.add_category": [UserRole.ADMIN.value],
     "data.delete_category": [UserRole.ADMIN.value],
     "data.update_category": [UserRole.ADMIN.value],
+
+    # Alerts (user-facing)
+    "data.list_alerts": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.unread_alert_count": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.mark_alert_read": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.dismiss_alert": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.mark_all_alerts_read": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.list_alert_rules": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.create_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.update_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.delete_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
 }
 
 # ============================================================================
@@ -321,6 +336,9 @@ def _resolve_effective_role_and_rights(payload):
     user_id = payload.get("user_id")
 
     if not user_id:
+        if role == UserRole.REGISTERED.value:
+            from api.services.subscription_service import PACK_POLICIES
+            rights = dict(PACK_POLICIES["starter"]["default_access_rights"])
         return role, rights
 
     try:
@@ -328,7 +346,7 @@ def _resolve_effective_role_and_rights(payload):
 
         user, active, active_rights = SubscriptionService.get_effective_access(user_id)
         role = user.role if user else role
-        rights = active_rights if active else None
+        rights = active_rights
     except Exception:
         # Best-effort: never fail auth metadata enrichment.
         pass

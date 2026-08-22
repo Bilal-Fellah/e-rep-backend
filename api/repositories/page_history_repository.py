@@ -29,6 +29,108 @@ class _UUIDEncoder(json.JSONEncoder):
 @instrument_repository_class
 class PageHistoryRepository:
     @staticmethod
+    def validate_data_structure(data: dict, platform: str) -> list[str]:
+        """
+        Validate platform-specific JSONB data structure for required keys.
+        
+        Checks for missing keys:
+        - posts/top_videos/updates (platform-specific)
+        - likes field within posts (supports multiple field name variations)
+        - comments field within posts (supports multiple field name variations)
+        
+        Args:
+            data: JSONB data dictionary from pages_history
+            platform: Platform name (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            List of missing key names. Empty list means validation passed.
+        """
+        missing_keys = []
+        
+        # ── Facebook special handling ──────────────────────────────────────────
+        # Facebook pages_history data can be stored either as a nested posts array
+        # or as a flat single-post object (e.g. data["post_id"], data["likes"], data["num_comments"]).
+        if platform == "facebook":
+            if data is None:
+                return ["posts"]
+            
+            # Case A: Nested posts array
+            if "posts" in data and isinstance(data.get("posts"), list):
+                posts_array = data["posts"]
+                if len(posts_array) == 0:
+                    return ["posts (empty)"]
+                first_post = posts_array[0]
+                has_likes = any(k in first_post and first_post[k] is not None for k in ["likes", "likesCount", "likeCount", "diggCount"])
+                has_comments = any(k in first_post and first_post[k] is not None for k in ["comments", "commentsCount", "commentCount", "num_comments"])
+                if not has_likes:
+                    missing_keys.append("likes")
+                if not has_comments:
+                    missing_keys.append("comments")
+                return missing_keys
+            
+            # Case B: Flat post object
+            has_likes = any(k in data and data[k] is not None for k in ["likes", "likesCount", "likeCount"])
+            has_comments = any(k in data and data[k] is not None for k in ["num_comments", "comments", "commentsCount", "commentCount"])
+            
+            if not data.get("post_id") and not has_likes and not has_comments:
+                return ["posts"]
+            
+            if not has_likes:
+                missing_keys.append("likes")
+            if not has_comments:
+                missing_keys.append("comments")
+            return missing_keys
+
+        # ── All other platforms: posts are stored as a sub-array ──────────────
+        posts_key_mapping = {
+            "instagram": "posts",
+            "x": "posts",
+            "tiktok": "top_videos",
+            "linkedin": "updates",
+            "youtube": "top_videos"
+        }
+
+        posts_key = posts_key_mapping.get(platform, "posts")
+
+        # Check if posts array exists for other platforms
+        if data is None or posts_key not in data or not isinstance(data.get(posts_key), list):
+            missing_keys.append(posts_key)
+            return missing_keys  # Early exit - no posts to validate
+        
+        posts_array = data[posts_key]
+        
+        if len(posts_array) == 0:
+            missing_keys.append(f"{posts_key} (empty)")
+            return missing_keys
+        
+        # Check first post for required engagement fields
+        first_post = posts_array[0]
+        has_likes = False
+        has_comments = False
+        
+        # Platform-specific engagement key names
+        likes_keys = ["likes", "likesCount", "likeCount", "diggCount"]
+        comments_keys = ["comments", "commentsCount", "commentCount", "num_comments"]
+        
+        for key in likes_keys:
+            if key in first_post and first_post[key] is not None:
+                has_likes = True
+                break
+        
+        for key in comments_keys:
+            if key in first_post and first_post[key] is not None:
+                has_comments = True
+                break
+        
+        if not has_likes:
+            missing_keys.append("likes")
+        
+        if not has_comments:
+            missing_keys.append("comments")
+        
+        return missing_keys
+
+    @staticmethod
     def _followers_case(page_alias=Page, history_alias=PageHistory):
         return case(
             (page_alias.platform == "youtube", history_alias.data["subscribers"].astext),
@@ -281,6 +383,74 @@ class PageHistoryRepository:
         ).all()
     
     @staticmethod
+    def get_failed_pages_for_today() -> list[dict]:
+        """
+        Get page_ids where pages_history data is missing required keys.
+        Checks from yesterday at 10pm (22:00) UTC until now.
+        
+        Checks data JSONB field for missing keys:
+        - posts (or platform-specific: updates, top_videos)
+        - likes (posts[*].likes or similar)
+        - comments (posts[*].comments or similar)
+        
+        Returns:
+            list[dict]: [
+                {
+                    "page_id": UUID,
+                    "platform": str,
+                    "missing_keys": list[str],
+                    "recorded_at": datetime
+                },
+                ...
+            ]
+        """
+        now_utc = datetime.utcnow()
+        yesterday_utc = now_utc.date() - timedelta(days=1)
+        
+        # Start from yesterday at 10pm (22:00), end at current time
+        start_time = datetime.combine(yesterday_utc, time(22, 0, 0))
+        end_time = now_utc
+        
+        # Query pages_history records from yesterday 10pm until now
+        stmt = (
+            select(
+                PageHistory.page_id,
+                PageHistory.data,
+                PageHistory.recorded_at,
+                Page.platform
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .where(
+                and_(
+                    PageHistory.recorded_at >= start_time,
+                    PageHistory.recorded_at <= end_time
+                )
+            )
+        )
+        
+        history_records = db.session.execute(stmt).all()
+        failed_pages = []
+        
+        # Analyze each record for missing keys
+        for record in history_records:
+            # Validate data structure for this platform
+            missing_keys = PageHistoryRepository.validate_data_structure(
+                record.data, 
+                record.platform
+            )
+            
+            # If validation found missing keys, add to failed pages
+            if missing_keys:
+                failed_pages.append({
+                    "page_id": record.page_id,
+                    "platform": record.platform,
+                    "missing_keys": missing_keys,
+                    "recorded_at": record.recorded_at
+                })
+        
+        return failed_pages
+    
+    @staticmethod
     def get_followers_history_by_entity(entity_id: int):
         followers_case = PageHistoryRepository._followers_case().cast(db.Integer).label("followers")
 
@@ -443,29 +613,29 @@ class PageHistoryRepository:
     @staticmethod
     def refresh_metrics_mv():
         """
-        Refresh the page_posts_metrics_mv materialized view so API reads reflect
-        the latest scraped pages_history rows.
+        Refresh the page_posts_metrics_mv, posts_history_mv, and posts_mv materialized views
+        so API reads reflect the latest scraped pages_history rows.
 
-        The scraper loads pages_history out-of-band; without this refresh the MV
-        stays frozen on an old snapshot, which is why profile image URLs (signed
+        The scraper loads pages_history out-of-band; without this refresh the MVs
+        stay frozen on an old snapshot, which is why profile image URLs (signed
         + short-lived) expire and recent-window rankings return no data. Call
         this right after each daily scrape (see `flask refresh-mv`).
 
-        Tries CONCURRENTLY first (non-blocking; needs the unique index
-        idx_ppmm_unique and an already-populated view). Falls back to a plain
-        REFRESH if CONCURRENTLY isn't possible (e.g. first populate).
+        Tries CONCURRENTLY first (non-blocking; needs unique indexes and an
+        already-populated view). Falls back to plain REFRESH if CONCURRENTLY isn't possible.
         """
-        try:
-            db.session.execute(
-                text("REFRESH MATERIALIZED VIEW CONCURRENTLY page_posts_metrics_mv")
-            )
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            db.session.execute(
-                text("REFRESH MATERIALIZED VIEW page_posts_metrics_mv")
-            )
-            db.session.commit()
+        for mv in ["page_posts_metrics_mv", "posts_history_mv", "posts_mv"]:
+            try:
+                db.session.execute(
+                    text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv}")
+                )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                db.session.execute(
+                    text(f"REFRESH MATERIALIZED VIEW {mv}")
+                )
+                db.session.commit()
 
     @staticmethod
     def get_all_entities_posts(date_limit, entity_type=None):
@@ -474,28 +644,55 @@ class PageHistoryRepository:
         # entity rankings already are. None keeps the original behavior of
         # returning every entity's posts mixed together.
         #
-        # The MV carries no entity type of its own, so the kind comes from the
-        # `entities` table — the same join `get_companies_interactions_summary`
-        # uses. `mv.*` is preserved so callers keep reading the same columns.
+        # OPTIMIZATION: This query used to scan ALL rows in page_posts_metrics_mv
+        # which contains historical snapshots and can be millions of rows.
+        # Now it uses indexed filtering and limits to the date window first.
         params = {'date_limit': date_limit}
 
         if entity_type:
             query = text("""
-                SELECT mv.* from page_posts_metrics_mv mv
+                SELECT 
+                    mv.entity_id,
+                    mv.entity_name,
+                    mv.page_id,
+                    mv.page_name,
+                    mv.page_url,
+                    mv.platform,
+                    mv.recorded_at,
+                    mv.profile_url,
+                    mv.raw_followers,
+                    mv.posts_metrics,
+                    mv.to_scrape
+                FROM page_posts_metrics_mv mv
                 JOIN entities e ON e.id = mv.entity_id
-                where mv.platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-                and date(mv.recorded_at) >= :date_limit
-                and mv.to_scrape
-                and LOWER(COALESCE(e.type, '')) = :entity_type
-                        """)
+                WHERE mv.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND DATE(mv.recorded_at) >= :date_limit
+                  AND mv.to_scrape
+                  AND e.to_scrape
+                  AND LOWER(COALESCE(e.type, '')) = :entity_type
+                ORDER BY mv.entity_id, mv.page_id, mv.platform, mv.recorded_at
+            """)
             params['entity_type'] = entity_type.lower()
         else:
             query = text("""
-                SELECT * from page_posts_metrics_mv
-                where platform in ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-                and date(recorded_at) >= :date_limit
-                and to_scrape
-                        """)
+                SELECT 
+                    entity_id,
+                    entity_name,
+                    page_id,
+                    page_name,
+                    page_url,
+                    platform,
+                    recorded_at,
+                    profile_url,
+                    raw_followers,
+                    posts_metrics,
+                    to_scrape
+                FROM page_posts_metrics_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND DATE(recorded_at) >= :date_limit
+                  AND to_scrape
+                ORDER BY entity_id, page_id, platform, recorded_at
+            """)
 
         results = db.session.execute(query, params).all()
         return results
@@ -609,54 +806,63 @@ class PageHistoryRepository:
         if date_limit is None:
             date_limit = (datetime.now() - timedelta(days=30)).date()
 
+        # Optimized query: filter posts_mv first by date before joining
+        # This reduces the number of rows that need to be processed
         query = text("""
-            WITH page_entity_map AS (
-                SELECT DISTINCT ON (page_id)
-                    page_id,
-                    entity_id,
-                    entity_name,
-                    page_name,
-                    page_url,
-                    profile_url AS profile_image_url,
-                    to_scrape
-                FROM page_posts_metrics_mv
-                ORDER BY page_id, recorded_at DESC
-            ),
-            entity_category_map AS (
+            WITH filtered_posts AS (
+                -- Filter posts by date first (indexed on created_at)
                 SELECT
-                    entity_id,
-                    MIN(category) AS category,
-                    MIN(root_category) AS root_category
-                FROM page_posts_metrics_mv
-                GROUP BY entity_id
+                    page_id,
+                    platform,
+                    post_id,
+                    likes,
+                    comments,
+                    shares,
+                    views
+                FROM posts_mv
+                WHERE platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
+                  AND DATE(created_at) >= :date_limit
+                  AND (:end_date IS NULL OR DATE(created_at) <= :end_date)
+            ),
+            page_entity_map AS (
+                -- Get latest page metadata for pages that have posts in the window
+                SELECT DISTINCT ON (pm.page_id)
+                    pm.page_id,
+                    ppmv.entity_id,
+                    ppmv.entity_name,
+                    ppmv.page_name,
+                    ppmv.page_url,
+                    ppmv.profile_url AS profile_image_url,
+                    ppmv.to_scrape,
+                    ppmv.category,
+                    ppmv.root_category
+                FROM (SELECT DISTINCT page_id FROM filtered_posts) pm
+                JOIN page_posts_metrics_mv ppmv ON ppmv.page_id = pm.page_id
+                ORDER BY pm.page_id, ppmv.recorded_at DESC
             )
             SELECT
                 pem.entity_id AS entity_id,
                 pem.entity_name AS entity_name,
-                ecm.category AS category,
-                ecm.root_category AS root_category,
-                pm.platform AS platform,
-                pm.page_id AS page_id,
+                pem.category AS category,
+                pem.root_category AS root_category,
+                fp.platform AS platform,
+                fp.page_id AS page_id,
                 pem.page_name AS page_name,
                 pem.page_url AS page_url,
                 pem.profile_image_url AS profile_image_url,
-                COUNT(pm.post_id) AS posts_count,
-                COALESCE(SUM(pm.likes), 0)::BIGINT AS total_likes,
-                COALESCE(SUM(pm.comments), 0)::BIGINT AS total_comments,
-                COALESCE(SUM(pm.shares), 0)::BIGINT AS total_shares,
-                COALESCE(SUM(pm.views), 0)::BIGINT AS total_views
-            FROM posts_mv pm
-            JOIN page_entity_map pem ON pem.page_id = pm.page_id
+                COUNT(fp.post_id) AS posts_count,
+                COALESCE(SUM(fp.likes), 0)::BIGINT AS total_likes,
+                COALESCE(SUM(fp.comments), 0)::BIGINT AS total_comments,
+                COALESCE(SUM(fp.shares), 0)::BIGINT AS total_shares,
+                COALESCE(SUM(fp.views), 0)::BIGINT AS total_views
+            FROM filtered_posts fp
+            JOIN page_entity_map pem ON pem.page_id = fp.page_id
             JOIN entities e ON e.id = pem.entity_id
-            LEFT JOIN entity_category_map ecm ON ecm.entity_id = pem.entity_id
             WHERE LOWER(COALESCE(e.type, '')) = :entity_type
               AND pem.to_scrape
               AND e.to_scrape
-              AND pm.platform IN ('instagram','linkedin','tiktok','youtube','x', 'facebook')
-              AND DATE(pm.created_at) >= :date_limit
-              AND (:end_date IS NULL OR DATE(pm.created_at) <= :end_date)
-                        GROUP BY pem.entity_id, pem.entity_name, ecm.category, ecm.root_category, pm.platform, pm.page_id, pem.page_name, pem.page_url, pem.profile_image_url
-            ORDER BY pem.entity_name, pm.platform
+            GROUP BY pem.entity_id, pem.entity_name, pem.category, pem.root_category, fp.platform, fp.page_id, pem.page_name, pem.page_url, pem.profile_image_url
+            ORDER BY pem.entity_name, fp.platform
         """)
 
         params = {
@@ -689,78 +895,143 @@ class PageHistoryRepository:
         
     @staticmethod
     def get_entity_info_from_history(entity_id: int):
-        latest_history_subq = PageHistoryRepository._latest_history_subquery()
-
-        ph_outer = aliased(PageHistory, name="ph_outer")
-        ph_sub = aliased(PageHistory, name="ph_sub")
-
-        page_followers_sub = PageHistoryRepository._followers_case(Page, ph_sub).cast(db.Integer)
-        page_followers_outer = PageHistoryRepository._followers_case(Page, ph_outer).cast(db.Integer)
-
-        # Step 3: Aggregate per entity (total followers)
-        entity_totals_subq = (
-            select(
-                Entity.id.label("entity_id"),
-                db.func.sum(page_followers_sub).label("total_followers"),
-                db.func.rank()
-                    .over(order_by=db.func.sum(page_followers_sub).desc())
-                    .label("entity_rank"),
+        # Optimized version using materialized view for fast lookups
+        # Falls back to PageHistory table for missing fields (description)
+        # This resolves 504 timeout issues for entities with many pages
+        query = text("""
+            WITH latest_pages_mv AS (
+                -- Get the latest snapshot from materialized view (fast)
+                SELECT DISTINCT ON (page_id)
+                    page_id,
+                    history_id,
+                    entity_name,
+                    platform,
+                    page_name,
+                    page_url,
+                    profile_url,
+                    raw_followers,
+                    recorded_at
+                FROM page_posts_metrics_mv
+                WHERE entity_id = :entity_id
+                  AND to_scrape
+                  AND raw_followers IS NOT NULL
+                  AND raw_followers != 0
+                ORDER BY page_id, recorded_at DESC
+            ),
+            page_descriptions AS (
+                -- Get description from pages_history for each page
+                -- Try latest snapshot first, fall back to older if missing
+                SELECT DISTINCT ON (lp.page_id)
+                    lp.page_id,
+                    CASE
+                        WHEN lp.platform = 'youtube' THEN ph.data->>'Description'
+                        WHEN lp.platform = 'x' THEN ph.data->>'biography'
+                        WHEN lp.platform = 'tiktok' THEN ph.data->>'biography'
+                        WHEN lp.platform = 'linkedin' THEN ph.data->>'about'
+                        WHEN lp.platform = 'instagram' THEN ph.data->>'biography'
+                        WHEN lp.platform = 'facebook' THEN ph.data->>'page_about'
+                        ELSE NULL
+                    END AS description
+                FROM latest_pages_mv lp
+                JOIN pages_history ph ON ph.page_id = lp.page_id
+                WHERE ph.recorded_at <= lp.recorded_at
+                  AND (
+                      (lp.platform = 'youtube' AND ph.data->>'Description' IS NOT NULL AND ph.data->>'Description' != '')
+                      OR (lp.platform = 'x' AND ph.data->>'biography' IS NOT NULL AND ph.data->>'biography' != '')
+                      OR (lp.platform = 'tiktok' AND ph.data->>'biography' IS NOT NULL AND ph.data->>'biography' != '')
+                      OR (lp.platform = 'linkedin' AND ph.data->>'about' IS NOT NULL AND ph.data->>'about' != '')
+                      OR (lp.platform = 'instagram' AND ph.data->>'biography' IS NOT NULL AND ph.data->>'biography' != '')
+                      OR (lp.platform = 'facebook' AND ph.data->>'page_about' IS NOT NULL AND ph.data->>'page_about' != '')
+                  )
+                ORDER BY lp.page_id, ph.recorded_at DESC
+            ),
+            entity_total AS (
+                SELECT 
+                    COALESCE(SUM(raw_followers), 0)::BIGINT AS total_followers
+                FROM latest_pages_mv
+            ),
+            all_entities_totals AS (
+                SELECT DISTINCT ON (entity_id)
+                    entity_id,
+                    SUM(raw_followers) OVER (PARTITION BY entity_id)::BIGINT AS entity_total_followers
+                FROM (
+                    SELECT DISTINCT ON (entity_id, page_id)
+                        entity_id,
+                        page_id,
+                        raw_followers
+                    FROM page_posts_metrics_mv
+                    WHERE to_scrape
+                      AND raw_followers IS NOT NULL
+                      AND raw_followers != 0
+                    ORDER BY entity_id, page_id, recorded_at DESC
+                ) latest_entity_pages
+            ),
+            entity_rank AS (
+                SELECT COALESCE(COUNT(*) + 1, 1)::INTEGER AS rank
+                FROM all_entities_totals
+                WHERE entity_total_followers > (SELECT total_followers FROM entity_total)
             )
-            .join(Page, Page.entity_id == Entity.id)
-            .join(
-                latest_history_subq,
-                latest_history_subq.c.page_id == Page.uuid
-            )
-            .join(
-                ph_sub,
-                ph_sub.id == latest_history_subq.c.latest_id
-            )
-            .group_by(Entity.id)
-            .subquery()
-        )
-
-        # Step 4: Get entity + page info + join with totals
-        stmt = (
-            select(
-                Page.uuid.label("page_id"),
-                Page.platform,
-                Page.name,
-                Page.link,
-                Entity.name.label("entity_name"),
-                Entity.id.label("entity_id"),
-                Entity.type.label("entity_type"),
-                entity_totals_subq.c.total_followers,
-                entity_totals_subq.c.entity_rank,
-                PageHistoryRepository._profile_url_case(Page, ph_outer).label("profile_url"),
-                PageHistoryRepository._description_case(Page, ph_outer).label("description"),
-                page_followers_outer.label("followers"),
-            )
-            .join(Page, Page.uuid == ph_outer.page_id)
-            .join(
-                latest_history_subq,
-                ph_outer.id == latest_history_subq.c.latest_id
-            )
-            .join(Entity, Entity.id == Page.entity_id)
-            .join(entity_totals_subq, entity_totals_subq.c.entity_id == Entity.id)
-            .where(Page.entity_id == entity_id)
-        )
-
-        rows = db.session.execute(stmt).all()
+            SELECT
+                lp.page_id,
+                lp.platform,
+                lp.page_name AS name,
+                lp.page_url AS link,
+                lp.entity_name,
+                :entity_id AS entity_id,
+                et.total_followers,
+                er.rank AS entity_rank,
+                lp.profile_url,
+                COALESCE(pd.description, '') AS description,
+                lp.raw_followers AS followers
+            FROM latest_pages_mv lp
+            LEFT JOIN page_descriptions pd ON pd.page_id = lp.page_id
+            CROSS JOIN entity_total et
+            CROSS JOIN entity_rank er
+            ORDER BY lp.platform, lp.page_id
+        """)
+        
+        rows = db.session.execute(query, {"entity_id": entity_id}).all()
 
         if len(rows) < 1:
             return []
         
+        # Get entity type from entities table
+        entity = db.session.get(Entity, entity_id)
+        entity_type = entity.type if entity else None
+        
         result = {
             "entity_name": rows[0].entity_name,
             "entity_id": rows[0].entity_id,
-            "type": rows[0].entity_type,
+            "type": entity_type,
             "total_followers": rows[0].total_followers,
             "rank": rows[0].entity_rank,
             "pages": {}
         }
 
+        # Track platforms to handle multiple pages per platform
+        platform_page_counts = {}
+
         for row in rows:
-            result["pages"][row.platform] = {
+            platform = row.platform
+            # Track how many pages we've seen for this platform
+            if platform not in platform_page_counts:
+                platform_page_counts[platform] = 0
+            platform_page_counts[platform] += 1
+            
+            # Use platform name for first page, platform_pageId for additional pages
+            if platform_page_counts[platform] == 1:
+                page_key = platform
+            else:
+                # For additional pages, append page_id to make key unique
+                page_key = f"{platform}_{row.page_id}"
+                # Also rename the first page's key to include its page_id
+                if platform_page_counts[platform] == 2:
+                    # Find and rename the first page entry
+                    old_entry = result["pages"].pop(platform)
+                    first_page_id = old_entry.get("page_id", "1")
+                    result["pages"][f"{platform}_{first_page_id}"] = old_entry
+
+            result["pages"][page_key] = {
                 "page_id": row.page_id,
                 "followers": row.followers,
                 "profile_url": row.profile_url,
@@ -1134,3 +1405,223 @@ class PageHistoryRepository:
         with open(RANKING_CACHE_FILE, 'w') as f:
             json.dump({"month": current_month, "data": data}, f, cls=_UUIDEncoder)
         return data
+
+    @staticmethod
+    def get_pages_history_filtered(
+        start_date=None,
+        end_date=None,
+        brand_id=None,
+        brand_name=None,
+        platform=None,
+        page_id=None,
+        search=None,
+        page: int = 1,
+        per_page: int = 20,
+        sort_by: str = "recorded_at",
+        sort_order: str = "desc",
+        include_data: bool = True
+    ):
+        query = (
+            select(
+                PageHistory.id,
+                PageHistory.page_id,
+                PageHistory.recorded_at,
+                PageHistory.data,
+                Page.name.label("page_name"),
+                Page.link.label("page_link"),
+                Page.platform,
+                Entity.id.label("brand_id"),
+                Entity.name.label("brand_name")
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .join(Entity, Page.entity_id == Entity.id)
+        )
+
+        conditions = []
+        if start_date:
+            conditions.append(PageHistory.recorded_at >= start_date)
+        if end_date:
+            conditions.append(PageHistory.recorded_at <= end_date)
+        if brand_id is not None:
+            conditions.append(Entity.id == brand_id)
+        if brand_name:
+            conditions.append(Entity.name.ilike(f"%{brand_name.strip()}%"))
+        if platform:
+            if isinstance(platform, (list, tuple)):
+                conditions.append(Page.platform.in_([p.strip().lower() for p in platform]))
+            else:
+                conditions.append(Page.platform == platform.strip().lower())
+        if page_id:
+            conditions.append(PageHistory.page_id == page_id)
+        if search:
+            term = f"%{search.strip()}%"
+            conditions.append(
+                db.or_(
+                    Page.name.ilike(term),
+                    Entity.name.ilike(term),
+                    Page.link.ilike(term)
+                )
+            )
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        # Count total before pagination
+        count_stmt = select(db.func.count()).select_from(query.subquery())
+        total = db.session.scalar(count_stmt) or 0
+
+        # Sorting
+        sort_column = getattr(PageHistory, sort_by, PageHistory.recorded_at)
+        if sort_order.lower() == "asc":
+            query = query.order_by(sort_column.asc(), PageHistory.id.asc())
+        else:
+            query = query.order_by(sort_column.desc(), PageHistory.id.desc())
+
+        # Pagination
+        offset = (page - 1) * per_page
+        query = query.offset(offset).limit(per_page)
+
+        results = db.session.execute(query).all()
+
+        items = []
+        for r in results:
+            item = {
+                "id": r.id,
+                "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
+                "page_id": str(r.page_id) if r.page_id else None,
+                "page_name": r.page_name,
+                "page_link": r.page_link,
+                "platform": r.platform,
+                "brand_id": r.brand_id,
+                "brand_name": r.brand_name,
+            }
+            if include_data:
+                item["data"] = r.data
+            items.append(item)
+
+        total_pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+
+    @staticmethod
+    def get_pages_history_by_id(history_id: int):
+        stmt = (
+            select(
+                PageHistory.id,
+                PageHistory.page_id,
+                PageHistory.recorded_at,
+                PageHistory.data,
+                Page.name.label("page_name"),
+                Page.link.label("page_link"),
+                Page.platform,
+                Entity.id.label("brand_id"),
+                Entity.name.label("brand_name")
+            )
+            .join(Page, PageHistory.page_id == Page.uuid)
+            .join(Entity, Page.entity_id == Entity.id)
+            .where(PageHistory.id == history_id)
+        )
+        result = db.session.execute(stmt).first()
+        if not result:
+            return None
+
+        return {
+            "id": result.id,
+            "recorded_at": result.recorded_at.isoformat() if result.recorded_at else None,
+            "page_id": str(result.page_id) if result.page_id else None,
+            "page_name": result.page_name,
+            "page_link": result.page_link,
+            "platform": result.platform,
+            "brand_id": result.brand_id,
+            "brand_name": result.brand_name,
+            "data": result.data
+        }
+
+    @staticmethod
+    def get_pages_history_options():
+        platforms_stmt = (
+            select(Page.platform)
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .distinct()
+            .order_by(Page.platform)
+        )
+        platforms = [p for p in db.session.scalars(platforms_stmt).all() if p]
+
+        brands_stmt = (
+            select(Entity.id, Entity.name)
+            .join(Page, Page.entity_id == Entity.id)
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .distinct()
+            .order_by(Entity.name)
+        )
+        brands_rows = db.session.execute(brands_stmt).all()
+        brands = [{"id": b.id, "name": b.name} for b in brands_rows]
+
+        dates_stmt = select(
+            db.func.min(PageHistory.recorded_at).label("min_date"),
+            db.func.max(PageHistory.recorded_at).label("max_date"),
+            db.func.count(PageHistory.id).label("total_count")
+        )
+        dates_res = db.session.execute(dates_stmt).first()
+
+        min_date = dates_res.min_date.isoformat() if dates_res and dates_res.min_date else None
+        max_date = dates_res.max_date.isoformat() if dates_res and dates_res.max_date else None
+        total_count = dates_res.total_count if dates_res else 0
+
+        return {
+            "platforms": platforms,
+            "brands": brands,
+            "date_range": {
+                "min_date": min_date,
+                "max_date": max_date
+            },
+            "total_records": total_count
+        }
+
+    @staticmethod
+    def get_pages_history_summary():
+        now = datetime.now()
+        today_start = datetime.combine(now.date(), time.min)
+        seven_days_ago = now - timedelta(days=7)
+        thirty_days_ago = now - timedelta(days=30)
+
+        total = db.session.scalar(select(db.func.count(PageHistory.id))) or 0
+        records_today = db.session.scalar(
+            select(db.func.count(PageHistory.id)).where(PageHistory.recorded_at >= today_start)
+        ) or 0
+        records_7d = db.session.scalar(
+            select(db.func.count(PageHistory.id)).where(PageHistory.recorded_at >= seven_days_ago)
+        ) or 0
+        records_30d = db.session.scalar(
+            select(db.func.count(PageHistory.id)).where(PageHistory.recorded_at >= thirty_days_ago)
+        ) or 0
+
+        platform_counts_stmt = (
+            select(Page.platform, db.func.count(PageHistory.id).label("count"))
+            .join(PageHistory, PageHistory.page_id == Page.uuid)
+            .group_by(Page.platform)
+        )
+        platform_rows = db.session.execute(platform_counts_stmt).all()
+        by_platform = {r.platform: r.count for r in platform_rows if r.platform}
+
+        distinct_pages = db.session.scalar(
+            select(db.func.count(db.func.distinct(PageHistory.page_id)))
+        ) or 0
+
+        return {
+            "total_records": total,
+            "records_today": records_today,
+            "records_last_7_days": records_7d,
+            "records_last_30_days": records_30d,
+            "by_platform": by_platform,
+            "active_pages_monitored": distinct_pages
+        }
+

@@ -95,3 +95,96 @@ def client(app):
 def runner(app):
     """CLI runner for testing Flask commands."""
     return app.test_cli_runner()
+
+
+@pytest.fixture()
+def sample_page(app):
+    """Create a sample Instagram page for testing."""
+    from api.models import Page, Entity
+    from uuid import uuid4
+    
+    with app.app_context():
+        # Create entity first
+        entity = Entity(name="Test Entity", type="company", to_scrape=True)
+        _db.session.add(entity)
+        _db.session.flush()
+        
+        # Create page
+        page = Page(
+            uuid=uuid4(),
+            name="test_instagram",
+            link="https://instagram.com/test",
+            platform="instagram",
+            entity_id=entity.id
+        )
+        _db.session.add(page)
+        _db.session.commit()
+        
+        yield page
+        
+        # Cleanup
+        _db.session.delete(page)
+        _db.session.delete(entity)
+        _db.session.commit()
+
+
+@pytest.fixture()
+def sample_page_tiktok(app):
+    """Create a sample TikTok page for testing."""
+    from api.models import Page, Entity
+    from uuid import uuid4
+    
+    with app.app_context():
+        # Create entity first
+        entity = Entity(name="Test TikTok Entity", type="influencer", to_scrape=True)
+        _db.session.add(entity)
+        _db.session.flush()
+        
+        # Create page
+        page = Page(
+            uuid=uuid4(),
+            name="test_tiktok",
+            link="https://tiktok.com/@test",
+            platform="tiktok",
+            entity_id=entity.id
+        )
+        _db.session.add(page)
+        _db.session.commit()
+        
+        yield page
+        
+        # Cleanup
+        _db.session.delete(page)
+        _db.session.delete(entity)
+        _db.session.commit()
+
+
+@pytest.fixture()
+def sample_page_linkedin(app):
+    """Create a sample LinkedIn page for testing."""
+    from api.models import Page, Entity
+    from uuid import uuid4
+    
+    with app.app_context():
+        # Create entity first
+        entity = Entity(name="Test LinkedIn Entity", type="company", to_scrape=True)
+        _db.session.add(entity)
+        _db.session.flush()
+        
+        # Create page
+        page = Page(
+            uuid=uuid4(),
+            name="test-company",
+            link="https://linkedin.com/company/test",
+            platform="linkedin",
+            entity_id=entity.id
+        )
+        _db.session.add(page)
+        _db.session.commit()
+        
+        yield page
+        
+        # Cleanup
+        _db.session.delete(page)
+        _db.session.delete(entity)
+        _db.session.commit()

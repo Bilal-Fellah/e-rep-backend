@@ -55,6 +55,10 @@ class Comment(db.Model):
     
     # Confidence score for the label (0.0 to 1.0)
     confidence = db.Column(db.Float, nullable=True)
+
+    # Timestamp of last label update. Used by alert detectors to identify
+    # newly negative comments incrementally.
+    label_updated_at = db.Column(db.DateTime, nullable=True)
     
     # Processing Status
     is_processed = db.Column(db.Boolean, default=False, nullable=True)

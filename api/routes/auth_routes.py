@@ -58,6 +58,20 @@ MIN_REFRESH_REMAINDER = timedelta(minutes=2)
 register_blueprint_error_handlers(auth_bp, include_token_errors=True)
 
 
+def _build_subscription_payload(user, active_subscription):
+    pack_code = getattr(active_subscription, "pack_code", None)
+    status = getattr(active_subscription, "status", None)
+    if not pack_code and getattr(user, "role", None) == "registered":
+        pack_code = "starter"
+        status = "active"
+    return {
+        "pack_code": pack_code,
+        "status": status,
+        "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
+        "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
+    }
+
+
 @auth_bp.route("/register_mail", methods=["POST"])
 def register_mail():
     try:
@@ -117,18 +131,30 @@ def register_user():
         if not full_name:
             return error_response("Invalid full_name", 400)
 
+        # Validate uniqueness before hitting the DB to avoid IntegrityError
+        email = data["email"].strip().lower()
+        if UserRepository.find_by_email(email):
+            return error_response("Email already exists", 409)
+
+        phone = data["phone_number"].strip()
+        from api.models.user_model import User as UserModel
+        if UserModel.query.filter_by(phone_number=phone).first():
+            return error_response("Phone number already in use", 409)
+
         user = AuthService.signup(
             first_name=full_name.split()[0],
             last_name=" ".join(full_name.split()[1:])
             if len(full_name.split()) > 1
             else "",
-            email=data["email"].strip().lower(),
+            email=email,
             password=data["password"],
-            phone_number=data["phone_number"].strip(),
+            phone_number=phone,
             role=role,
             profession=data["profession"],
             is_verified=True,
         )
+
+        user, active_subscription, _ = SubscriptionService.get_effective_access_for_user(user)
 
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(
@@ -143,9 +169,12 @@ def register_user():
             tokens["refresh_token"],
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
+        response["subscription"] = _build_subscription_payload(user, active_subscription)
 
         return success_response(data=response)
-    except (TypeError, KeyError, ValueError):
+    except ValueError as ve:
+        return error_response(str(ve), 400)
+    except (TypeError, KeyError):
         return error_response("Invalid request data", 400)
 
 
@@ -337,12 +366,7 @@ def login():
             tokens["refresh_token"],
         )
         response["is_verified"] = bool(getattr(user, "is_verified", False))
-        response["subscription"] = {
-            "pack_code": getattr(active_subscription, "pack_code", None),
-            "status": getattr(active_subscription, "status", None),
-            "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
-            "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
-        }
+        response["subscription"] = _build_subscription_payload(user, active_subscription)
 
         return success_response(response, status_code=200)
     except (TypeError, KeyError, ValueError):
@@ -373,12 +397,7 @@ def get_user_data():
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "created_at": iso_utc(user.created_at),
-                "subscription": {
-                    "pack_code": getattr(active_subscription, "pack_code", None),
-                    "status": getattr(active_subscription, "status", None),
-                    "starts_at": iso_utc(getattr(active_subscription, "starts_at", None)),
-                    "ends_at": iso_utc(getattr(active_subscription, "ends_at", None)),
-                },
+                "subscription": _build_subscription_payload(user, active_subscription),
             }
         )
     except (TypeError, KeyError, ValueError):
@@ -623,8 +642,8 @@ def complete_profile():
 @auth_bp.route("/redirect_to_app", methods=["POST"])
 @require_role("admin", "registered", "subscribed")
 def redirect_to_app():
-    """This route is called after user finishes subscription, and now to be redirected to the app with a valid tokens
-    It receives the email as input, checks if the user exists and is subscribed, then generates access and refresh tokens
+    """This route is called after user finishes subscription or sign-up, and now to be redirected to the app with valid tokens
+    It receives the user credentials via token/session, checks if the user exists, then generates access and refresh tokens
     and redirects the user to the app subdomain after setting those tokens in cookies
     """
 
@@ -638,8 +657,6 @@ def redirect_to_app():
             return error_response("User not found", 404)
 
         user, active_subscription, _ = SubscriptionService.get_effective_access(user.id)
-        if user.role not in ("subscribed", "admin"):
-            return error_response("Active subscription required", 403)
 
         tokens = AuthService.issue_token_pair(user)
         AuthService.persist_refresh_token(

@@ -77,3 +77,59 @@ class PageRepository:
         db.session.delete(page)
         db.session.commit()
         return True
+
+    @staticmethod
+    def get_active_pages_by_platform(platform: str = None) -> list[Page]:
+        """
+        Get all pages for active entities (to_scrape=True), optionally filtered by platform.
+        
+        Args:
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            List of Page objects belonging to active entities
+        """
+        from api.models.entity_model import Entity
+        
+        query = (
+            db.session.query(Page)
+            .join(Entity, Page.entity_id == Entity.id)
+            .filter(Entity.to_scrape.is_(True))
+        )
+        
+        if platform:
+            query = query.filter(Page.platform == platform)
+        
+        return query.all()
+
+    @staticmethod
+    def get_pages_by_ids(page_ids: list, platform: str = None) -> list[Page]:
+        """
+        Get pages by UUID list, filtered by active entities.
+        
+        Args:
+            page_ids: List of page UUIDs
+            platform: Optional platform filter (instagram, facebook, x, tiktok, linkedin, youtube)
+            
+        Returns:
+            List of Page objects with entity relationship loaded
+        """
+        from api.models.entity_model import Entity
+        
+        # Return empty list if no page_ids provided
+        if not page_ids:
+            return []
+        
+        # Build query with join to entities table
+        query = (
+            db.session.query(Page)
+            .join(Entity, Page.entity_id == Entity.id)
+            .filter(Page.uuid.in_(page_ids))
+            .filter(Entity.to_scrape.is_(True))
+        )
+        
+        # Apply optional platform filter
+        if platform:
+            query = query.filter(Page.platform == platform)
+        
+        return query.all()

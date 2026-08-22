@@ -1,5 +1,5 @@
 # Data-access methods for comment repository.
-from datetime import timedelta
+from datetime import timedelta, datetime
 from sqlalchemy import String, cast, func, nullslast
 from api.models.comment_model import Comment, db
 from api.models.page_model import Page
@@ -207,6 +207,7 @@ class CommentRepository:
         comment = Comment.query.get(comment_id)
         if comment:
             comment.label = label
+            comment.label_updated_at = datetime.utcnow()
             if confidence is not None:
                 comment.confidence = confidence
             if commit:
@@ -242,6 +243,7 @@ class CommentRepository:
             comment = Comment.query.get(comment_id)
             if comment:
                 comment.label = label
+                comment.label_updated_at = datetime.utcnow()
                 if confidence is not None:
                     comment.confidence = confidence
                 comment.is_processed = True

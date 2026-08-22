@@ -50,9 +50,47 @@ def _log_client_error(error: Exception, context: dict | None = None) -> None:
     service_logger.critical(json.dumps(payload, ensure_ascii=True, default=str))
 
 
+def _is_invalid_response(content: str) -> bool:
+    """
+    Check if the response is a moderation/safety message or other non-insight.
+    Returns True if the response should be rejected.
+    """
+    if not content or not isinstance(content, str):
+        return True
+    
+    content_lower = content.strip().lower()
+    
+    # Detect moderation/safety responses
+    invalid_patterns = [
+        "user safety:",
+        "content safety:",
+        "safety check:",
+        "moderation:",
+        "content policy:",
+        "i cannot",
+        "i can't",
+        "i'm unable to",
+        "i am unable to",
+        "as an ai",
+        "i apologize, but",
+    ]
+    
+    # Check if response is too short to be valid
+    if len(content.strip()) < 50:
+        return True
+    
+    # Check for invalid patterns
+    for pattern in invalid_patterns:
+        if pattern in content_lower:
+            return True
+    
+    return False
+
+
 def call_llm(system_prompt: str, data_block: str) -> str:
     """
     POST to OpenRouter chat/completions and return the model content.
+    Raises ValueError if response is a safety/moderation message.
     """
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -87,7 +125,15 @@ def call_llm(system_prompt: str, data_block: str) -> str:
             response.raise_for_status()
 
             payload = response.json()
-            return payload["choices"][0]["message"]["content"]
+            content = payload["choices"][0]["message"]["content"]
+            
+            # Validate the response content
+            if _is_invalid_response(content):
+                raise ValueError(
+                    "LLM returned invalid response (safety/moderation message or too short)"
+                )
+            
+            return content
         except Exception as error:
             last_error = error
             status_code = None

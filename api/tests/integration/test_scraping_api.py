@@ -126,6 +126,194 @@ def sample_posts(app):
         db.session.commit()
 
 
+class TestApifyProfileScraping:
+    """Tests for GET /api/scraping/apify_profile_scraping endpoint."""
+    
+    def test_apify_profiles_requires_auth(self, client):
+        """Test that endpoint requires API key."""
+        response = client.get("/api/scraping/apify_profile_scraping")
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data["success"] is False
+        assert "API key" in data["error"]
+    
+    def test_apify_profiles_no_failed_pages(self, client, auth_headers):
+        """Test when there are no failed pages today."""
+        response = client.get("/api/scraping/apify_profile_scraping", headers=auth_headers)
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data["success"] is True
+        assert "profiles" in data["data"]
+        assert "count" in data["data"]
+        assert "platform" in data["data"]
+        assert "scraping_issues" in data["data"]
+        assert data["data"]["platform"] == "all"
+    
+    def test_apify_profiles_invalid_platform(self, client, auth_headers):
+        """Test invalid platform parameter."""
+        response = client.get(
+            "/api/scraping/apify_profile_scraping?platform=invalid",
+            headers=auth_headers
+        )
+        assert response.status_code == 400
+        
+        data = response.get_json()
+        assert data["success"] is False
+        assert "Invalid platform" in data["error"]
+    
+    def test_apify_profiles_with_platform_filter(self, client, auth_headers):
+        """Test platform filtering."""
+        response = client.get(
+            "/api/scraping/apify_profile_scraping?platform=instagram",
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["platform"] == "instagram"
+        # If there are profiles, they should all be instagram
+        for profile in data["data"]["profiles"]:
+            assert profile["platform"] == "instagram"
+    
+    def test_apify_profiles_filters_inactive_entities(self, client, auth_headers, app):
+        """
+        Task 8.2: Verify active entity filtering works correctly.
+        
+        Test that profiles belonging to entities with to_scrape=False are correctly
+        excluded from the response.
+        
+        Creates failed pages_history for both active and inactive entities,
+        calls API endpoint, and verifies only active entity profiles are returned.
+        """
+        from api.models.page_model import Page
+        from api.models.page_history_model import PageHistory
+        from api.models.entity_model import Entity
+        from uuid import uuid4
+        
+        # Setup: Create active and inactive entities with pages and failed history
+        with app.app_context():
+            # Create active entity with failed page history
+            active_entity = Entity(
+                name="Active Entity",
+                type="company",
+                to_scrape=True  # Active for scraping
+            )
+            db.session.add(active_entity)
+            db.session.flush()
+            
+            active_page = Page(
+                uuid=uuid4(),
+                name="active_instagram",
+                link="https://instagram.com/active_entity",
+                platform="instagram",
+                entity_id=active_entity.id
+            )
+            db.session.add(active_page)
+            db.session.flush()
+            
+            # Create failed pages_history for active entity (missing comments)
+            active_history = PageHistory(
+                page_id=active_page.uuid,
+                recorded_at=datetime.now(),
+                data={
+                    "posts": [
+                        {
+                            "id": "post_1",
+                            "likes": 100,
+                            # Missing "comments" field - this makes it a failed scrape
+                        }
+                    ]
+                }
+            )
+            db.session.add(active_history)
+            
+            # Create inactive entity with failed page history
+            inactive_entity = Entity(
+                name="Inactive Entity",
+                type="company",
+                to_scrape=False  # Inactive - should be filtered out
+            )
+            db.session.add(inactive_entity)
+            db.session.flush()
+            
+            inactive_page = Page(
+                uuid=uuid4(),
+                name="inactive_instagram",
+                link="https://instagram.com/inactive_entity",
+                platform="instagram",
+                entity_id=inactive_entity.id
+            )
+            db.session.add(inactive_page)
+            db.session.flush()
+            
+            # Create failed pages_history for inactive entity (missing likes)
+            inactive_history = PageHistory(
+                page_id=inactive_page.uuid,
+                recorded_at=datetime.now(),
+                data={
+                    "posts": [
+                        {
+                            "id": "post_2",
+                            "comments": 50,
+                            # Missing "likes" field - this makes it a failed scrape
+                        }
+                    ]
+                }
+            )
+            db.session.add(inactive_history)
+            
+            db.session.commit()
+            
+            active_page_id = str(active_page.uuid)
+            inactive_page_id = str(inactive_page.uuid)
+        
+        try:
+            # Call API endpoint
+            response = client.get(
+                "/api/scraping/apify_profile_scraping",
+                headers=auth_headers
+            )
+            
+            # Verify response
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data["success"] is True
+            
+            # Extract profile page IDs
+            profile_page_ids = [p["name"] for p in data["data"]["profiles"]]
+            
+            # Verify only active entity profile is returned
+            assert "active_instagram" in profile_page_ids
+            assert "inactive_instagram" not in profile_page_ids
+            
+            # Verify entity filtering by checking entity details
+            active_profiles = [p for p in data["data"]["profiles"] if p["name"] == "active_instagram"]
+            assert len(active_profiles) == 1
+            assert active_profiles[0]["entity_name"] == "Active Entity"
+            assert active_profiles[0]["platform"] == "instagram"
+            
+            # Verify no inactive entity profiles
+            inactive_profiles = [p for p in data["data"]["profiles"] if p["entity_name"] == "Inactive Entity"]
+            assert len(inactive_profiles) == 0
+            
+        finally:
+            # Cleanup
+            with app.app_context():
+                from uuid import UUID
+                PageHistory.query.filter(
+                    PageHistory.page_id.in_([UUID(active_page_id), UUID(inactive_page_id)])
+                ).delete(synchronize_session=False)
+                Page.query.filter(
+                    Page.uuid.in_([UUID(active_page_id), UUID(inactive_page_id)])
+                ).delete(synchronize_session=False)
+                Entity.query.filter(
+                    Entity.name.in_(["Active Entity", "Inactive Entity"])
+                ).delete(synchronize_session=False)
+                db.session.commit()
+
+
 class TestFetchPosts:
     """Tests for GET /api/scraping/posts endpoint."""
     
