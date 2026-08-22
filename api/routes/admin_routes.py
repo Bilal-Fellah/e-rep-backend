@@ -650,6 +650,30 @@ def get_data_integrity_daily():
     return success_response(DataIntegrityService.get_daily(days=days))
 
 
+@admin_bp.route("/data-integrity/validation-failures", methods=["GET"])
+@require_role("admin")
+def get_data_integrity_validation_failures():
+    """Live output of the validation engine (PageHistoryRepository.
+    validate_data_structure) — which pages' most recent scrape (since
+    yesterday 10pm UTC) came back missing data, and what's missing.
+
+    This is the same check GET /api/scraping/apify_profile_scraping uses,
+    surfaced here so a human can see it directly rather than only through
+    whatever automated consumer acts on it. Purely informational — looking
+    at this triggers nothing downstream."""
+    platform = request.args.get("platform")
+    valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
+    if platform and platform not in valid_platforms:
+        return error_response(f"platform must be one of {valid_platforms}.", 400)
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        return error_response("limit must be an integer.", 400)
+    return success_response(
+        DataIntegrityService.get_validation_failures(platform=platform, limit=limit)
+    )
+
+
 @admin_bp.route("/orchestration/summary", methods=["GET"])
 @require_role("admin")
 def get_orchestration_summary():

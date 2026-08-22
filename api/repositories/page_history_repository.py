@@ -18,6 +18,14 @@ RootCategory = aliased(Category, name="root_category")
 
 RANKING_CACHE_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'ranking_cache.json')
 
+# platform -> which JSONB key holds the follower/subscriber count. Mirrors
+# PageHistoryRepository._followers_case's mapping (below) -- kept as its
+# own constant rather than inline in _has_followers_value both to avoid
+# rebuilding the dict on every row of get_failed_pages_for_today's scan,
+# and because it's the third place in this codebase that encodes this same
+# per-platform fact (see _has_followers_value's docstring).
+FOLLOWERS_KEY_BY_PLATFORM = {"youtube": "subscribers", "facebook": "page_followers"}
+
 
 class _UUIDEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -32,28 +40,72 @@ class PageHistoryRepository:
     def validate_data_structure(data: dict, platform: str) -> list[str]:
         """
         Validate platform-specific JSONB data structure for required keys.
-        
+
         Checks for missing keys:
         - posts/top_videos/updates (platform-specific)
         - likes field within posts (supports multiple field name variations)
         - comments field within posts (supports multiple field name variations)
-        
+        - followers/subscriber count (profile-level, not post-level -- see
+          _has_followers_value; added after the Bright Data audit found this
+          was the single biggest quantified gap -- Facebook ~20%, YouTube
+          ~29% null -- and nothing in this retry pipeline was catching it,
+          since the rest of this function only ever looks at the posts array)
+
         Args:
             data: JSONB data dictionary from pages_history
             platform: Platform name (instagram, facebook, x, tiktok, linkedin, youtube)
-            
+
         Returns:
             List of missing key names. Empty list means validation passed.
         """
+        missing_keys = PageHistoryRepository._validate_posts_structure(data, platform)
+
+        if not PageHistoryRepository._has_followers_value(data, platform):
+            missing_keys.append("followers")
+
+        return missing_keys
+
+    @staticmethod
+    def _has_followers_value(data: dict, platform: str) -> bool:
+        """Whether this snapshot's follower/subscriber count is present.
+        Mirrors _followers_case's field-name mapping (youtube -> subscribers,
+        facebook -> page_followers, everything else -> followers) so this
+        check agrees with what the rest of the codebase already treats as
+        "the" follower field for each platform, rather than inventing a
+        second convention."""
+        if not isinstance(data, dict):
+            return False
+        key = FOLLOWERS_KEY_BY_PLATFORM.get(platform, "followers")
+        return data.get(key) is not None
+
+    @staticmethod
+    def _validate_posts_structure(data: dict, platform: str) -> list[str]:
+        """The original validate_data_structure body, unchanged -- posts/
+        engagement checks only. Split out so the followers check above can
+        wrap it without duplicating or restructuring this platform-by-
+        platform logic."""
         missing_keys = []
-        
+
+        # A non-dict payload (e.g. an error string a scraper wrote instead
+        # of a real snapshot) would otherwise reach `data.get(...)` a few
+        # lines down and crash with AttributeError -- and this function is
+        # called in a plain loop over every row recorded since yesterday
+        # 10pm (get_failed_pages_for_today), so one malformed row would
+        # abort that whole admin/API request rather than just being
+        # reported as missing data, which is what it actually is.
+        if not isinstance(data, dict):
+            return ["posts"]
+
         # ── Facebook special handling ──────────────────────────────────────────
         # Facebook pages_history data can be stored either as a nested posts array
         # or as a flat single-post object (e.g. data["post_id"], data["likes"], data["num_comments"]).
+        # In production this flat form is the *only* form Facebook rows use
+        # (no row has ever had a nested "posts" array), and it does usually
+        # carry page_followers alongside the post fields (~98.6% of rows) --
+        # its absence is a real gap, not a shape the format structurally
+        # excludes, which is why the followers check above applies to it too.
         if platform == "facebook":
-            if data is None:
-                return ["posts"]
-            
+
             # Case A: Nested posts array
             if "posts" in data and isinstance(data.get("posts"), list):
                 posts_array = data["posts"]
@@ -392,7 +444,9 @@ class PageHistoryRepository:
         - posts (or platform-specific: updates, top_videos)
         - likes (posts[*].likes or similar)
         - comments (posts[*].comments or similar)
-        
+        - followers (profile-level follower/subscriber count; see
+          validate_data_structure)
+
         Returns:
             list[dict]: [
                 {

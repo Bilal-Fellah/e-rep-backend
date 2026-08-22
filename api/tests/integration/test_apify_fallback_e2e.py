@@ -308,10 +308,16 @@ class TestApifyFallbackE2E:
         
         # Verify scraping issues are correctly identified
         # Instagram: missing likes and comments
-        # Facebook: missing posts
+        # Facebook: missing posts, AND missing followers -- its fixture sets
+        # "followers": 2000, but validate_data_structure reads Facebook's
+        # follower count under "page_followers" (see FOLLOWERS_KEY_BY_PLATFORM),
+        # so this fixture's value is under the wrong key and correctly counts
+        # as missing. Every other platform here (Instagram/TikTok/X/LinkedIn)
+        # uses the generic "followers" key, which does match what's checked
+        # for them, so "followers" in scraping_issues traces to Facebook only.
         # TikTok: empty top_videos
         assert len(scraping_issues) > 0
-        expected_issues = {"likes", "comments", "posts", "top_videos (empty)"}
+        expected_issues = {"likes", "comments", "posts", "top_videos (empty)", "followers"}
         assert set(scraping_issues).issubset(expected_issues)
     
     def test_e2e_platform_filter_instagram(self, client, auth_headers, test_pages_with_failed_history):

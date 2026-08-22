@@ -107,12 +107,16 @@ def get_profiles():
 @require_api_key
 def get_apify_profiles():
     """
-    Get profiles that failed scraping validation from yesterday 10pm UTC until now.
-    Used by Apify fallback scraper to retry failed profiles.
-    
+    Get profiles whose most recent scrape came back incomplete, from
+    yesterday 10pm UTC until now (see PageHistoryRepository.validate_data_structure
+    for exactly what "incomplete" checks). This is a general validation
+    result, not an Apify-specific one -- the Apify fallback pipeline is
+    today's only consumer, but it decides on its own whether/when that's
+    worth a paid retry; this endpoint just reports what's missing.
+
     Query Parameters:
         - platform (optional): Filter by platform (instagram, facebook, x, tiktok, linkedin, youtube)
-    
+
     Returns:
         200: {
             "success": true,
@@ -120,7 +124,7 @@ def get_apify_profiles():
                 "profiles": list[dict],  # [{name, url, platform, entity_id, entity_name}, ...]
                 "count": int,
                 "platform": str,
-                "scraping_issues": list[str]  # List of detected issues (e.g., ["posts", "likes", "comments"])
+                "scraping_issues": list[str]  # e.g. ["posts", "likes", "comments", "followers"]
             }
         }
         400: Invalid query parameters
