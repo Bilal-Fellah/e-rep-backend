@@ -15,6 +15,9 @@ from api.repositories.user_repository import UserRepository
 from api.repositories.preapproved_mail_repository import PreapprovedMailRepository
 from api.repositories.subscription_repository import SubscriptionRepository
 from api.services.admin_service import AdminService
+from api.services.correction_service import CorrectionError, CorrectionService
+from api.services.data_integrity_service import DataIntegrityService
+from api.services.orchestration_report_service import OrchestrationReportService
 from api.services.subscription_service import SubscriptionService
 from api.utils.datetime_utils import iso_utc
 from api.utils.permissions import require_role
@@ -525,6 +528,181 @@ def get_logs():
         offset=offset,
     )
     return success_response(result)
+
+
+@admin_bp.route("/corrections/targets", methods=["GET"])
+@require_role("admin")
+def get_correction_targets():
+    """Whitelist of what can be corrected, for the admin UI to render a form from."""
+    return success_response({"targets": CorrectionService.list_targets()})
+
+
+@admin_bp.route("/corrections", methods=["GET"])
+@require_role("admin")
+def list_corrections():
+    """History of applied corrections, newest first."""
+    target_type = request.args.get("target_type") or None
+    valid_target_types = CorrectionService.valid_target_types()
+    if target_type and target_type not in valid_target_types:
+        return error_response(f"target_type must be one of {valid_target_types}.", 400)
+
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    except ValueError:
+        return error_response("limit must be an integer.", 400)
+    try:
+        offset = max(0, int(request.args.get("offset", 0)))
+    except ValueError:
+        return error_response("offset must be an integer.", 400)
+
+    rows, total = CorrectionService.list_corrections(target_type=target_type, limit=limit, offset=offset)
+    return success_response(
+        {
+            "corrections": [
+                {
+                    "id": row.id,
+                    "admin_user_id": row.admin_user_id,
+                    "target_type": row.target_type,
+                    "target_id": row.target_id,
+                    "field": row.field,
+                    "old_value": row.old_value,
+                    "new_value": row.new_value,
+                    "reason": row.reason,
+                    "created_at": iso_utc(row.created_at),
+                }
+                for row in rows
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )
+
+
+@admin_bp.route("/corrections", methods=["POST"])
+@require_role("admin")
+def create_correction():
+    """Apply a whitelisted correction to one row/field and log it to the
+    data_corrections audit trail in the same transaction."""
+    payload = request.get_json() or {}
+
+    target_type = payload.get("target_type")
+    target_id = payload.get("target_id")
+    field = payload.get("field")
+    reason = payload.get("reason")
+
+    if not target_type:
+        return error_response("Missing required field: 'target_type'.", 400)
+    if target_id in (None, ""):
+        return error_response("Missing required field: 'target_id'.", 400)
+    if not field:
+        return error_response("Missing required field: 'field'.", 400)
+    if "new_value" not in payload:
+        return error_response("Missing required field: 'new_value'.", 400)
+    if not reason:
+        return error_response("Missing required field: 'reason'.", 400)
+
+    try:
+        audit, _row = CorrectionService.apply_correction(
+            target_type=target_type,
+            target_id=target_id,
+            field=field,
+            new_value=payload.get("new_value"),
+            reason=reason,
+            admin_user_id=getattr(request, "user_id", None),
+        )
+    except CorrectionError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(
+        {
+            "id": audit.id,
+            "target_type": audit.target_type,
+            "target_id": audit.target_id,
+            "field": audit.field,
+            "old_value": audit.old_value,
+            "new_value": audit.new_value,
+            "reason": audit.reason,
+            "created_at": iso_utc(audit.created_at),
+        }
+    )
+
+
+@admin_bp.route("/data-integrity/summary", methods=["GET"])
+@require_role("admin")
+def get_data_integrity_summary():
+    """Per-platform null-rate snapshot for profile fields (followers) and
+    post metrics (likes/comments/shares), plus a few ready-to-correct
+    sample rows. Read-only — see /corrections to actually fix a gap."""
+    return success_response(DataIntegrityService.get_summary())
+
+
+@admin_bp.route("/data-integrity/daily", methods=["GET"])
+@require_role("admin")
+def get_data_integrity_daily():
+    """Same null rates as /summary, broken down by day so a bad scrape run
+    on a specific date is visible instead of averaged away."""
+    try:
+        days = int(request.args.get("days", 14))
+    except ValueError:
+        return error_response("days must be an integer.", 400)
+    return success_response(DataIntegrityService.get_daily(days=days))
+
+
+@admin_bp.route("/orchestration/summary", methods=["GET"])
+@require_role("admin")
+def get_orchestration_summary():
+    """Success/partial/failed rate and fallback cost per platform+domain
+    over the trailing window, from the scrape_attempts audit log written
+    by ScrapeOrchestratorService. This is the "is our paid data actually
+    available today" number — see api/docs/orchestration.md."""
+    try:
+        days = int(request.args.get("days", 7))
+    except ValueError:
+        return error_response("days must be an integer.", 400)
+    platform = request.args.get("platform")
+    domain = request.args.get("domain")
+    if domain and domain not in ("profile", "posts"):
+        return error_response("domain must be 'profile' or 'posts'.", 400)
+    return success_response(OrchestrationReportService.get_summary(days=days, platform=platform, domain=domain))
+
+
+@admin_bp.route("/orchestration/daily", methods=["GET"])
+@require_role("admin")
+def get_orchestration_daily():
+    """Same success/partial/failed counts as /summary, broken down by day."""
+    try:
+        days = int(request.args.get("days", 14))
+    except ValueError:
+        return error_response("days must be an integer.", 400)
+    platform = request.args.get("platform")
+    domain = request.args.get("domain")
+    if domain and domain not in ("profile", "posts"):
+        return error_response("domain must be 'profile' or 'posts'.", 400)
+    return success_response(OrchestrationReportService.get_daily(days=days, platform=platform, domain=domain))
+
+
+@admin_bp.route("/orchestration/attempts", methods=["GET"])
+@require_role("admin")
+def get_orchestration_attempts():
+    """Recent individual scrape attempts, newest first — for drilling into
+    *why* a platform's success rate dropped (which source failed, which
+    fields it was missing, whether a fallback recovered it)."""
+    platform = request.args.get("platform")
+    domain = request.args.get("domain")
+    final_status = request.args.get("status")
+    if final_status and final_status not in ("complete", "partial", "failed"):
+        return error_response("status must be one of 'complete', 'partial', 'failed'.", 400)
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        return error_response("limit must be an integer.", 400)
+    limit = max(1, min(limit, 200))
+    return success_response(
+        OrchestrationReportService.list_recent_attempts(
+            platform=platform, domain=domain, final_status=final_status, limit=limit
+        )
+    )
 
 
 @admin_bp.route("/overview", methods=["GET"])

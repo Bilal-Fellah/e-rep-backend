@@ -226,6 +226,175 @@ def insert_comments():
         return server_error_response(500)
 
 
+@scraping_bp.route("/own_scraper/profiles", methods=["GET"])
+@require_api_key
+def fetch_own_scraper_profiles():
+    """
+    Fetch accounts whose profile info is due for a refresh, with an
+    optional platform filter, and create a scraping session. Mirrors
+    /posts's envelope and behavior -- see api/docs/scraping_profiles.md.
+
+    Deliberately NOT at plain /profiles: that path already exists upstream
+    (ScrapingService.get_profiles_for_scraping, added independently) with a
+    different response shape and no session tracking -- it's the data
+    source for the Apify fallback pipeline, not this one. This route is
+    namespaced under /own_scraper/ to avoid silently changing what /profiles
+    returns for whatever already depends on it, since these two now solve
+    genuinely different problems on the same resource rather than being
+    interchangeable. See api/docs/scraping_profiles.md's note on this.
+
+    Query Parameters:
+        - platform (required): Only 'instagram' is supported today.
+        - start_date, recorded_start_date, recorded_end_date (optional):
+          accepted for client contract parity, not currently used to filter
+          (see ScrapingService.fetch_profiles_for_scraping's docstring).
+
+    Returns:
+        200: {
+            "success": true,
+            "data": {
+                "session_id": str,
+                "profiles": list[{"account_id": str, "page_id": str, "url": str}],
+                "count": int,
+                "total_available": int
+            }
+        }
+        400: Invalid/missing platform
+        401: Missing or invalid API key
+        500: Database error
+    """
+    try:
+        platform = request.args.get("platform")
+        start_date = request.args.get("start_date")
+        recorded_start_date = request.args.get("recorded_start_date") or request.args.get("recorded_start")
+        recorded_end_date = request.args.get("recorded_end_date") or request.args.get("recorded_end")
+
+        result = ScrapingService.fetch_profiles_for_scraping(
+            platform=platform,
+            start_date=start_date,
+            recorded_start_date=recorded_start_date,
+            recorded_end_date=recorded_end_date,
+        )
+
+        return success_response(result, 200)
+
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid query parameters")
+        return error_response(str(e), 400)
+
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during profile fetch")
+        return db_error_response(500)
+
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during profile fetch")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/profile-info", methods=["POST"])
+@require_api_key
+def insert_profile_info():
+    """
+    Insert scraped profile records in bulk.
+
+    Request Body:
+        {
+            "session_id": str (optional),
+            "profiles": [
+                {
+                    "page_id": str,
+                    "platform": str,
+                    "account_id": str,
+                    ... every other field the scraper captured (followers,
+                    biography, profile_image_link, posts, highlights, ...) ...
+                }
+            ],
+            "profile_results": [
+                {"page_id": str, "platform": str, "account_id": str}
+            ] (optional -- every account actually visited this batch,
+               scraped or not, so it isn't re-served on the next fetch)
+        }
+
+    Returns:
+        200: {
+            "success": true,
+            "data": {"session_id": str, "inserted": int, "skipped": int, "total": int}
+        }
+        400: Invalid request body or validation failure
+        401: Missing or invalid API key
+        500: Database error (transaction rolled back)
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return error_response("Invalid request payload", 400)
+
+        profiles = data.get("profiles", [])
+        session_id = data.get("session_id")
+        profile_results = data.get("profile_results")
+
+        if not isinstance(profiles, list):
+            log_route_error(
+                TypeError("profiles must be an array"),
+                SEVERITY_LOW,
+                400,
+                "Invalid request data"
+            )
+            return error_response("profiles must be an array", 400)
+
+        if profile_results is not None and not isinstance(profile_results, list):
+            log_route_error(
+                TypeError("profile_results must be an array"),
+                SEVERITY_LOW,
+                400,
+                "Invalid request data"
+            )
+            return error_response("profile_results must be an array", 400)
+
+        if profile_results:
+            for idx, pr in enumerate(profile_results):
+                for field in ("page_id", "platform", "account_id"):
+                    if not pr.get(field):
+                        return error_response(
+                            f"profile_results[{idx}] missing required field '{field}'", 400
+                        )
+
+        result = ScrapingService.insert_profile_batch(
+            profiles, session_id, profile_results=profile_results
+        )
+
+        return success_response(result, 200)
+
+    except ValueError as e:
+        db.session.rollback()
+        log_route_error(e, SEVERITY_LOW, 400, "Validation failed")
+        return error_response(str(e), 400)
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        if session_id:
+            try:
+                ScrapingSessionRepository.update_status(
+                    session_id,
+                    "failed",
+                    error_message=str(e)
+                )
+            except Exception:
+                pass  # Best effort -- don't fail if session update fails
+
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during profile insertion")
+        return db_error_response(500)
+
+    except Exception as e:
+        db.session.rollback()
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during profile insertion")
+        return server_error_response(500)
+
+
 @scraping_bp.route("/status/summary", methods=["GET"])
 @require_auth("admin")
 def get_scraping_summary():

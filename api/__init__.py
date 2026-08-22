@@ -144,6 +144,11 @@ def create_app():
     from .routes import register_routes
     register_routes(app)
 
+    # Deny-by-default `Cache-Control: no-store` on every response that didn't
+    # opt into caching via `@cache_public`.
+    from api.utils.cache_control import register_cache_control
+    register_cache_control(app)
+
     # ---- CLI: refresh the metrics materialized view after a daily scrape ----
     @app.cli.command("refresh-mv")
     def refresh_mv():

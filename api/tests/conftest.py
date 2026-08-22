@@ -18,6 +18,10 @@ import api.models.comment_model
 import api.models.scraping_session_model
 import api.models.preapproved_mail_model
 import api.models.subscription_model
+import api.models.data_correction_model
+import api.models.scrape_attempt_model
+import api.models.scraping_profile_result_model
+import api.models.scraping_post_result_model
 
 
 @pytest.fixture(scope="session")

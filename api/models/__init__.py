@@ -9,6 +9,9 @@ from .note_model import Note
 from .ai_insight_cache import AiInsightCache
 from .preapproved_mail_model import PreapprovedMail
 from .subscription_model import Subscription
+from .data_correction_model import DataCorrection
+from .scrape_attempt_model import ScrapeAttempt
+from .scraping_profile_result_model import ScrapingProfileResult
 
 # optional: put all models in __all__ to make imports cleaner
 __all__ = [
@@ -22,6 +25,9 @@ __all__ = [
     "AiInsightCache",
     "PreapprovedMail",
     "Subscription",
+    "DataCorrection",
+    "ScrapeAttempt",
+    "ScrapingProfileResult",
 ]
 
 

@@ -96,6 +96,11 @@ ROLE_PERMISSIONS = {
     "admin.grant_subscription": [UserRole.ADMIN.value],
     "admin.list_preapproved_mails": [UserRole.ADMIN.value],
     "admin.upsert_preapproved_mail": [UserRole.ADMIN.value],
+    "admin.get_correction_targets": [UserRole.ADMIN.value],
+    "admin.list_corrections": [UserRole.ADMIN.value],
+    "admin.create_correction": [UserRole.ADMIN.value],
+    "admin.get_data_integrity_summary": [UserRole.ADMIN.value],
+    "admin.get_data_integrity_daily": [UserRole.ADMIN.value],
 
     # Entity admin extras (in the data blueprint)
     "data.update_entity": [UserRole.ADMIN.value],
