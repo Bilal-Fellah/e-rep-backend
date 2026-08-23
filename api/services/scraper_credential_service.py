@@ -11,6 +11,16 @@ SUPPORTED_PLATFORMS = ("linkedin",)
 SUPPORTED_CREDENTIAL_TYPES = ("cookies",)
 CHECK_STATUSES = ("ok", "auth_failed", "error")
 
+# The cookie(s) that actually gate the session, per platform -- not every
+# cookie in an export. A jar typically also carries short-lived infra/
+# analytics cookies (LinkedIn's __cf_bm, lidc, _uetvid, ...) that legitimately
+# expire within hours by design; taking the minimum expirationDate across the
+# *whole* jar would make soonest_expiry read "expired" within hours of every
+# fresh export, regardless of whether the session itself is still good.
+AUTH_COOKIE_NAMES_BY_PLATFORM = {
+    "linkedin": ("li_at",),
+}
+
 # How many days out an expiring credential should start showing yellow/red
 # in the admin UI.
 EXPIRY_WARNING_DAYS = 14
@@ -38,16 +48,20 @@ class ScraperCredentialService:
             )
 
     @staticmethod
-    def _soonest_expiry(value) -> datetime | None:
+    def _soonest_expiry(value, platform: str) -> datetime | None:
         """Earliest `expirationDate` (epoch seconds, browser cookie-export
-        convention) across the cookie jar. Session cookies (no
-        expirationDate, or `session: true`) are excluded -- they carry no
-        useful signal here."""
+        convention) among the cookie(s) that actually gate the session for
+        `platform` -- see AUTH_COOKIE_NAMES_BY_PLATFORM. Falls back to every
+        cookie in the jar only when the platform has no known auth-cookie
+        list, since that's still better than no signal at all."""
         if not isinstance(value, list):
             return None
+        auth_names = AUTH_COOKIE_NAMES_BY_PLATFORM.get(platform)
         epochs = []
         for cookie in value:
             if not isinstance(cookie, dict):
+                continue
+            if auth_names and cookie.get("name") not in auth_names:
                 continue
             exp = cookie.get("expirationDate")
             if exp is None:
@@ -107,7 +121,7 @@ class ScraperCredentialService:
         if not isinstance(value, list) or not value:
             raise ScraperCredentialError("value must be a non-empty list of cookie objects.")
 
-        soonest_expiry = ScraperCredentialService._soonest_expiry(value)
+        soonest_expiry = ScraperCredentialService._soonest_expiry(value, platform)
         row = ScraperCredentialRepository.upsert(
             platform=platform,
             credential_type=credential_type,
