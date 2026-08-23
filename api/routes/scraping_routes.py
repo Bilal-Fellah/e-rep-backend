@@ -14,12 +14,14 @@ from api.routes.main import (
     SEVERITY_HIGH
 )
 from api.services.scraping_service import ScrapingService
+from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.utils.api_key_auth import require_api_key
 from api.utils.permissions import require_auth
 from api.models.comment_model import db
 # Import new model so Alembic/Flask-Migrate picks it up for migrations
 from api.models.scraping_post_result_model import ScrapingPostResult  # noqa: F401
+from api.models.scraper_credential_model import ScraperCredential  # noqa: F401
 
 
 scraping_bp = Blueprint("scraping", __name__, url_prefix="/api/scraping")
@@ -945,5 +947,85 @@ def get_today_posts_status():
     
     except Exception as e:
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during today status fetch")
+        return server_error_response(500)
+
+
+# ---------------------------------------------------------------------------
+# Scraper credentials -- session cookies for platforms that require a
+# logged-in session (LinkedIn today). Managed from Brendex Admin via
+# /api/admin/scraper-credentials (admin_routes.py, JWT-gated, values
+# masked); these two are api-key-gated like the rest of this blueprint,
+# for the VPS scraper itself to fetch the real value and report back
+# whether it still works. See api/models/scraper_credential_model.py.
+# ---------------------------------------------------------------------------
+
+@scraping_bp.route("/credentials/<platform>", methods=["GET"])
+@require_api_key
+def get_scraper_credential(platform):
+    """
+    The raw stored credential for `platform` (currently: the cookie jar).
+    Not exposed anywhere admin-facing -- see ScraperCredentialService.
+
+    Query Parameters:
+        - credential_type (optional, default 'cookies')
+
+    Returns:
+        200: {"success": true, "data": {"platform": str, "credential_type": str, "value": ...}}
+        400: Unsupported platform/credential_type, or nothing stored yet
+        401: Missing or invalid API key
+    """
+    try:
+        credential_type = request.args.get("credential_type", "cookies")
+        value = ScraperCredentialService.get_raw_for_scraper(platform, credential_type)
+        return success_response({"platform": platform, "credential_type": credential_type, "value": value})
+    except ScraperCredentialError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid scraper credential request")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error fetching scraper credential")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error fetching scraper credential")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/credentials/<platform>/report-check", methods=["POST"])
+@require_api_key
+def report_scraper_credential_check(platform):
+    """
+    Record the outcome of the scraper's own real run against `platform`,
+    the active freshness signal shown in Brendex Admin. Call this once per
+    run that actually used the credential, not as a separate synthetic
+    health check.
+
+    Body: {"status": "ok"|"auth_failed"|"error", "detail": str (optional),
+           "credential_type": str (optional, default "cookies")}
+
+    Returns:
+        200: {"success": true, "data": {...masked credential row...}}
+        400: Missing/invalid status, or nothing stored yet for this platform
+        401: Missing or invalid API key
+    """
+    try:
+        payload = request.get_json() or {}
+        status = payload.get("status")
+        if not status:
+            return error_response("Missing required field: 'status'.", 400)
+
+        result = ScraperCredentialService.report_check(
+            platform=platform,
+            status=status,
+            detail=payload.get("detail"),
+            credential_type=payload.get("credential_type", "cookies"),
+        )
+        return success_response(result)
+    except ScraperCredentialError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid scraper credential check report")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error reporting scraper credential check")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error reporting scraper credential check")
         return server_error_response(500)
 

@@ -22,6 +22,7 @@ import api.models.data_correction_model
 import api.models.scrape_attempt_model
 import api.models.scraping_profile_result_model
 import api.models.scraping_post_result_model
+import api.models.scraper_credential_model
 
 
 @pytest.fixture(scope="session")

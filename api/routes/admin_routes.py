@@ -18,6 +18,7 @@ from api.services.admin_service import AdminService
 from api.services.correction_service import CorrectionError, CorrectionService
 from api.services.data_integrity_service import DataIntegrityService
 from api.services.orchestration_report_service import OrchestrationReportService
+from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
 from api.utils.datetime_utils import iso_utc
@@ -766,3 +767,48 @@ def get_posts_created_at_stats():
     """
     stats = PostsCreatedAtService.get_missing_dates_stats()
     return success_response(stats)
+
+
+# ---------------------------------------------------------------------------
+# Scraper credentials (session cookies for platforms that require login --
+# LinkedIn today). Values are never returned through these routes, only
+# status/expiry -- see ScraperCredentialService for the masking and the
+# api-key-gated routes in scraping_routes.py that the VPS scraper itself
+# uses to fetch/report against the real value.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scraper-credentials", methods=["GET"])
+@require_role("admin")
+def list_scraper_credentials():
+    """One row per platform: cookie count, expiry state, and the last real
+    usage outcome reported by the scraper -- never the raw values."""
+    return success_response({"credentials": ScraperCredentialService.list_masked()})
+
+
+@admin_bp.route("/scraper-credentials", methods=["POST"])
+@require_role("admin")
+def upsert_scraper_credentials():
+    """Paste a freshly-exported cookie jar for a platform. Full replace,
+    not a merge -- see ScraperCredentialRepository.upsert."""
+    payload = request.get_json() or {}
+
+    platform = payload.get("platform")
+    value = payload.get("value")
+    credential_type = payload.get("credential_type", "cookies")
+
+    if not platform:
+        return error_response("Missing required field: 'platform'.", 400)
+    if value is None:
+        return error_response("Missing required field: 'value'.", 400)
+
+    try:
+        result = ScraperCredentialService.upsert(
+            platform=platform,
+            value=value,
+            credential_type=credential_type,
+            updated_by=getattr(request, "user_id", None),
+        )
+    except ScraperCredentialError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
