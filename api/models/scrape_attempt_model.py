@@ -1,5 +1,10 @@
 # Database model definitions for scrape attempt model.
 #
+# STATUS (2026-08-24): not written to in production -- see the status note
+# atop scrape_orchestrator_service.py. This table stays empty until that
+# orchestrator (or something else) actually runs; the real, live pipelines
+# use pages_history.source/source_meta for provenance instead.
+#
 # Audit trail for the Bright Data / Apify / own-scraper orchestration flow
 # (api/services/scrape_orchestrator_service.py). One row per orchestrated
 # scrape (one page, one domain, one run): which source ran first, what it

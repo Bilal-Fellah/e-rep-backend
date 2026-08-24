@@ -1,3 +1,9 @@
+# STATUS (2026-08-24): not wired into production -- see the status note at
+# the top of scrape_orchestrator_service.py for why (real Bright Data/Apify
+# clients here would need to be async/polling, not the synchronous
+# call-and-get-a-dict shape this file assumes). Kept as a tested design,
+# not currently instantiated by anything live.
+#
 # Adapters for the three scraping sources the orchestrator chooses between
 # (see api/services/scrape_orchestrator_service.py): Bright Data (primary,
 # cheap, sometimes incomplete), Apify (expensive, more consistent, used as

@@ -1,3 +1,19 @@
+# STATUS (2026-08-24): not wired into production, kept intentionally.
+# The real, live coordination between Bright Data and own-scraper lives
+# directly in the actual pipelines instead (own-scraper's daily run +
+# trigger_request.py's Instagram exclusion on the VPS -- see
+# erep-backend-deploy-gotchas / the "Instagram priority" work). That fits
+# because both real sources are async/batch (a triggered Bright Data
+# collection can take hours; own-scraper is a scheduled Selenium run), not
+# the synchronous "call primary, then fallback, in one flow" this class
+# assumes. Making this live for real would mean rebuilding Bright Data's
+# and Apify's clients around a request-response shape neither source
+# actually has (see the TODO(real-client) markers in scrape_source_adapters.py)
+# -- a real project, not a quick wire-up. Left in place as a real, tested
+# design for later if field-level merging or a unified cost/attempt audit
+# trail (scrape_attempts) ever becomes worth that cost. Nothing currently
+# calls this or writes to scrape_attempts.
+#
 # Orchestrates one scrape across the three sources (Bright Data primary,
 # then the cheapest fallback that can plausibly help, then Apify as a last
 # resort) and records what happened.

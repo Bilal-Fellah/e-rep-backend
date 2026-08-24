@@ -1,3 +1,8 @@
+# STATUS (2026-08-24): scrape_attempts is currently always empty (see the
+# status note atop scrape_orchestrator_service.py) -- nothing writes to it
+# in production, so every method here will report zero attempts/zero cost
+# until that changes. Kept working and tested for when it does.
+#
 # Read-only reporting over the scrape_attempts audit log — the "is our
 # paid data actually available today, and what's the success rate when it
 # isn't" view the orchestration task calls for. Mirrors the shape of
