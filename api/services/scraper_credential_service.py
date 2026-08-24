@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from api.repositories.scraper_credential_repository import ScraperCredentialRepository
 from api.utils.logging_utils import instrument_service_class
 
-SUPPORTED_PLATFORMS = ("linkedin",)
+SUPPORTED_PLATFORMS = ("linkedin", "tiktok")
 SUPPORTED_CREDENTIAL_TYPES = ("cookies",)
 CHECK_STATUSES = ("ok", "auth_failed", "error")
 
@@ -17,8 +17,13 @@ CHECK_STATUSES = ("ok", "auth_failed", "error")
 # expire within hours by design; taking the minimum expirationDate across the
 # *whole* jar would make soonest_expiry read "expired" within hours of every
 # fresh export, regardless of whether the session itself is still good.
+# TikTok's pair mirrors its own is_logged_in() check (tiktok_scraper/auth.py:
+# `cookies.get("sessionid") or cookies.get("sid_tt")`) -- either one being
+# valid is enough to be logged in, but taking the soonest of both here is a
+# reasonable, simple signal for an admin-facing expiry badge.
 AUTH_COOKIE_NAMES_BY_PLATFORM = {
     "linkedin": ("li_at",),
+    "tiktok": ("sessionid", "sid_tt"),
 }
 
 # How many days out an expiring credential should start showing yellow/red
