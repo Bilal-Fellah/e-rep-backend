@@ -1,6 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
+from sqlalchemy import String, cast
+
+from api import db
+from api.models.comment_model import Comment
+from api.models.page_model import Page
+from api.models.post_model import PostMV
 from api.repositories.alert_event_repository import AlertEventRepository
 from api.repositories.alert_rule_repository import AlertRuleRepository
 from api.utils.logging_utils import instrument_service_class
@@ -54,6 +60,11 @@ def _is_valid_rule_payload(payload: dict) -> tuple[bool, str | None]:
 
     if keywords is not None and not isinstance(keywords, list):
         return False, "keywords must be a list"
+    
+    # Validate include_historical_events if present
+    include_historical = payload.get("include_historical_events")
+    if include_historical is not None and not isinstance(include_historical, bool):
+        return False, "include_historical_events must be a boolean"
 
     return True, None
 
@@ -79,6 +90,241 @@ def _normalized_keywords(keywords: list[str] | None) -> list[dict]:
 
 @instrument_service_class
 class AlertService:
+    @staticmethod
+    def _get_env_int(name: str, default: int) -> int:
+        import os
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _get_env_str(name: str, default: str) -> str:
+        import os
+        return os.getenv(name, default)
+
+    @staticmethod
+    def _backfill_historical_alerts(
+        user_id: int,
+        rule_id: int,
+        event_type: str,
+        entity_scope: dict | None
+    ) -> int:
+        """
+        Create user alerts for historical events that match the rule.
+        
+        Returns:
+            Number of user alerts created
+        """
+        lookback_days = AlertService._get_env_int("ALERTS_HISTORICAL_BACKFILL_DAYS", 30)
+        max_events = AlertService._get_env_int("ALERTS_HISTORICAL_BACKFILL_MAX_EVENTS", 1000)
+        
+        # Fetch historical events
+        events = AlertEventRepository.get_historical_events_for_rule(
+            event_type=event_type,
+            entity_scope=entity_scope,
+            user_id=user_id,
+            lookback_days=lookback_days,
+            max_events=max_events,
+        )
+        
+        if not events:
+            return 0
+        
+        # Create user alerts for each event
+        total_created = 0
+        for event in events:
+            created = AlertEventRepository.fanout_to_users(
+                event_id=event.id,
+                rule_ids_by_user={user_id: rule_id},
+                commit=False,  # Batch commit at the end
+            )
+            total_created += created
+        
+        # Commit all at once
+        db.session.commit()
+
+        return total_created
+
+    @staticmethod
+    def _scoped_page_ids(entity_scope: dict | None) -> set[str] | None:
+        if not isinstance(entity_scope, dict):
+            return None
+
+        entity_ids = entity_scope.get("entity_ids")
+        if not entity_ids:
+            return None
+
+        rows = (
+            db.session.query(cast(Page.uuid, String))
+            .filter(Page.entity_id.in_(entity_ids))
+            .all()
+        )
+        return {str(row[0]) for row in rows}
+
+    @staticmethod
+    def _page_entity_map(page_ids: list[str]) -> dict[str, int]:
+        if not page_ids:
+            return {}
+
+        rows = (
+            db.session.query(cast(Page.uuid, String), Page.entity_id)
+            .filter(cast(Page.uuid, String).in_(page_ids))
+            .all()
+        )
+        return {str(page_id): entity_id for page_id, entity_id in rows}
+
+    @staticmethod
+    def _backfill_historical_keyword_alerts(
+        user_id: int,
+        rule_id: int,
+        *,
+        keywords: list[dict[str, str]],
+        match_mode: str,
+        is_case_sensitive: bool,
+        entity_scope: dict | None,
+    ) -> int:
+        if not keywords:
+            return 0
+
+        lookback_days = AlertService._get_env_int("ALERTS_HISTORICAL_BACKFILL_DAYS", 30)
+        max_events = AlertService._get_env_int("ALERTS_HISTORICAL_BACKFILL_MAX_EVENTS", 1000)
+        max_scan = max(max_events * 20, max_events)
+        cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+
+        scoped_page_ids = AlertService._scoped_page_ids(entity_scope)
+        if scoped_page_ids is not None and not scoped_page_ids:
+            return 0
+
+        total_created = 0
+
+        comments_q = Comment.query.filter(Comment.recorded_at >= cutoff)
+        if scoped_page_ids is not None:
+            comments_q = comments_q.filter(Comment.page_id.in_(list(scoped_page_ids)))
+        comments = comments_q.order_by(Comment.recorded_at.desc()).limit(max_scan).all()
+
+        comment_page_map = AlertService._page_entity_map(list({str(c.page_id) for c in comments}))
+
+        for row in comments:
+            if total_created >= max_events:
+                break
+
+            source_text = row.text or ""
+            if not source_text:
+                continue
+            source_norm = normalize_keyword(source_text)
+            entity_id = comment_page_map.get(str(row.page_id))
+
+            for kw in keywords:
+                if total_created >= max_events:
+                    break
+
+                if not AlertService.match_keyword(
+                    text_original=source_text,
+                    text_normalized=source_norm,
+                    keyword_original=kw["keyword"],
+                    keyword_normalized=kw["keyword_normalized"],
+                    match_mode=match_mode,
+                    is_case_sensitive=is_case_sensitive,
+                ):
+                    continue
+
+                event_data = {
+                    "event_type": "keyword_mention",
+                    "dedupe_key": f"kw:c:{row.id}:{kw['keyword_normalized']}",
+                    "severity": "warning",
+                    "entity_id": entity_id,
+                    "page_id": str(row.page_id),
+                    "platform": row.platform,
+                    "post_id": row.post_id,
+                    "comment_pk": row.id,
+                    "matched_keyword": kw["keyword"],
+                    "payload": {
+                        "source": "comment",
+                        "text": row.text,
+                        "keyword_normalized": kw["keyword_normalized"],
+                        "rule_id": rule_id,
+                        "historical_backfill": True,
+                    },
+                    "event_at": row.recorded_at,
+                }
+
+                event, _ = AlertEventRepository.create_or_get(event_data)
+                total_created += AlertEventRepository.fanout_to_users(
+                    event.id,
+                    {user_id: rule_id},
+                    commit=True,
+                )
+
+        if total_created >= max_events:
+            return total_created
+
+        posts_q = PostMV.query.filter(
+            PostMV.recorded_at >= cutoff,
+            PostMV.caption.isnot(None),
+            PostMV.caption != "",
+        )
+        if scoped_page_ids is not None:
+            posts_q = posts_q.filter(PostMV.page_id.in_(list(scoped_page_ids)))
+        posts = posts_q.order_by(PostMV.recorded_at.desc()).limit(max_scan).all()
+
+        post_page_map = AlertService._page_entity_map(list({str(p.page_id) for p in posts}))
+
+        for row in posts:
+            if total_created >= max_events:
+                break
+
+            source_text = row.caption or ""
+            source_norm = normalize_keyword(source_text)
+            entity_id = post_page_map.get(str(row.page_id))
+
+            for kw in keywords:
+                if total_created >= max_events:
+                    break
+
+                if not AlertService.match_keyword(
+                    text_original=source_text,
+                    text_normalized=source_norm,
+                    keyword_original=kw["keyword"],
+                    keyword_normalized=kw["keyword_normalized"],
+                    match_mode=match_mode,
+                    is_case_sensitive=is_case_sensitive,
+                ):
+                    continue
+
+                event_data = {
+                    "event_type": "keyword_mention",
+                    "dedupe_key": (
+                        f"kw:p:{row.page_id}:{row.platform}:{row.post_id}:{kw['keyword_normalized']}"
+                    ),
+                    "severity": "warning",
+                    "entity_id": entity_id,
+                    "page_id": str(row.page_id),
+                    "platform": row.platform,
+                    "post_id": row.post_id,
+                    "matched_keyword": kw["keyword"],
+                    "payload": {
+                        "source": "post",
+                        "text": row.caption,
+                        "keyword_normalized": kw["keyword_normalized"],
+                        "rule_id": rule_id,
+                        "historical_backfill": True,
+                    },
+                    "event_at": row.recorded_at or row.created_at or datetime.utcnow(),
+                }
+
+                event, _ = AlertEventRepository.create_or_get(event_data)
+                total_created += AlertEventRepository.fanout_to_users(
+                    event.id,
+                    {user_id: rule_id},
+                    commit=True,
+                )
+
+        return total_created
+
     @staticmethod
     def list_rules(user_id: int) -> list[dict]:
         rules = AlertRuleRepository.list_for_user(user_id)
@@ -118,6 +364,37 @@ class AlertService:
 
         created = rule.to_dict()
         created["keywords"] = [k["keyword"] for k in keywords]
+        
+        # Handle historical backfill if requested
+        include_historical = bool(payload.get("include_historical_events", False))
+        historical_alerts_created = 0
+        
+        if include_historical:
+            backfill_mode = AlertService._get_env_str("ALERTS_HISTORICAL_BACKFILL_MODE", "sync")
+
+            if backfill_mode == "async":
+                # TODO: Implement async backfill using background job queue
+                # For now, fall back to sync
+                pass
+
+            if event_type == "keyword_mention":
+                historical_alerts_created = AlertService._backfill_historical_keyword_alerts(
+                    user_id=user_id,
+                    rule_id=rule.id,
+                    keywords=keywords,
+                    match_mode=str(data["match_mode"]),
+                    is_case_sensitive=bool(data["is_case_sensitive"]),
+                    entity_scope=data["entity_scope"] if isinstance(data["entity_scope"], dict) else None,
+                )
+            else:
+                historical_alerts_created = AlertService._backfill_historical_alerts(
+                    user_id=user_id,
+                    rule_id=rule.id,
+                    event_type=event_type,
+                    entity_scope=data["entity_scope"] if isinstance(data["entity_scope"], dict) else None,
+                )
+        
+        created["historical_alerts_created"] = historical_alerts_created
         return created
 
     @staticmethod
@@ -160,6 +437,33 @@ class AlertService:
         kw_map = AlertRuleRepository.list_keywords_for_rule_ids([updated.id])
         out = updated.to_dict()
         out["keywords"] = [k.keyword for k in kw_map.get(updated.id, [])]
+
+        include_historical = bool(payload.get("include_historical_events", False))
+        historical_alerts_created = 0
+
+        if include_historical:
+            if fields["event_type"] == "keyword_mention":
+                effective_keywords = [
+                    {"keyword": str(k.keyword), "keyword_normalized": str(k.keyword_normalized)}
+                    for k in kw_map.get(updated.id, [])
+                ]
+                historical_alerts_created = AlertService._backfill_historical_keyword_alerts(
+                    user_id=user_id,
+                    rule_id=updated.id,
+                    keywords=effective_keywords,
+                    match_mode=str(fields["match_mode"]),
+                    is_case_sensitive=bool(fields["is_case_sensitive"]),
+                    entity_scope=fields["entity_scope"] if isinstance(fields["entity_scope"], dict) else None,
+                )
+            else:
+                historical_alerts_created = AlertService._backfill_historical_alerts(
+                    user_id=user_id,
+                    rule_id=updated.id,
+                    event_type=str(fields["event_type"]),
+                    entity_scope=fields["entity_scope"] if isinstance(fields["entity_scope"], dict) else None,
+                )
+
+        out["historical_alerts_created"] = historical_alerts_created
         return out
 
     @staticmethod

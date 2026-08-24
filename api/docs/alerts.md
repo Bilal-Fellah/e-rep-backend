@@ -53,7 +53,8 @@ Supported event types:
   "cooldown_minutes": 60,
   "match_mode": "contains",
   "is_case_sensitive": false,
-  "keywords": ["boycott", "fraud", "scam"]
+  "keywords": ["boycott", "fraud", "scam"],
+  "include_historical_events": false
 }
 ```
 
@@ -63,6 +64,7 @@ Notes:
 - `match_mode` allowed: `contains`, `exact`, `regex`
 - `entity_scope.entity_ids` is optional. If omitted, rule applies globally.
 - `cooldown_minutes` must be `>= 0`.
+- `include_historical_events` (optional, default `false`): If `true`, creates user alerts for existing events that match this rule (retroactive alerts).
 
 ---
 
@@ -275,6 +277,33 @@ Keyword example:
 }
 ```
 
+With historical backfill:
+
+```json
+{
+  "name": "Monitor entity 93",
+  "event_type": "negative_comment",
+  "entity_scope": { "entity_ids": [93] },
+  "include_historical_events": true,
+  "cooldown_minutes": 60
+}
+```
+
+### Request Body Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | Rule name |
+| `event_type` | string | Yes | - | One of: `negative_comment`, `keyword_mention`, `engagement_anomaly` |
+| `is_active` | boolean | No | `true` | Whether rule is active |
+| `severity_min` | string | No | `null` | Minimum severity filter |
+| `entity_scope` | object | No | `null` | Entity filter: `{"entity_ids": [93, 94]}` |
+| `cooldown_minutes` | integer | No | `60` | Cooldown period (>= 0) |
+| `match_mode` | string | No | `contains` | For keyword rules: `contains`, `exact`, `regex` |
+| `is_case_sensitive` | boolean | No | `false` | For keyword rules |
+| `keywords` | array | Conditional | - | Required for `keyword_mention` rules |
+| `include_historical_events` | boolean | No | `false` | If `true`, creates alerts for existing matching events (last 30 days by default) |
+
 ### Success Response (201)
 
 ```json
@@ -293,10 +322,13 @@ Keyword example:
     "is_case_sensitive": false,
     "created_at": "2026-08-21T20:10:00",
     "updated_at": "2026-08-21T20:10:00",
-    "keywords": ["boycott", "fraud"]
+    "keywords": ["boycott", "fraud"],
+    "historical_alerts_created": 0
   }
 }
 ```
+
+**Note:** `historical_alerts_created` field shows the number of user alerts created from historical events when `include_historical_events` is `true`.
 
 ### Error Responses
 
@@ -526,3 +558,26 @@ Selected detectors:
 - Engagement anomalies ignore suspicious zero metrics (non-zero -> zero transitions).
 - Readiness does **not** use a pipeline checkpoint table; it is inferred from existing scraping/comments/MV signals.
 - MV refresh marker is written by `flask refresh-mv` and used by readiness checks.
+
+## Configuration (Environment Variables)
+
+The following environment variables control retroactive alerts behavior:
+
+```bash
+# Time window for historical event backfill (in days)
+# Default: 30
+ALERTS_HISTORICAL_BACKFILL_DAYS=30
+
+# Maximum number of historical alerts to create per rule
+# Default: 1000
+ALERTS_HISTORICAL_BACKFILL_MAX_EVENTS=1000
+
+# Processing mode: "sync" or "async"
+# Default: sync
+ALERTS_HISTORICAL_BACKFILL_MODE=sync
+```
+
+**Notes:**
+- When `include_historical_events=true`, the system queries events from the last N days (configured by `ALERTS_HISTORICAL_BACKFILL_DAYS`)
+- Results are limited to M events (configured by `ALERTS_HISTORICAL_BACKFILL_MAX_EVENTS`)
+- Synchronous mode (default) processes immediately; async mode uses background jobs (not yet implemented)

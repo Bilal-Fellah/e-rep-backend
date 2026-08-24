@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 
 from api import db
@@ -29,6 +29,56 @@ class AlertEventRepository:
             if existing:
                 return existing, False
             raise
+
+    @staticmethod
+    def get_historical_events_for_rule(
+        event_type: str,
+        entity_scope: dict | None,
+        user_id: int,
+        lookback_days: int,
+        max_events: int,
+    ) -> list[AlertEvent]:
+        """
+        Fetch historical events that match rule criteria and don't already have
+        a user alert for this user.
+
+        Args:
+            event_type: Type of event to match
+            entity_scope: Entity filter from rule
+            user_id: User ID to check for existing alerts
+            lookback_days: Only consider events from last N days
+            max_events: Maximum number of events to return
+
+        Returns:
+            List of AlertEvent objects
+        """
+        cutoff_date = datetime.utcnow() - timedelta(days=lookback_days)
+
+        q = AlertEvent.query.filter(
+            AlertEvent.event_type == event_type,
+            AlertEvent.event_at >= cutoff_date,
+        )
+
+        # Apply entity scope filter
+        if entity_scope and isinstance(entity_scope, dict):
+            entity_ids = entity_scope.get("entity_ids")
+            if entity_ids:
+                q = q.filter(AlertEvent.entity_id.in_(entity_ids))
+
+        # Exclude events that already have user alerts for this user
+        q = (
+            q.outerjoin(
+                UserAlert,
+                db.and_(
+                    UserAlert.event_id == AlertEvent.id,
+                    UserAlert.user_id == user_id,
+                ),
+            )
+            .filter(UserAlert.id.is_(None))
+        )
+
+        # Order by most recent first and apply limit
+        return q.order_by(AlertEvent.event_at.desc()).limit(max_events).all()
 
     @staticmethod
     def fanout_to_users(event_id: int, rule_ids_by_user: dict[int, int], commit: bool = True) -> int:
