@@ -19,6 +19,7 @@ from api.services.correction_service import CorrectionError, CorrectionService
 from api.services.data_integrity_service import DataIntegrityService
 from api.services.orchestration_report_service import OrchestrationReportService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
+from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
 from api.utils.datetime_utils import iso_utc
@@ -812,3 +813,47 @@ def upsert_scraper_credentials():
         return error_response(str(exc), 400)
 
     return success_response(result, 201)
+
+
+# ---------------------------------------------------------------------------
+# Manual scrape triggers -- fire an own-scraper run (profile/comments) from
+# Brendex Admin without waiting for the next scheduled systemd timer. Just
+# queues a "pending" row; a poller on the VPS claims and runs it via the
+# api-key-gated routes in scraping_routes.py. See
+# api/models/scrape_trigger_request_model.py and ScrapeTriggerService for
+# exactly what's triggerable (own-scraper only -- not Bright Data/Apify).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scraping/trigger", methods=["POST"])
+@require_role("admin")
+def trigger_scrape():
+    """Queue a manual scrape run. Picked up by the VPS watcher within
+    ~30s; poll GET below for status."""
+    payload = request.get_json() or {}
+
+    platform = payload.get("platform")
+    mode = payload.get("mode")
+
+    if not platform:
+        return error_response("Missing required field: 'platform'.", 400)
+    if not mode:
+        return error_response("Missing required field: 'mode'.", 400)
+
+    try:
+        result = ScrapeTriggerService.request_trigger(
+            platform=platform,
+            mode=mode,
+            requested_by=getattr(request, "user_id", None),
+        )
+    except ScrapeTriggerError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/scraping/trigger", methods=["GET"])
+@require_role("admin")
+def list_scrape_triggers():
+    """Recent manual-trigger history and status, newest first."""
+    limit = request.args.get("limit", default=50, type=int)
+    return success_response({"triggers": ScrapeTriggerService.list_recent(limit)})

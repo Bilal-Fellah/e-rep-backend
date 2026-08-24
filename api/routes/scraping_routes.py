@@ -15,6 +15,7 @@ from api.routes.main import (
 )
 from api.services.scraping_service import ScrapingService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
+from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.utils.api_key_auth import require_api_key
 from api.utils.permissions import require_auth
@@ -22,6 +23,7 @@ from api.models.comment_model import db
 # Import new model so Alembic/Flask-Migrate picks it up for migrations
 from api.models.scraping_post_result_model import ScrapingPostResult  # noqa: F401
 from api.models.scraper_credential_model import ScraperCredential  # noqa: F401
+from api.models.scrape_trigger_request_model import ScrapeTriggerRequest  # noqa: F401
 
 
 scraping_bp = Blueprint("scraping", __name__, url_prefix="/api/scraping")
@@ -1027,5 +1029,71 @@ def report_scraper_credential_check(platform):
         return db_error_response(500)
     except Exception as e:
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error reporting scraper credential check")
+        return server_error_response(500)
+
+
+# ---------------------------------------------------------------------------
+# Manual scrape triggers -- queued from Brendex Admin via
+# /api/admin/scraping/trigger (admin_routes.py, JWT-gated). These two are
+# api-key-gated like the rest of this blueprint, for the VPS-side poller
+# (trigger_watcher.py) to claim the oldest pending request and report back
+# what happened when it ran. See api/models/scrape_trigger_request_model.py.
+# ---------------------------------------------------------------------------
+
+@scraping_bp.route("/trigger-requests/next", methods=["GET"])
+@require_api_key
+def claim_next_trigger_request():
+    """
+    Atomically claim the oldest pending manual-trigger request, if any.
+    Meant to be polled every ~30s by the VPS watcher.
+
+    Returns:
+        200: {"success": true, "data": {"trigger": {...} | null}}
+        401: Missing or invalid API key
+    """
+    try:
+        result = ScrapeTriggerService.claim_next_pending()
+        return success_response({"trigger": result})
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error claiming trigger request")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error claiming trigger request")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/trigger-requests/<int:request_id>/report", methods=["POST"])
+@require_api_key
+def report_trigger_result(request_id):
+    """
+    Record the outcome of a manually-triggered scrape run.
+
+    Body: {"status": "done"|"failed", "detail": str (optional)}
+
+    Returns:
+        200: {"success": true, "data": {...trigger row...}}
+        400: Missing/invalid status, or no such request id
+        401: Missing or invalid API key
+    """
+    try:
+        payload = request.get_json() or {}
+        status = payload.get("status")
+        if not status:
+            return error_response("Missing required field: 'status'.", 400)
+
+        result = ScrapeTriggerService.report_result(
+            request_id=request_id,
+            status=status,
+            detail=payload.get("detail"),
+        )
+        return success_response(result)
+    except ScrapeTriggerError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid trigger-request report")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error reporting trigger result")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error reporting trigger result")
         return server_error_response(500)
 
