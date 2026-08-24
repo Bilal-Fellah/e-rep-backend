@@ -16,6 +16,7 @@ from api.routes.main import (
 from api.services.scraping_service import ScrapingService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
+from api.services.tracked_keyword_service import TrackedKeywordError, TrackedKeywordService
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.utils.api_key_auth import require_api_key
 from api.utils.permissions import require_auth
@@ -24,6 +25,8 @@ from api.models.comment_model import db
 from api.models.scraping_post_result_model import ScrapingPostResult  # noqa: F401
 from api.models.scraper_credential_model import ScraperCredential  # noqa: F401
 from api.models.scrape_trigger_request_model import ScrapeTriggerRequest  # noqa: F401
+from api.models.tracked_keyword_model import TrackedKeyword  # noqa: F401
+from api.models.keyword_mention_model import KeywordMention  # noqa: F401
 
 
 scraping_bp = Blueprint("scraping", __name__, url_prefix="/api/scraping")
@@ -1095,5 +1098,79 @@ def report_trigger_result(request_id):
         return db_error_response(500)
     except Exception as e:
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error reporting trigger result")
+        return server_error_response(500)
+
+
+# ---------------------------------------------------------------------------
+# TikTok keyword-search mentions -- clients manage their own watchlist via
+# /api/data/keywords (JWT-gated, routes/data/keywords.py). These two are
+# api-key-gated like the rest of this blueprint, for the VPS's scheduled
+# keyword-search pass (tiktok_scraper's search mode) to fetch what to search
+# for and report matches back. See api/models/tracked_keyword_model.py.
+# ---------------------------------------------------------------------------
+
+@scraping_bp.route("/keyword-search/keywords", methods=["GET"])
+@require_api_key
+def get_tracked_keywords():
+    """
+    Every currently tracked keyword for `platform`, across all users.
+    Polled once per scheduled keyword-search pass -- no claim/lock semantics,
+    re-searching the same keyword every pass is expected.
+
+    Query Parameters:
+        - platform (required): e.g. "tiktok"
+
+    Returns:
+        200: {"success": true, "data": {"keywords": list[dict]}}
+        400: Missing platform
+        401: Missing or invalid API key
+    """
+    try:
+        platform = request.args.get("platform")
+        if not platform:
+            return error_response("Missing required query parameter: 'platform'.", 400)
+        keywords = TrackedKeywordService.list_keywords_for_platform(platform)
+        return success_response({"keywords": keywords})
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error fetching tracked keywords")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error fetching tracked keywords")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/keyword-search/keywords/<int:keyword_id>/mentions", methods=["POST"])
+@require_api_key
+def report_keyword_mentions(keyword_id: int):
+    """
+    Record TikTok videos matching a tracked keyword found on this pass.
+    Duplicates (already-recorded video_id) are silently skipped.
+
+    Body: {"mentions": [{"video_id": str, "video_url": str,
+           "author_username": str (optional), "caption": str (optional),
+           "thumbnail_url": str (optional), "like_count": int (optional),
+           "comment_count": int (optional), "posted_at": str ISO (optional)}]}
+
+    Returns:
+        200: {"success": true, "data": {"inserted": int}}
+        400: Missing/invalid body, or no such keyword id
+        401: Missing or invalid API key
+    """
+    try:
+        payload = request.get_json() or {}
+        mentions = payload.get("mentions")
+        if not isinstance(mentions, list):
+            return error_response("'mentions' must be an array.", 400)
+
+        inserted = TrackedKeywordService.record_mentions(keyword_id, mentions)
+        return success_response({"inserted": inserted})
+    except TrackedKeywordError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid keyword-mentions report")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error recording keyword mentions")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error recording keyword mentions")
         return server_error_response(500)
 

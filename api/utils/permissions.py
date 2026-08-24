@@ -123,6 +123,12 @@ ROLE_PERMISSIONS = {
     "data.create_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.update_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.delete_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+
+    # Tracked keywords / mentions (user-facing)
+    "data.list_keywords": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.create_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.delete_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.list_keyword_mentions": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
 }
 
 # ============================================================================

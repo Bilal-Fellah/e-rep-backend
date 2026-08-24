@@ -20,6 +20,7 @@ from api.services.data_integrity_service import DataIntegrityService
 from api.services.orchestration_report_service import OrchestrationReportService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
+from api.services.tracked_keyword_service import TrackedKeywordService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
 from api.utils.datetime_utils import iso_utc
@@ -857,3 +858,19 @@ def list_scrape_triggers():
     """Recent manual-trigger history and status, newest first."""
     limit = request.args.get("limit", default=50, type=int)
     return success_response({"triggers": ScrapeTriggerService.list_recent(limit)})
+
+
+# ---------------------------------------------------------------------------
+# Client-owned TikTok keyword watchlist -- read-only here for support/
+# debugging. Clients manage their own keywords via /api/data/keywords
+# (JWT-gated, routes/data/keywords.py); this just lets an admin see who's
+# tracking what and how many mentions each keyword has found so far.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/keywords", methods=["GET"])
+@require_role("admin")
+def list_tracked_keywords():
+    """Every client-tracked keyword for `platform` (default tiktok), across
+    all users, with a mention count each."""
+    platform = request.args.get("platform", default="tiktok")
+    return success_response({"keywords": TrackedKeywordService.list_all_for_admin(platform)})
