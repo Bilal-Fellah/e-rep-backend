@@ -3,7 +3,7 @@ Unit tests for PageHistoryRepository.validate_data_structure() helper function.
 Tests platform-specific JSONB validation for missing keys.
 """
 import pytest
-from datetime import date, datetime, time
+from datetime import datetime, timedelta
 from uuid import uuid4
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.models import PageHistory, Page
@@ -377,7 +377,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=valid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -396,7 +396,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -422,7 +422,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -445,7 +445,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -463,7 +463,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -486,12 +486,12 @@ class TestGetFailedPagesForToday:
             history_1 = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data_1,
-                recorded_at=datetime.combine(date.today(), time(10, 0))
+                recorded_at=datetime.utcnow() - timedelta(hours=2)
             )
             history_2 = PageHistory(
                 page_id=sample_page_tiktok.uuid,
                 data=invalid_data_2,
-                recorded_at=datetime.combine(date.today(), time(14, 0))
+                recorded_at=datetime.utcnow() - timedelta(hours=1)
             )
             db.session.add_all([history_1, history_2])
             db.session.commit()
@@ -513,7 +513,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page_tiktok.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -533,7 +533,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page_linkedin.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -545,16 +545,15 @@ class TestGetFailedPagesForToday:
     def test_only_includes_todays_records(self, app, sample_page):
         """Should only return today's failed records, not yesterday's."""
         with app.app_context():
-            from datetime import timedelta
-            
-            # Create invalid record for yesterday
-            yesterday = date.today() - timedelta(days=1)
+            # The window is "yesterday 22:00 UTC to now" (see
+            # get_failed_pages_for_today), so 2 days back is safely before
+            # its start regardless of what time of day this test runs.
             invalid_data = {"posts": []}
-            
+
             history_yesterday = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(yesterday, time(12, 0))
+                recorded_at=datetime.utcnow() - timedelta(days=2)
             )
             db.session.add(history_yesterday)
             db.session.commit()
@@ -569,7 +568,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()

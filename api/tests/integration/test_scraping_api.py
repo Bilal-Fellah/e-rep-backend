@@ -214,9 +214,13 @@ class TestApifyProfileScraping:
             db.session.flush()
             
             # Create failed pages_history for active entity (missing comments)
+            # datetime.utcnow(), not datetime.now(): the route this feeds
+            # (get_failed_pages_for_today) windows on UTC ("yesterday 22:00
+            # UTC to now"), so a local-time value drifts outside that window
+            # by the local UTC offset near day boundaries.
             active_history = PageHistory(
                 page_id=active_page.uuid,
-                recorded_at=datetime.now(),
+                recorded_at=datetime.utcnow(),
                 data={
                     "posts": [
                         {
@@ -251,7 +255,7 @@ class TestApifyProfileScraping:
             # Create failed pages_history for inactive entity (missing likes)
             inactive_history = PageHistory(
                 page_id=inactive_page.uuid,
-                recorded_at=datetime.now(),
+                recorded_at=datetime.utcnow(),
                 data={
                     "posts": [
                         {
