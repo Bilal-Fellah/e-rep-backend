@@ -804,7 +804,7 @@ def upsert_scraper_credentials():
         return error_response("Missing required field: 'value'.", 400)
 
     try:
-        result = ScraperCredentialService.upsert(
+        result = ScraperCredentialService.upsert_and_maybe_trigger(
             platform=platform,
             value=value,
             credential_type=credential_type,
