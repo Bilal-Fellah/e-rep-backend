@@ -29,6 +29,18 @@ class ScrapeTriggerRepository:
         )
 
     @staticmethod
+    def latest_for(platform: str, mode: str) -> ScrapeTriggerRequest | None:
+        """Most recent request for one (platform, mode) pair -- e.g. the
+        "Run now" status shown on Erup's Keywords page, which only ever
+        cares about its own (tiktok, keyword-search) history, not the
+        full cross-platform list Brendex Admin's trigger panel shows."""
+        return (
+            ScrapeTriggerRequest.query.filter_by(platform=platform, mode=mode)
+            .order_by(ScrapeTriggerRequest.requested_at.desc(), ScrapeTriggerRequest.id.desc())
+            .first()
+        )
+
+    @staticmethod
     def claim_next_pending(started_at, commit: bool = True) -> ScrapeTriggerRequest | None:
         """Atomically claim the oldest pending request. `FOR UPDATE SKIP
         LOCKED` so a second concurrent poller -- there shouldn't be one,

@@ -26,6 +26,11 @@ TRIGGERABLE = frozenset(
         ("tiktok", "comments"),
         ("facebook", "comments"),
         ("youtube", "comments"),
+        # Client-tracked-keyword mentions (api/services/tracked_keyword_service.py),
+        # not comments -- the "Run now" action on Erup's Keywords page for
+        # admins (api/routes/data/keywords.py), separate from Brendex
+        # Admin's generic trigger panel.
+        ("tiktok", "keyword-search"),
     }
 )
 
@@ -53,6 +58,11 @@ class ScrapeTriggerService:
     @staticmethod
     def list_recent(limit: int = 50) -> list[dict]:
         return [ScrapeTriggerService._serialize(r) for r in ScrapeTriggerRepository.list_recent(limit)]
+
+    @staticmethod
+    def latest_for(platform: str, mode: str) -> dict | None:
+        row = ScrapeTriggerRepository.latest_for(platform, mode)
+        return ScrapeTriggerService._serialize(row) if row is not None else None
 
     @staticmethod
     def claim_next_pending() -> dict | None:

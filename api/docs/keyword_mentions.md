@@ -164,6 +164,62 @@ discovered first.
 
 ---
 
+## **GET /api/data/keywords/search-now**
+
+Admin only. Latest manual TikTok keyword-search run, if any -- backs the
+"Run now" button's status display on Erup's Keywords page.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 4,
+    "platform": "tiktok",
+    "mode": "keyword-search",
+    "status": "running",
+    "requested_by": 42,
+    "requested_at": "2026-08-25T15:00:00",
+    "started_at": "2026-08-25T15:00:22",
+    "finished_at": null,
+    "detail": null
+  }
+}
+```
+
+`data` is `null` when a keyword-search run has never been triggered manually.
+
+---
+
+## **POST /api/data/keywords/search-now**
+
+Admin only. Queue an immediate TikTok keyword-search pass instead of
+waiting for the next scheduled timer (daily, 05:00 UTC). Same queue
+Brendex Admin's generic trigger panel uses -- the VPS watcher picks it up
+within ~30s.
+
+### Success Response (201)
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 5,
+    "platform": "tiktok",
+    "mode": "keyword-search",
+    "status": "pending",
+    "requested_by": 42,
+    "requested_at": "2026-08-25T15:05:00",
+    "started_at": null,
+    "finished_at": null,
+    "detail": null
+  }
+}
+```
+
+---
+
 # Admin Routes (`/api/admin`)
 
 ## **GET /api/admin/keywords**

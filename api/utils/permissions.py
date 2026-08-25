@@ -129,6 +129,8 @@ ROLE_PERMISSIONS = {
     "data.create_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.delete_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.list_keyword_mentions": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.get_keyword_search_now_status": [UserRole.ADMIN.value],
+    "data.trigger_keyword_search_now": [UserRole.ADMIN.value],
 }
 
 # ============================================================================
