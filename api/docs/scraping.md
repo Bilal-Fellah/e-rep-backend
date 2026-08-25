@@ -299,11 +299,11 @@ curl -X POST "https://api.example.com/api/scraping/comments" \
 
 ---
 
-### 3. Get Failed Profiles for Apify Fallback Scraping
+### 3. Get Pages With Incomplete Scraped Data
 
-Retrieve profiles that failed scraping validation in the recent time window. This endpoint is specifically designed for the Apify fallback scraper to identify which profiles need to be re-scraped after the primary scraping service failed to collect complete data.
+Retrieve profiles whose most recent scrape came back incomplete, in the recent time window. **This is a general data-validation result, not an Apify-specific one** — today it happens to also be consumed by the Apify fallback pipeline (`fetch_pipeline.py`, which decides on its own, separately, whether/when to actually spend on a retry), but the endpoint itself just reports "these pages are missing data" and is meant to be usable by anything that needs that — including admin reporting (see `/api/admin/data-integrity/*`), not exclusively a paid-retry trigger.
 
-The endpoint analyzes `pages_history` records from **yesterday at 10pm (22:00) UTC until now** to detect incomplete scraping (missing `posts`, `likes`, or `comments` keys in the data JSONB field) and returns filtered profiles for retry.
+The endpoint analyzes `pages_history` records from **yesterday at 10pm (22:00) UTC until now** to detect incomplete scraping — missing `posts`, `likes`, or `comments` keys in the data JSONB field, **or a missing profile-level follower/subscriber count** — and returns the affected profiles.
 
 **Time Window**: Yesterday 10pm UTC → Current time (~26 hour rolling window)
 
@@ -352,11 +352,16 @@ The endpoint analyzes `pages_history` records from **yesterday at 10pm (22:00) U
 - `platform`: Platform filter used (or "all" if no filter)
 - `scraping_issues`: Unique list of detected data validation issues (e.g., missing keys in scraped data)
 
-**Validation Criteria**:
+**Validation Criteria** (see `PageHistoryRepository.validate_data_structure`):
 The endpoint identifies profiles as "failed" when `pages_history` records (from yesterday 10pm until now) are missing required data:
 - **Instagram/Facebook/X**: Must contain `posts` array with `likes` and `comments` fields
 - **TikTok/YouTube**: Must contain `top_videos` array with `likes` and `comments` fields
 - **LinkedIn**: Must contain `updates` array with `likes` and `comments` fields
+- **All platforms**: Must also contain a profile-level follower/subscriber
+  count (`followers`, except `page_followers` for Facebook and
+  `subscribers` for YouTube) — checked independently of the posts/likes/
+  comments checks above, so a record can be flagged for a missing
+  follower count alone even when its posts data is otherwise complete
 
 **Time Window Details**:
 - **Start**: Yesterday at 22:00:00 UTC (10pm)

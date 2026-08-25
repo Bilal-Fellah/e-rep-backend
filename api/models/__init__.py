@@ -9,6 +9,9 @@ from .note_model import Note
 from .ai_insight_cache import AiInsightCache
 from .preapproved_mail_model import PreapprovedMail
 from .subscription_model import Subscription
+from .data_correction_model import DataCorrection
+from .scrape_attempt_model import ScrapeAttempt
+from .scraping_profile_result_model import ScrapingProfileResult
 from .alert_rule_model import AlertRule
 from .alert_rule_keyword_model import AlertRuleKeyword
 from .alert_event_model import AlertEvent
@@ -27,6 +30,9 @@ __all__ = [
     "AiInsightCache",
     "PreapprovedMail",
     "Subscription",
+    "DataCorrection",
+    "ScrapeAttempt",
+    "ScrapingProfileResult",
     "AlertRule",
     "AlertRuleKeyword",
     "AlertEvent",

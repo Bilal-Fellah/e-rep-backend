@@ -2,6 +2,7 @@
 from flask import Blueprint, request
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.routes.main import error_response, success_response, register_blueprint_error_handlers
+from api.utils.cache_control import cache_public
 
 public_bp = Blueprint("public", __name__)
 
@@ -11,6 +12,10 @@ ALLOWED_ENTITY_TYPES = ("company", "influencer", "small-business")
 
 
 @public_bp.route("/ranking", methods=["GET"])
+# Unauthenticated, identical for every caller, and backed by materialized views
+# that only move when the scrape refreshes them — a 5 minute shared TTL costs
+# nothing in freshness and takes the landing-page teaser off Postgres.
+@cache_public(max_age=300, stale_while_revalidate=600)
 def public_ranking():
     try:
         # Optional `?type=` narrows the public preview to a single entity kind

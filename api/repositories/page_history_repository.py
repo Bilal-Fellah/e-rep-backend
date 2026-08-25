@@ -18,6 +18,14 @@ RootCategory = aliased(Category, name="root_category")
 
 RANKING_CACHE_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'ranking_cache.json')
 
+# platform -> which JSONB key holds the follower/subscriber count. Mirrors
+# PageHistoryRepository._followers_case's mapping (below) -- kept as its
+# own constant rather than inline in _has_followers_value both to avoid
+# rebuilding the dict on every row of get_failed_pages_for_today's scan,
+# and because it's the third place in this codebase that encodes this same
+# per-platform fact (see _has_followers_value's docstring).
+FOLLOWERS_KEY_BY_PLATFORM = {"youtube": "subscribers", "facebook": "page_followers"}
+
 
 class _UUIDEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -32,28 +40,72 @@ class PageHistoryRepository:
     def validate_data_structure(data: dict, platform: str) -> list[str]:
         """
         Validate platform-specific JSONB data structure for required keys.
-        
+
         Checks for missing keys:
         - posts/top_videos/updates (platform-specific)
         - likes field within posts (supports multiple field name variations)
         - comments field within posts (supports multiple field name variations)
-        
+        - followers/subscriber count (profile-level, not post-level -- see
+          _has_followers_value; added after the Bright Data audit found this
+          was the single biggest quantified gap -- Facebook ~20%, YouTube
+          ~29% null -- and nothing in this retry pipeline was catching it,
+          since the rest of this function only ever looks at the posts array)
+
         Args:
             data: JSONB data dictionary from pages_history
             platform: Platform name (instagram, facebook, x, tiktok, linkedin, youtube)
-            
+
         Returns:
             List of missing key names. Empty list means validation passed.
         """
+        missing_keys = PageHistoryRepository._validate_posts_structure(data, platform)
+
+        if not PageHistoryRepository._has_followers_value(data, platform):
+            missing_keys.append("followers")
+
+        return missing_keys
+
+    @staticmethod
+    def _has_followers_value(data: dict, platform: str) -> bool:
+        """Whether this snapshot's follower/subscriber count is present.
+        Mirrors _followers_case's field-name mapping (youtube -> subscribers,
+        facebook -> page_followers, everything else -> followers) so this
+        check agrees with what the rest of the codebase already treats as
+        "the" follower field for each platform, rather than inventing a
+        second convention."""
+        if not isinstance(data, dict):
+            return False
+        key = FOLLOWERS_KEY_BY_PLATFORM.get(platform, "followers")
+        return data.get(key) is not None
+
+    @staticmethod
+    def _validate_posts_structure(data: dict, platform: str) -> list[str]:
+        """The original validate_data_structure body, unchanged -- posts/
+        engagement checks only. Split out so the followers check above can
+        wrap it without duplicating or restructuring this platform-by-
+        platform logic."""
         missing_keys = []
-        
+
+        # A non-dict payload (e.g. an error string a scraper wrote instead
+        # of a real snapshot) would otherwise reach `data.get(...)` a few
+        # lines down and crash with AttributeError -- and this function is
+        # called in a plain loop over every row recorded since yesterday
+        # 10pm (get_failed_pages_for_today), so one malformed row would
+        # abort that whole admin/API request rather than just being
+        # reported as missing data, which is what it actually is.
+        if not isinstance(data, dict):
+            return ["posts"]
+
         # ── Facebook special handling ──────────────────────────────────────────
         # Facebook pages_history data can be stored either as a nested posts array
         # or as a flat single-post object (e.g. data["post_id"], data["likes"], data["num_comments"]).
+        # In production this flat form is the *only* form Facebook rows use
+        # (no row has ever had a nested "posts" array), and it does usually
+        # carry page_followers alongside the post fields (~98.6% of rows) --
+        # its absence is a real gap, not a shape the format structurally
+        # excludes, which is why the followers check above applies to it too.
         if platform == "facebook":
-            if data is None:
-                return ["posts"]
-            
+
             # Case A: Nested posts array
             if "posts" in data and isinstance(data.get("posts"), list):
                 posts_array = data["posts"]
@@ -181,6 +233,90 @@ class PageHistoryRepository:
             .subquery()
         )
 
+    # ── Data integrity ───────────────────────────────────────────────────
+    # Null-rate reporting for the admin "Data Integrity" panel. Built with
+    # portable SQLAlchemy case()/count() rather than Postgres FILTER, so it
+    # runs identically against Postgres and the in-memory SQLite used by
+    # the test/dev harness.
+
+    @staticmethod
+    def get_profile_integrity_by_platform() -> list:
+        """Per platform, how many pages have a followers-null *latest*
+        snapshot vs total pages with any history at all."""
+        subq = PageHistoryRepository._latest_history_subquery()
+        followers = PageHistoryRepository._followers_case()
+        null_followers = db.func.sum(case((followers.is_(None), 1), else_=0))
+        return (
+            db.session.query(
+                Page.platform,
+                db.func.count().label("total"),
+                null_followers.label("null_followers"),
+            )
+            .select_from(PageHistory)
+            .join(subq, subq.c.latest_id == PageHistory.id)
+            .join(Page, Page.uuid == PageHistory.page_id)
+            .group_by(Page.platform)
+            .all()
+        )
+
+    @staticmethod
+    def get_profile_integrity_daily(days: int = 14) -> list:
+        """Per day (by recorded_at) and platform, how many snapshots came
+        back with a null followers value vs total snapshots recorded."""
+        since = datetime.now() - timedelta(days=days)
+        followers = PageHistoryRepository._followers_case()
+        day = db.func.date(PageHistory.recorded_at)
+        null_followers = db.func.sum(case((followers.is_(None), 1), else_=0))
+        return (
+            db.session.query(
+                day.label("day"),
+                Page.platform,
+                db.func.count().label("total"),
+                null_followers.label("null_followers"),
+            )
+            .select_from(PageHistory)
+            .join(Page, Page.uuid == PageHistory.page_id)
+            .filter(PageHistory.recorded_at >= since)
+            .group_by(day, Page.platform)
+            .order_by(day.desc())
+            .all()
+        )
+
+    @staticmethod
+    def get_profile_integrity_samples(limit: int = 5) -> list:
+        """A handful of the *latest* snapshots that are missing followers,
+        so the admin UI can hand back a ready-to-use correction target
+        (this row's id is the `page_history` correction target id).
+
+        Also returns the page's live link plus whatever biography/profile
+        image *did* get captured that snapshot — on their own, "followers
+        is null" doesn't tell an admin whether this is a real scrape
+        failure or a fluke; seeing that everything else came back empty
+        too (or, conversely, came back fine) is the actual signal, and the
+        live link lets them go check the real page in one click."""
+        subq = PageHistoryRepository._latest_history_subquery()
+        followers = PageHistoryRepository._followers_case()
+        biography = PageHistoryRepository._description_case()
+        profile_image = PageHistoryRepository._profile_url_case()
+        return (
+            db.session.query(
+                PageHistory.id,
+                Page.platform,
+                Page.name.label("page_name"),
+                Page.link.label("page_link"),
+                PageHistory.recorded_at,
+                biography.label("biography"),
+                profile_image.label("profile_image"),
+            )
+            .select_from(PageHistory)
+            .join(subq, subq.c.latest_id == PageHistory.id)
+            .join(Page, Page.uuid == PageHistory.page_id)
+            .filter(followers.is_(None))
+            .order_by(PageHistory.recorded_at.desc())
+            .limit(limit)
+            .all()
+        )
+
     @staticmethod
     def get_by_id(history_id: int) -> PageHistory | None:
         return PageHistory.query.get(history_id)
@@ -190,11 +326,97 @@ class PageHistoryRepository:
         return PageHistory.query.all()
 
     @staticmethod
-    def create(page_id: int, data: dict) -> PageHistory:
-        history = PageHistory(page_id=page_id, data=data)
+    def create(page_id: int, data: dict, source: str = None, source_meta: dict = None, commit: bool = True) -> PageHistory:
+        """`source`/`source_meta` are optional so every existing caller (and
+        the out-of-band bulk loader that writes most pages_history rows
+        directly) keeps working unchanged — a row written without them just
+        has source=NULL, meaning "unknown/pre-orchestration" rather than an
+        error. The orchestrator (scrape_orchestrator_service.py) is the
+        first caller to actually pass them."""
+        history = PageHistory(page_id=page_id, data=data, source=source, source_meta=source_meta)
         db.session.add(history)
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
         return history
+
+    @staticmethod
+    def update_data_field(history_id: int, field: str, value, commit: bool = True) -> PageHistory | None:
+        """Patch a single top-level key in `data` (a JSONB scraped-data
+        snapshot). Used by the admin data-correction workflow to fix a
+        missing/wrong value on one historical record, e.g. `followers` or
+        `biography` — or, for Facebook, whose posts are flat top-level
+        fields rather than an array, a post metric like `likes`. For every
+        other platform's nested post arrays, see `update_post_metric_in_array`."""
+        history = PageHistory.query.get(history_id)
+        if not history:
+            return None
+        # `data` is a JSONB column; SQLAlchemy only tracks mutation via
+        # attribute reassignment, so build a new dict rather than mutating
+        # the existing one in place.
+        patched = dict(history.data or {})
+        patched[field] = value
+        history.data = patched
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
+        return history
+
+    @staticmethod
+    def update_post_metric_in_array(
+        history_id: int,
+        array_key: str,
+        id_key: str,
+        post_id: str,
+        metric_key: str,
+        value,
+        commit: bool = True,
+    ) -> tuple[PageHistory | None, bool, object]:
+        """Patch one metric key on one post inside a nested post array in
+        `data` (e.g. `data['posts'][i]['likes']`). Used by the admin
+        data-correction workflow for likes/comments/shares on a single
+        post from a single historical snapshot. Every other post in the
+        array, and every other top-level key, is left untouched.
+
+        Returns (history, found, old_value). `history` is None if the row
+        itself doesn't exist. `found` is False if the row exists but no
+        post with a matching `id_key` was found in `array_key` — checked
+        explicitly rather than inferred from `old_value` being None, since
+        a genuinely-missing metric (old_value legitimately None on a post
+        that *does* exist) must not be mistaken for "no such post".
+        """
+        history = PageHistory.query.get(history_id)
+        if not history:
+            return None, False, None
+
+        data = history.data or {}
+        posts = list(data.get(array_key) or [])
+        match_index = None
+        for i, post in enumerate(posts):
+            if str(post.get(id_key)) == str(post_id):
+                match_index = i
+                break
+        if match_index is None:
+            return history, False, None
+
+        old_value = posts[match_index].get(metric_key)
+        # Rebuild every layer that changed — dict/list mutation in place
+        # isn't tracked by SQLAlchemy's JSONB change detection, only
+        # attribute reassignment is, so `data` itself must be a new object.
+        patched_post = dict(posts[match_index])
+        patched_post[metric_key] = value
+        posts[match_index] = patched_post
+        patched_data = dict(data)
+        patched_data[array_key] = posts
+        history.data = patched_data
+
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
+        return history, True, old_value
 
     @staticmethod
     def delete(history_id: int) -> bool:
@@ -222,7 +444,9 @@ class PageHistoryRepository:
         - posts (or platform-specific: updates, top_videos)
         - likes (posts[*].likes or similar)
         - comments (posts[*].comments or similar)
-        
+        - followers (profile-level follower/subscriber count; see
+          validate_data_structure)
+
         Returns:
             list[dict]: [
                 {

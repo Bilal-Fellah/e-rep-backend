@@ -14,12 +14,19 @@ from api.routes.main import (
     SEVERITY_HIGH
 )
 from api.services.scraping_service import ScrapingService
+from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
+from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
+from api.services.tracked_keyword_service import TrackedKeywordError, TrackedKeywordService
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.utils.api_key_auth import require_api_key
 from api.utils.permissions import require_auth
 from api.models.comment_model import db
 # Import new model so Alembic/Flask-Migrate picks it up for migrations
 from api.models.scraping_post_result_model import ScrapingPostResult  # noqa: F401
+from api.models.scraper_credential_model import ScraperCredential  # noqa: F401
+from api.models.scrape_trigger_request_model import ScrapeTriggerRequest  # noqa: F401
+from api.models.tracked_keyword_model import TrackedKeyword  # noqa: F401
+from api.models.keyword_mention_model import KeywordMention  # noqa: F401
 
 
 scraping_bp = Blueprint("scraping", __name__, url_prefix="/api/scraping")
@@ -107,12 +114,16 @@ def get_profiles():
 @require_api_key
 def get_apify_profiles():
     """
-    Get profiles that failed scraping validation from yesterday 10pm UTC until now.
-    Used by Apify fallback scraper to retry failed profiles.
-    
+    Get profiles whose most recent scrape came back incomplete, from
+    yesterday 10pm UTC until now (see PageHistoryRepository.validate_data_structure
+    for exactly what "incomplete" checks). This is a general validation
+    result, not an Apify-specific one -- the Apify fallback pipeline is
+    today's only consumer, but it decides on its own whether/when that's
+    worth a paid retry; this endpoint just reports what's missing.
+
     Query Parameters:
         - platform (optional): Filter by platform (instagram, facebook, x, tiktok, linkedin, youtube)
-    
+
     Returns:
         200: {
             "success": true,
@@ -120,7 +131,7 @@ def get_apify_profiles():
                 "profiles": list[dict],  # [{name, url, platform, entity_id, entity_name}, ...]
                 "count": int,
                 "platform": str,
-                "scraping_issues": list[str]  # List of detected issues (e.g., ["posts", "likes", "comments"])
+                "scraping_issues": list[str]  # e.g. ["posts", "likes", "comments", "followers"]
             }
         }
         400: Invalid query parameters
@@ -395,6 +406,175 @@ def insert_comments():
         db.session.rollback()
         
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during comment insertion")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/own_scraper/profiles", methods=["GET"])
+@require_api_key
+def fetch_own_scraper_profiles():
+    """
+    Fetch accounts whose profile info is due for a refresh, with an
+    optional platform filter, and create a scraping session. Mirrors
+    /posts's envelope and behavior -- see api/docs/scraping_profiles.md.
+
+    Deliberately NOT at plain /profiles: that path already exists upstream
+    (ScrapingService.get_profiles_for_scraping, added independently) with a
+    different response shape and no session tracking -- it's the data
+    source for the Apify fallback pipeline, not this one. This route is
+    namespaced under /own_scraper/ to avoid silently changing what /profiles
+    returns for whatever already depends on it, since these two now solve
+    genuinely different problems on the same resource rather than being
+    interchangeable. See api/docs/scraping_profiles.md's note on this.
+
+    Query Parameters:
+        - platform (required): Only 'instagram' is supported today.
+        - start_date, recorded_start_date, recorded_end_date (optional):
+          accepted for client contract parity, not currently used to filter
+          (see ScrapingService.fetch_profiles_for_scraping's docstring).
+
+    Returns:
+        200: {
+            "success": true,
+            "data": {
+                "session_id": str,
+                "profiles": list[{"account_id": str, "page_id": str, "url": str}],
+                "count": int,
+                "total_available": int
+            }
+        }
+        400: Invalid/missing platform
+        401: Missing or invalid API key
+        500: Database error
+    """
+    try:
+        platform = request.args.get("platform")
+        start_date = request.args.get("start_date")
+        recorded_start_date = request.args.get("recorded_start_date") or request.args.get("recorded_start")
+        recorded_end_date = request.args.get("recorded_end_date") or request.args.get("recorded_end")
+
+        result = ScrapingService.fetch_profiles_for_scraping(
+            platform=platform,
+            start_date=start_date,
+            recorded_start_date=recorded_start_date,
+            recorded_end_date=recorded_end_date,
+        )
+
+        return success_response(result, 200)
+
+    except ValueError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid query parameters")
+        return error_response(str(e), 400)
+
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during profile fetch")
+        return db_error_response(500)
+
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during profile fetch")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/profile-info", methods=["POST"])
+@require_api_key
+def insert_profile_info():
+    """
+    Insert scraped profile records in bulk.
+
+    Request Body:
+        {
+            "session_id": str (optional),
+            "profiles": [
+                {
+                    "page_id": str,
+                    "platform": str,
+                    "account_id": str,
+                    ... every other field the scraper captured (followers,
+                    biography, profile_image_link, posts, highlights, ...) ...
+                }
+            ],
+            "profile_results": [
+                {"page_id": str, "platform": str, "account_id": str}
+            ] (optional -- every account actually visited this batch,
+               scraped or not, so it isn't re-served on the next fetch)
+        }
+
+    Returns:
+        200: {
+            "success": true,
+            "data": {"session_id": str, "inserted": int, "skipped": int, "total": int}
+        }
+        400: Invalid request body or validation failure
+        401: Missing or invalid API key
+        500: Database error (transaction rolled back)
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return error_response("Invalid request payload", 400)
+
+        profiles = data.get("profiles", [])
+        session_id = data.get("session_id")
+        profile_results = data.get("profile_results")
+
+        if not isinstance(profiles, list):
+            log_route_error(
+                TypeError("profiles must be an array"),
+                SEVERITY_LOW,
+                400,
+                "Invalid request data"
+            )
+            return error_response("profiles must be an array", 400)
+
+        if profile_results is not None and not isinstance(profile_results, list):
+            log_route_error(
+                TypeError("profile_results must be an array"),
+                SEVERITY_LOW,
+                400,
+                "Invalid request data"
+            )
+            return error_response("profile_results must be an array", 400)
+
+        if profile_results:
+            for idx, pr in enumerate(profile_results):
+                for field in ("page_id", "platform", "account_id"):
+                    if not pr.get(field):
+                        return error_response(
+                            f"profile_results[{idx}] missing required field '{field}'", 400
+                        )
+
+        result = ScrapingService.insert_profile_batch(
+            profiles, session_id, profile_results=profile_results
+        )
+
+        return success_response(result, 200)
+
+    except ValueError as e:
+        db.session.rollback()
+        log_route_error(e, SEVERITY_LOW, 400, "Validation failed")
+        return error_response(str(e), 400)
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+
+        data = request.get_json(silent=True) or {}
+        session_id = data.get("session_id")
+        if session_id:
+            try:
+                ScrapingSessionRepository.update_status(
+                    session_id,
+                    "failed",
+                    error_message=str(e)
+                )
+            except Exception:
+                pass  # Best effort -- don't fail if session update fails
+
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error during profile insertion")
+        return db_error_response(500)
+
+    except Exception as e:
+        db.session.rollback()
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during profile insertion")
         return server_error_response(500)
 
 
@@ -772,5 +952,225 @@ def get_today_posts_status():
     
     except Exception as e:
         log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error during today status fetch")
+        return server_error_response(500)
+
+
+# ---------------------------------------------------------------------------
+# Scraper credentials -- session cookies for platforms that require a
+# logged-in session (LinkedIn today). Managed from Brendex Admin via
+# /api/admin/scraper-credentials (admin_routes.py, JWT-gated, values
+# masked); these two are api-key-gated like the rest of this blueprint,
+# for the VPS scraper itself to fetch the real value and report back
+# whether it still works. See api/models/scraper_credential_model.py.
+# ---------------------------------------------------------------------------
+
+@scraping_bp.route("/credentials/<platform>", methods=["GET"])
+@require_api_key
+def get_scraper_credential(platform):
+    """
+    The raw stored credential for `platform` (currently: the cookie jar).
+    Not exposed anywhere admin-facing -- see ScraperCredentialService.
+
+    Query Parameters:
+        - credential_type (optional, default 'cookies')
+
+    Returns:
+        200: {"success": true, "data": {"platform": str, "credential_type": str, "value": ...}}
+        400: Unsupported platform/credential_type, or nothing stored yet
+        401: Missing or invalid API key
+    """
+    try:
+        credential_type = request.args.get("credential_type", "cookies")
+        value = ScraperCredentialService.get_raw_for_scraper(platform, credential_type)
+        return success_response({"platform": platform, "credential_type": credential_type, "value": value})
+    except ScraperCredentialError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid scraper credential request")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error fetching scraper credential")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error fetching scraper credential")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/credentials/<platform>/report-check", methods=["POST"])
+@require_api_key
+def report_scraper_credential_check(platform):
+    """
+    Record the outcome of the scraper's own real run against `platform`,
+    the active freshness signal shown in Brendex Admin. Call this once per
+    run that actually used the credential, not as a separate synthetic
+    health check.
+
+    Body: {"status": "ok"|"auth_failed"|"error", "detail": str (optional),
+           "credential_type": str (optional, default "cookies")}
+
+    Returns:
+        200: {"success": true, "data": {...masked credential row...}}
+        400: Missing/invalid status, or nothing stored yet for this platform
+        401: Missing or invalid API key
+    """
+    try:
+        payload = request.get_json() or {}
+        status = payload.get("status")
+        if not status:
+            return error_response("Missing required field: 'status'.", 400)
+
+        result = ScraperCredentialService.report_check(
+            platform=platform,
+            status=status,
+            detail=payload.get("detail"),
+            credential_type=payload.get("credential_type", "cookies"),
+        )
+        return success_response(result)
+    except ScraperCredentialError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid scraper credential check report")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error reporting scraper credential check")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error reporting scraper credential check")
+        return server_error_response(500)
+
+
+# ---------------------------------------------------------------------------
+# Manual scrape triggers -- queued from Brendex Admin via
+# /api/admin/scraping/trigger (admin_routes.py, JWT-gated). These two are
+# api-key-gated like the rest of this blueprint, for the VPS-side poller
+# (trigger_watcher.py) to claim the oldest pending request and report back
+# what happened when it ran. See api/models/scrape_trigger_request_model.py.
+# ---------------------------------------------------------------------------
+
+@scraping_bp.route("/trigger-requests/next", methods=["GET"])
+@require_api_key
+def claim_next_trigger_request():
+    """
+    Atomically claim the oldest pending manual-trigger request, if any.
+    Meant to be polled every ~30s by the VPS watcher.
+
+    Returns:
+        200: {"success": true, "data": {"trigger": {...} | null}}
+        401: Missing or invalid API key
+    """
+    try:
+        result = ScrapeTriggerService.claim_next_pending()
+        return success_response({"trigger": result})
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error claiming trigger request")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error claiming trigger request")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/trigger-requests/<int:request_id>/report", methods=["POST"])
+@require_api_key
+def report_trigger_result(request_id):
+    """
+    Record the outcome of a manually-triggered scrape run.
+
+    Body: {"status": "done"|"failed", "detail": str (optional)}
+
+    Returns:
+        200: {"success": true, "data": {...trigger row...}}
+        400: Missing/invalid status, or no such request id
+        401: Missing or invalid API key
+    """
+    try:
+        payload = request.get_json() or {}
+        status = payload.get("status")
+        if not status:
+            return error_response("Missing required field: 'status'.", 400)
+
+        result = ScrapeTriggerService.report_result(
+            request_id=request_id,
+            status=status,
+            detail=payload.get("detail"),
+        )
+        return success_response(result)
+    except ScrapeTriggerError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid trigger-request report")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error reporting trigger result")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error reporting trigger result")
+        return server_error_response(500)
+
+
+# ---------------------------------------------------------------------------
+# TikTok keyword-search mentions -- clients manage their own watchlist via
+# /api/data/keywords (JWT-gated, routes/data/keywords.py). These two are
+# api-key-gated like the rest of this blueprint, for the VPS's scheduled
+# keyword-search pass (tiktok_scraper's search mode) to fetch what to search
+# for and report matches back. See api/models/tracked_keyword_model.py.
+# ---------------------------------------------------------------------------
+
+@scraping_bp.route("/keyword-search/keywords", methods=["GET"])
+@require_api_key
+def get_tracked_keywords():
+    """
+    Every currently tracked keyword for `platform`, across all users.
+    Polled once per scheduled keyword-search pass -- no claim/lock semantics,
+    re-searching the same keyword every pass is expected.
+
+    Query Parameters:
+        - platform (required): e.g. "tiktok"
+
+    Returns:
+        200: {"success": true, "data": {"keywords": list[dict]}}
+        400: Missing platform
+        401: Missing or invalid API key
+    """
+    try:
+        platform = request.args.get("platform")
+        if not platform:
+            return error_response("Missing required query parameter: 'platform'.", 400)
+        keywords = TrackedKeywordService.list_keywords_for_platform(platform)
+        return success_response({"keywords": keywords})
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error fetching tracked keywords")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error fetching tracked keywords")
+        return server_error_response(500)
+
+
+@scraping_bp.route("/keyword-search/keywords/<int:keyword_id>/mentions", methods=["POST"])
+@require_api_key
+def report_keyword_mentions(keyword_id: int):
+    """
+    Record TikTok videos matching a tracked keyword found on this pass.
+    Duplicates (already-recorded video_id) are silently skipped.
+
+    Body: {"mentions": [{"video_id": str, "video_url": str,
+           "author_username": str (optional), "caption": str (optional),
+           "thumbnail_url": str (optional), "like_count": int (optional),
+           "comment_count": int (optional), "posted_at": str ISO (optional)}]}
+
+    Returns:
+        200: {"success": true, "data": {"inserted": int}}
+        400: Missing/invalid body, or no such keyword id
+        401: Missing or invalid API key
+    """
+    try:
+        payload = request.get_json() or {}
+        mentions = payload.get("mentions")
+        if not isinstance(mentions, list):
+            return error_response("'mentions' must be an array.", 400)
+
+        inserted = TrackedKeywordService.record_mentions(keyword_id, mentions)
+        return success_response({"inserted": inserted})
+    except TrackedKeywordError as e:
+        log_route_error(e, SEVERITY_LOW, 400, "Invalid keyword-mentions report")
+        return error_response(str(e), 400)
+    except SQLAlchemyError as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Database error recording keyword mentions")
+        return db_error_response(500)
+    except Exception as e:
+        log_route_error(e, SEVERITY_HIGH, 500, "Unexpected error recording keyword mentions")
         return server_error_response(500)
 

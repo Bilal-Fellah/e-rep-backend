@@ -3,7 +3,7 @@ Unit tests for PageHistoryRepository.validate_data_structure() helper function.
 Tests platform-specific JSONB validation for missing keys.
 """
 import pytest
-from datetime import date, datetime, time
+from datetime import datetime, timedelta
 from uuid import uuid4
 from api.repositories.page_history_repository import PageHistoryRepository
 from api.models import PageHistory, Page
@@ -15,8 +15,9 @@ class TestValidateDataStructure:
 
     # Test Instagram platform
     def test_instagram_valid_data_structure(self):
-        """Valid Instagram data with posts, likes, and comments should return empty list."""
+        """Valid Instagram data with posts, likes, comments, and followers should return empty list."""
         data = {
+            "followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -38,15 +39,17 @@ class TestValidateDataStructure:
         assert result == ["posts"]
 
     def test_instagram_empty_posts_array(self):
-        """Instagram data with empty posts array should return ['posts (empty)']."""
+        """Instagram data with empty posts array should return ['posts (empty)'] plus
+        'followers' since this fixture has no follower count either."""
         data = {
             "posts": []
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert result == ["posts (empty)"]
+        assert result == ["posts (empty)", "followers"]
 
     def test_instagram_missing_likes_field(self):
-        """Instagram post without likes field should return ['likes']."""
+        """Instagram post without likes field should return ['likes'] plus
+        'followers' since this fixture has no follower count either."""
         data = {
             "posts": [
                 {
@@ -56,10 +59,11 @@ class TestValidateDataStructure:
             ]
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert result == ["likes"]
+        assert result == ["likes", "followers"]
 
     def test_instagram_missing_comments_field(self):
-        """Instagram post without comments field should return ['comments']."""
+        """Instagram post without comments field should return ['comments'] plus
+        'followers' since this fixture has no follower count either."""
         data = {
             "posts": [
                 {
@@ -69,10 +73,11 @@ class TestValidateDataStructure:
             ]
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert result == ["comments"]
+        assert result == ["comments", "followers"]
 
     def test_instagram_missing_both_engagement_fields(self):
-        """Instagram post without likes and comments should return both."""
+        """Instagram post without likes and comments should return both, plus
+        'followers' since this fixture has no follower count either."""
         data = {
             "posts": [
                 {
@@ -82,12 +87,13 @@ class TestValidateDataStructure:
             ]
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert set(result) == {"likes", "comments"}
+        assert set(result) == {"likes", "comments", "followers"}
 
     # Test TikTok platform (uses top_videos)
     def test_tiktok_valid_data_structure(self):
-        """Valid TikTok data with top_videos should return empty list."""
+        """Valid TikTok data with top_videos and followers should return empty list."""
         data = {
+            "followers": 50000,
             "top_videos": [
                 {
                     "video_id": "123",
@@ -111,6 +117,7 @@ class TestValidateDataStructure:
     def test_tiktok_supports_digg_count_variation(self):
         """TikTok should recognize diggCount as a valid likes field."""
         data = {
+            "followers": 50000,
             "top_videos": [
                 {
                     "video_id": "123",
@@ -124,8 +131,9 @@ class TestValidateDataStructure:
 
     # Test LinkedIn platform (uses updates)
     def test_linkedin_valid_data_structure(self):
-        """Valid LinkedIn data with updates should return empty list."""
+        """Valid LinkedIn data with updates and followers should return empty list."""
         data = {
+            "followers": 2000,
             "updates": [
                 {
                     "update_id": "123",
@@ -148,8 +156,9 @@ class TestValidateDataStructure:
 
     # Test YouTube platform (uses top_videos)
     def test_youtube_valid_data_structure(self):
-        """Valid YouTube data with top_videos should return empty list."""
+        """Valid YouTube data with top_videos and subscribers should return empty list."""
         data = {
+            "subscribers": 100000,
             "top_videos": [
                 {
                     "video_id": "abc123",
@@ -172,8 +181,9 @@ class TestValidateDataStructure:
 
     # Test X (Twitter) platform
     def test_x_valid_data_structure(self):
-        """Valid X (Twitter) data with posts should return empty list."""
+        """Valid X (Twitter) data with posts and followers should return empty list."""
         data = {
+            "followers": 500,
             "posts": [
                 {
                     "tweet_id": "123",
@@ -187,8 +197,9 @@ class TestValidateDataStructure:
 
     # Test Facebook platform
     def test_facebook_valid_data_structure(self):
-        """Valid Facebook data with posts should return empty list."""
+        """Valid Facebook data with posts and page_followers should return empty list."""
         data = {
+            "page_followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -204,6 +215,7 @@ class TestValidateDataStructure:
     def test_likes_count_variation(self):
         """Should recognize likesCount as a valid likes field."""
         data = {
+            "followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -218,6 +230,7 @@ class TestValidateDataStructure:
     def test_like_count_variation(self):
         """Should recognize likeCount as a valid likes field."""
         data = {
+            "page_followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -231,28 +244,32 @@ class TestValidateDataStructure:
 
     # Test edge cases
     def test_null_data_input(self):
-        """Null data should return missing posts key."""
+        """Null data should return missing posts key, plus 'followers' since
+        there is no data at all to have a follower count either."""
         result = PageHistoryRepository.validate_data_structure(None, "instagram")
-        assert result == ["posts"]
+        assert result == ["posts", "followers"]
 
     def test_posts_is_not_array(self):
-        """Posts key with non-array value should return ['posts']."""
+        """Posts key with non-array value should return ['posts'] plus
+        'followers' since this fixture has no follower count either."""
         data = {
             "posts": "not an array"
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert result == ["posts"]
+        assert result == ["posts", "followers"]
 
     def test_posts_is_dict_not_list(self):
-        """Posts key with dict value should return ['posts']."""
+        """Posts key with dict value should return ['posts'] plus 'followers'
+        since this fixture has no follower count either."""
         data = {
             "posts": {"post_id": "123"}
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert result == ["posts"]
+        assert result == ["posts", "followers"]
 
     def test_engagement_fields_with_null_values(self):
-        """Engagement fields with null values should be treated as missing."""
+        """Engagement fields with null values should be treated as missing,
+        plus 'followers' since this fixture has no follower count either."""
         data = {
             "posts": [
                 {
@@ -263,11 +280,12 @@ class TestValidateDataStructure:
             ]
         }
         result = PageHistoryRepository.validate_data_structure(data, "instagram")
-        assert set(result) == {"likes", "comments"}
+        assert set(result) == {"likes", "comments", "followers"}
 
     def test_engagement_fields_with_zero_values(self):
         """Engagement fields with zero values are valid (0 is not None)."""
         data = {
+            "followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -282,6 +300,7 @@ class TestValidateDataStructure:
     def test_multiple_posts_only_checks_first(self):
         """Validation should only check the first post in the array."""
         data = {
+            "followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -298,8 +317,10 @@ class TestValidateDataStructure:
         assert result == []  # First post is valid, so result is empty
 
     def test_unknown_platform_defaults_to_posts(self):
-        """Unknown platform should default to 'posts' key."""
+        """Unknown platform should default to 'posts' key, and to the
+        generic 'followers' key for the follower check too."""
         data = {
+            "followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -314,6 +335,7 @@ class TestValidateDataStructure:
     def test_case_sensitive_platform_names(self):
         """Platform names should be case-sensitive (lowercase expected)."""
         data = {
+            "followers": 1000,
             "posts": [
                 {
                     "post_id": "123",
@@ -343,6 +365,7 @@ class TestGetFailedPagesForToday:
         with app.app_context():
             # Create a valid page history record for today
             valid_data = {
+                "followers": 1000,
                 "posts": [
                     {
                         "post_id": "123",
@@ -354,7 +377,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=valid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -373,7 +396,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -399,7 +422,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -422,7 +445,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -440,7 +463,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -463,12 +486,12 @@ class TestGetFailedPagesForToday:
             history_1 = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data_1,
-                recorded_at=datetime.combine(date.today(), time(10, 0))
+                recorded_at=datetime.utcnow() - timedelta(hours=2)
             )
             history_2 = PageHistory(
                 page_id=sample_page_tiktok.uuid,
                 data=invalid_data_2,
-                recorded_at=datetime.combine(date.today(), time(14, 0))
+                recorded_at=datetime.utcnow() - timedelta(hours=1)
             )
             db.session.add_all([history_1, history_2])
             db.session.commit()
@@ -490,7 +513,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page_tiktok.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -510,7 +533,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page_linkedin.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()
@@ -522,16 +545,15 @@ class TestGetFailedPagesForToday:
     def test_only_includes_todays_records(self, app, sample_page):
         """Should only return today's failed records, not yesterday's."""
         with app.app_context():
-            from datetime import timedelta
-            
-            # Create invalid record for yesterday
-            yesterday = date.today() - timedelta(days=1)
+            # The window is "yesterday 22:00 UTC to now" (see
+            # get_failed_pages_for_today), so 2 days back is safely before
+            # its start regardless of what time of day this test runs.
             invalid_data = {"posts": []}
-            
+
             history_yesterday = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(yesterday, time(12, 0))
+                recorded_at=datetime.utcnow() - timedelta(days=2)
             )
             db.session.add(history_yesterday)
             db.session.commit()
@@ -546,7 +568,7 @@ class TestGetFailedPagesForToday:
             history = PageHistory(
                 page_id=sample_page.uuid,
                 data=invalid_data,
-                recorded_at=datetime.combine(date.today(), time(12, 0))
+                recorded_at=datetime.utcnow()
             )
             db.session.add(history)
             db.session.commit()

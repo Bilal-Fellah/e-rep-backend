@@ -69,7 +69,13 @@ def test_pages_with_failed_history(app, test_entities):
     Covers multiple platforms and various failure scenarios.
     """
     with app.app_context():
-        today = datetime.utcnow().replace(hour=10, minute=0, second=0, microsecond=0)
+        # The route this fixture feeds (get_failed_pages_for_today) checks a
+        # rolling "yesterday 22:00 UTC to now" window, not a calendar day --
+        # a fixed wall-clock hour lands outside that window whenever the
+        # suite runs before that hour UTC. Anchor to "now" instead, which is
+        # always inside it by construction (the route's own end_time is a
+        # fresh datetime.utcnow() captured microseconds later).
+        today = datetime.utcnow()
         
         # Instagram page - active entity, missing likes and comments in posts
         instagram_page = Page(
@@ -308,10 +314,16 @@ class TestApifyFallbackE2E:
         
         # Verify scraping issues are correctly identified
         # Instagram: missing likes and comments
-        # Facebook: missing posts
+        # Facebook: missing posts, AND missing followers -- its fixture sets
+        # "followers": 2000, but validate_data_structure reads Facebook's
+        # follower count under "page_followers" (see FOLLOWERS_KEY_BY_PLATFORM),
+        # so this fixture's value is under the wrong key and correctly counts
+        # as missing. Every other platform here (Instagram/TikTok/X/LinkedIn)
+        # uses the generic "followers" key, which does match what's checked
+        # for them, so "followers" in scraping_issues traces to Facebook only.
         # TikTok: empty top_videos
         assert len(scraping_issues) > 0
-        expected_issues = {"likes", "comments", "posts", "top_videos (empty)"}
+        expected_issues = {"likes", "comments", "posts", "top_videos (empty)", "followers"}
         assert set(scraping_issues).issubset(expected_issues)
     
     def test_e2e_platform_filter_instagram(self, client, auth_headers, test_pages_with_failed_history):
@@ -609,7 +621,10 @@ class TestApifyFallbackEdgeCases:
         Only today's failures should be returned.
         """
         with app.app_context():
-            yesterday = datetime.utcnow() - timedelta(days=1)
+            # 2 days back, not 1 -- the window is "yesterday 22:00 UTC to
+            # now", and "exactly 24h ago" lands inside it (not outside, as
+            # this test needs) whenever run between 22:00-23:59 UTC.
+            yesterday = datetime.utcnow() - timedelta(days=2)
             
             # Create page with failed history from yesterday
             old_page = Page(
@@ -676,12 +691,15 @@ class TestApifyFallbackEdgeCases:
             
             page_id = page.uuid
             
-            # Create multiple history records for today with missing data
-            for hour in [8, 12, 16]:
+            # Create multiple history records for today with missing data.
+            # Offsets from "now" rather than fixed wall-clock hours -- see
+            # the note on the fixture above; a .replace(hour=16) lands in
+            # the future, and outside the window, whenever run before 16:00 UTC.
+            for hours_ago in [4, 2, 0]:
                 history = PageHistory(
                     page_id=page_id,
                     data={"followers": 1000},  # Missing posts
-                    recorded_at=today.replace(hour=hour, minute=0)
+                    recorded_at=today - timedelta(hours=hours_ago)
                 )
                 db.session.add(history)
             db.session.commit()

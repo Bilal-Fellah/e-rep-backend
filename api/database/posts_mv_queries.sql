@@ -49,7 +49,13 @@ FROM (
         ph.recorded_at,
         post->>'id'                                             AS post_id,
         COALESCE((post->>'datetime')::timestamp, ph.recorded_at) AS created_at,
-        post->>'url'                                            AS url,
+        -- Bright Data's own extraction occasionally can't resolve a post's
+        -- shortcode and returns the literal string "undefined" baked into
+        -- the URL (confirmed: the same broken value recurs identically for
+        -- the same post across multiple days, so it's a source-side defect,
+        -- not a transient one -- retrying/re-scraping won't fix it). NULL
+        -- it out here rather than surface a link that looks real but 404s.
+        NULLIF(post->>'url', 'https://www.instagram.com/p/undefined')  AS url,
         COALESCE((post->>'likes')::bigint, (post->>'likes_count')::bigint, 0) AS likes,
         COALESCE((post->>'comments')::bigint, (post->>'comments_count')::bigint, 0) AS comments,
         NULL::bigint                                            AS shares,

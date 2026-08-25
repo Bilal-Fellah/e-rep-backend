@@ -15,6 +15,12 @@ from api.repositories.user_repository import UserRepository
 from api.repositories.preapproved_mail_repository import PreapprovedMailRepository
 from api.repositories.subscription_repository import SubscriptionRepository
 from api.services.admin_service import AdminService
+from api.services.correction_service import CorrectionError, CorrectionService
+from api.services.data_integrity_service import DataIntegrityService
+from api.services.orchestration_report_service import OrchestrationReportService
+from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
+from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
+from api.services.tracked_keyword_service import TrackedKeywordService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
 from api.utils.datetime_utils import iso_utc
@@ -528,6 +534,205 @@ def get_logs():
     return success_response(result)
 
 
+@admin_bp.route("/corrections/targets", methods=["GET"])
+@require_role("admin")
+def get_correction_targets():
+    """Whitelist of what can be corrected, for the admin UI to render a form from."""
+    return success_response({"targets": CorrectionService.list_targets()})
+
+
+@admin_bp.route("/corrections", methods=["GET"])
+@require_role("admin")
+def list_corrections():
+    """History of applied corrections, newest first."""
+    target_type = request.args.get("target_type") or None
+    valid_target_types = CorrectionService.valid_target_types()
+    if target_type and target_type not in valid_target_types:
+        return error_response(f"target_type must be one of {valid_target_types}.", 400)
+
+    try:
+        limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    except ValueError:
+        return error_response("limit must be an integer.", 400)
+    try:
+        offset = max(0, int(request.args.get("offset", 0)))
+    except ValueError:
+        return error_response("offset must be an integer.", 400)
+
+    rows, total = CorrectionService.list_corrections(target_type=target_type, limit=limit, offset=offset)
+    return success_response(
+        {
+            "corrections": [
+                {
+                    "id": row.id,
+                    "admin_user_id": row.admin_user_id,
+                    "target_type": row.target_type,
+                    "target_id": row.target_id,
+                    "field": row.field,
+                    "old_value": row.old_value,
+                    "new_value": row.new_value,
+                    "reason": row.reason,
+                    "created_at": iso_utc(row.created_at),
+                }
+                for row in rows
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    )
+
+
+@admin_bp.route("/corrections", methods=["POST"])
+@require_role("admin")
+def create_correction():
+    """Apply a whitelisted correction to one row/field and log it to the
+    data_corrections audit trail in the same transaction."""
+    payload = request.get_json() or {}
+
+    target_type = payload.get("target_type")
+    target_id = payload.get("target_id")
+    field = payload.get("field")
+    reason = payload.get("reason")
+
+    if not target_type:
+        return error_response("Missing required field: 'target_type'.", 400)
+    if target_id in (None, ""):
+        return error_response("Missing required field: 'target_id'.", 400)
+    if not field:
+        return error_response("Missing required field: 'field'.", 400)
+    if "new_value" not in payload:
+        return error_response("Missing required field: 'new_value'.", 400)
+    if not reason:
+        return error_response("Missing required field: 'reason'.", 400)
+
+    try:
+        audit, _row = CorrectionService.apply_correction(
+            target_type=target_type,
+            target_id=target_id,
+            field=field,
+            new_value=payload.get("new_value"),
+            reason=reason,
+            admin_user_id=getattr(request, "user_id", None),
+        )
+    except CorrectionError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(
+        {
+            "id": audit.id,
+            "target_type": audit.target_type,
+            "target_id": audit.target_id,
+            "field": audit.field,
+            "old_value": audit.old_value,
+            "new_value": audit.new_value,
+            "reason": audit.reason,
+            "created_at": iso_utc(audit.created_at),
+        }
+    )
+
+
+@admin_bp.route("/data-integrity/summary", methods=["GET"])
+@require_role("admin")
+def get_data_integrity_summary():
+    """Per-platform null-rate snapshot for profile fields (followers) and
+    post metrics (likes/comments/shares), plus a few ready-to-correct
+    sample rows. Read-only — see /corrections to actually fix a gap."""
+    return success_response(DataIntegrityService.get_summary())
+
+
+@admin_bp.route("/data-integrity/daily", methods=["GET"])
+@require_role("admin")
+def get_data_integrity_daily():
+    """Same null rates as /summary, broken down by day so a bad scrape run
+    on a specific date is visible instead of averaged away."""
+    try:
+        days = int(request.args.get("days", 14))
+    except ValueError:
+        return error_response("days must be an integer.", 400)
+    return success_response(DataIntegrityService.get_daily(days=days))
+
+
+@admin_bp.route("/data-integrity/validation-failures", methods=["GET"])
+@require_role("admin")
+def get_data_integrity_validation_failures():
+    """Live output of the validation engine (PageHistoryRepository.
+    validate_data_structure) — which pages' most recent scrape (since
+    yesterday 10pm UTC) came back missing data, and what's missing.
+
+    This is the same check GET /api/scraping/apify_profile_scraping uses,
+    surfaced here so a human can see it directly rather than only through
+    whatever automated consumer acts on it. Purely informational — looking
+    at this triggers nothing downstream."""
+    platform = request.args.get("platform")
+    valid_platforms = ["facebook", "instagram", "x", "tiktok", "linkedin", "youtube"]
+    if platform and platform not in valid_platforms:
+        return error_response(f"platform must be one of {valid_platforms}.", 400)
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        return error_response("limit must be an integer.", 400)
+    return success_response(
+        DataIntegrityService.get_validation_failures(platform=platform, limit=limit)
+    )
+
+
+@admin_bp.route("/orchestration/summary", methods=["GET"])
+@require_role("admin")
+def get_orchestration_summary():
+    """Success/partial/failed rate and fallback cost per platform+domain
+    over the trailing window, from the scrape_attempts audit log written
+    by ScrapeOrchestratorService. This is the "is our paid data actually
+    available today" number — see api/docs/orchestration.md."""
+    try:
+        days = int(request.args.get("days", 7))
+    except ValueError:
+        return error_response("days must be an integer.", 400)
+    platform = request.args.get("platform")
+    domain = request.args.get("domain")
+    if domain and domain not in ("profile", "posts"):
+        return error_response("domain must be 'profile' or 'posts'.", 400)
+    return success_response(OrchestrationReportService.get_summary(days=days, platform=platform, domain=domain))
+
+
+@admin_bp.route("/orchestration/daily", methods=["GET"])
+@require_role("admin")
+def get_orchestration_daily():
+    """Same success/partial/failed counts as /summary, broken down by day."""
+    try:
+        days = int(request.args.get("days", 14))
+    except ValueError:
+        return error_response("days must be an integer.", 400)
+    platform = request.args.get("platform")
+    domain = request.args.get("domain")
+    if domain and domain not in ("profile", "posts"):
+        return error_response("domain must be 'profile' or 'posts'.", 400)
+    return success_response(OrchestrationReportService.get_daily(days=days, platform=platform, domain=domain))
+
+
+@admin_bp.route("/orchestration/attempts", methods=["GET"])
+@require_role("admin")
+def get_orchestration_attempts():
+    """Recent individual scrape attempts, newest first — for drilling into
+    *why* a platform's success rate dropped (which source failed, which
+    fields it was missing, whether a fallback recovered it)."""
+    platform = request.args.get("platform")
+    domain = request.args.get("domain")
+    final_status = request.args.get("status")
+    if final_status and final_status not in ("complete", "partial", "failed"):
+        return error_response("status must be one of 'complete', 'partial', 'failed'.", 400)
+    try:
+        limit = int(request.args.get("limit", 50))
+    except ValueError:
+        return error_response("limit must be an integer.", 400)
+    limit = max(1, min(limit, 200))
+    return success_response(
+        OrchestrationReportService.list_recent_attempts(
+            platform=platform, domain=domain, final_status=final_status, limit=limit
+        )
+    )
+
+
 @admin_bp.route("/overview", methods=["GET"])
 @require_role("admin")
 def get_overview():
@@ -564,3 +769,108 @@ def get_posts_created_at_stats():
     """
     stats = PostsCreatedAtService.get_missing_dates_stats()
     return success_response(stats)
+
+
+# ---------------------------------------------------------------------------
+# Scraper credentials (session cookies for platforms that require login --
+# LinkedIn today). Values are never returned through these routes, only
+# status/expiry -- see ScraperCredentialService for the masking and the
+# api-key-gated routes in scraping_routes.py that the VPS scraper itself
+# uses to fetch/report against the real value.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scraper-credentials", methods=["GET"])
+@require_role("admin")
+def list_scraper_credentials():
+    """One row per platform: cookie count, expiry state, and the last real
+    usage outcome reported by the scraper -- never the raw values."""
+    return success_response({"credentials": ScraperCredentialService.list_masked()})
+
+
+@admin_bp.route("/scraper-credentials", methods=["POST"])
+@require_role("admin")
+def upsert_scraper_credentials():
+    """Paste a freshly-exported cookie jar for a platform. Full replace,
+    not a merge -- see ScraperCredentialRepository.upsert."""
+    payload = request.get_json() or {}
+
+    platform = payload.get("platform")
+    value = payload.get("value")
+    credential_type = payload.get("credential_type", "cookies")
+
+    if not platform:
+        return error_response("Missing required field: 'platform'.", 400)
+    if value is None:
+        return error_response("Missing required field: 'value'.", 400)
+
+    try:
+        result = ScraperCredentialService.upsert(
+            platform=platform,
+            value=value,
+            credential_type=credential_type,
+            updated_by=getattr(request, "user_id", None),
+        )
+    except ScraperCredentialError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+# ---------------------------------------------------------------------------
+# Manual scrape triggers -- fire an own-scraper run (profile/comments) from
+# Brendex Admin without waiting for the next scheduled systemd timer. Just
+# queues a "pending" row; a poller on the VPS claims and runs it via the
+# api-key-gated routes in scraping_routes.py. See
+# api/models/scrape_trigger_request_model.py and ScrapeTriggerService for
+# exactly what's triggerable (own-scraper only -- not Bright Data/Apify).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scraping/trigger", methods=["POST"])
+@require_role("admin")
+def trigger_scrape():
+    """Queue a manual scrape run. Picked up by the VPS watcher within
+    ~30s; poll GET below for status."""
+    payload = request.get_json() or {}
+
+    platform = payload.get("platform")
+    mode = payload.get("mode")
+
+    if not platform:
+        return error_response("Missing required field: 'platform'.", 400)
+    if not mode:
+        return error_response("Missing required field: 'mode'.", 400)
+
+    try:
+        result = ScrapeTriggerService.request_trigger(
+            platform=platform,
+            mode=mode,
+            requested_by=getattr(request, "user_id", None),
+        )
+    except ScrapeTriggerError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/scraping/trigger", methods=["GET"])
+@require_role("admin")
+def list_scrape_triggers():
+    """Recent manual-trigger history and status, newest first."""
+    limit = request.args.get("limit", default=50, type=int)
+    return success_response({"triggers": ScrapeTriggerService.list_recent(limit)})
+
+
+# ---------------------------------------------------------------------------
+# Client-owned TikTok keyword watchlist -- read-only here for support/
+# debugging. Clients manage their own keywords via /api/data/keywords
+# (JWT-gated, routes/data/keywords.py); this just lets an admin see who's
+# tracking what and how many mentions each keyword has found so far.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/keywords", methods=["GET"])
+@require_role("admin")
+def list_tracked_keywords():
+    """Every client-tracked keyword for `platform` (default tiktok), across
+    all users, with a mention count each."""
+    platform = request.args.get("platform", default="tiktok")
+    return success_response({"keywords": TrackedKeywordService.list_all_for_admin(platform)})

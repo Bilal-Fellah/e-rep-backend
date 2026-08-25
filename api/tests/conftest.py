@@ -18,6 +18,14 @@ import api.models.comment_model
 import api.models.scraping_session_model
 import api.models.preapproved_mail_model
 import api.models.subscription_model
+import api.models.data_correction_model
+import api.models.scrape_attempt_model
+import api.models.scraping_profile_result_model
+import api.models.scraping_post_result_model
+import api.models.scraper_credential_model
+import api.models.scrape_trigger_request_model
+import api.models.tracked_keyword_model
+import api.models.keyword_mention_model
 
 
 @pytest.fixture(scope="session")

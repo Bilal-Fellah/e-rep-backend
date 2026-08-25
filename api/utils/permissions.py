@@ -100,6 +100,11 @@ ROLE_PERMISSIONS = {
     "admin.grant_subscription": [UserRole.ADMIN.value],
     "admin.list_preapproved_mails": [UserRole.ADMIN.value],
     "admin.upsert_preapproved_mail": [UserRole.ADMIN.value],
+    "admin.get_correction_targets": [UserRole.ADMIN.value],
+    "admin.list_corrections": [UserRole.ADMIN.value],
+    "admin.create_correction": [UserRole.ADMIN.value],
+    "admin.get_data_integrity_summary": [UserRole.ADMIN.value],
+    "admin.get_data_integrity_daily": [UserRole.ADMIN.value],
 
     # Entity admin extras (in the data blueprint)
     "data.update_entity": [UserRole.ADMIN.value],
@@ -118,6 +123,12 @@ ROLE_PERMISSIONS = {
     "data.create_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.update_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.delete_alert_rule": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+
+    # Tracked keywords / mentions (user-facing)
+    "data.list_keywords": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.create_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.delete_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.list_keyword_mentions": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
 }
 
 # ============================================================================

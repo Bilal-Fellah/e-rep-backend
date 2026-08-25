@@ -1,13 +1,22 @@
 # Business workflows for scraping service.
+import uuid
 from datetime import datetime
 from api.repositories.comment_repository import CommentRepository
 from api.repositories.scraping_session_repository import ScrapingSessionRepository
 from api.repositories.post_repository import PostRepository
 from api.repositories.scraping_post_result_repository import ScrapingPostResultRepository
-from api.repositories.page_repository import PageRepository
 from api.repositories.page_history_repository import PageHistoryRepository
+from api.repositories.page_repository import PageRepository
+from api.repositories.scraping_profile_result_repository import ScrapingProfileResultRepository
 from api.utils.datetime_utils import iso_utc
 from api.utils.logging_utils import instrument_service_class
+
+# The own-scraper's profile-info flow (see api/docs/scraping_profiles.md)
+# only exists for Instagram today -- run_api_docker.sh explicitly refuses
+# MODE=profile for any other platform. Gate it here too rather than
+# silently accepting and mis-storing data if that ever changes upstream
+# without this being updated to match.
+PROFILE_SUPPORTED_PLATFORMS = ("instagram",)
 
 
 @instrument_service_class
@@ -669,5 +678,205 @@ class ScrapingService:
             "total_count": len(posts),
             "scraped_posts": scraped_posts,
             "pending_posts": pending_posts
+        }
+
+    # ── Profile-info flow ──────────────────────────────────────────────
+    # Counterpart to fetch_posts_for_scraping/insert_comment_batch above,
+    # for the own-scraper's *profile* pass (core/profile_api_flow.py on the
+    # scraper side) rather than its comment pass. See
+    # api/docs/scraping_profiles.md for the full contract this was built
+    # against -- the client-side code (core/api_client.py's
+    # fetch_profiles/insert_profiles) was read directly off the deployed
+    # scraper rather than guessed, since these routes previously didn't
+    # exist at all and every call the scraper made 404'd.
+
+    @staticmethod
+    def fetch_profiles_for_scraping(
+        platform: str,
+        start_date: str = None,
+        recorded_start_date: str = None,
+        recorded_end_date: str = None,
+    ) -> dict:
+        """
+        Fetch accounts whose profile info is due for a refresh, and create
+        a scraping session. The source rows are `pages` (not posts), and
+        "already handled today" is tracked via ScrapingProfileResult rather
+        than Comment/ScrapingPostResult.
+
+        `start_date`/`recorded_start_date`/`recorded_end_date` are accepted
+        for parity with the client, which always sends them (mirroring
+        fetch_posts's contract) -- but a page has no natural per-row
+        creation/content date the way a post does, so they aren't used to
+        filter here. Only `platform` and "not already handled today" are.
+
+        Returns:
+            dict: {
+                "session_id": str,
+                "profiles": list[{"account_id": str, "page_id": str, "url": str}],
+                "count": int,
+                "total_available": int
+            }
+        """
+        if not platform:
+            raise ValueError("platform is required to fetch profiles for scraping.")
+        if platform not in PROFILE_SUPPORTED_PLATFORMS:
+            raise ValueError(
+                f"Profile scraping isn't supported for platform '{platform}' yet "
+                f"(only {', '.join(PROFILE_SUPPORTED_PLATFORMS)} today)."
+            )
+
+        from datetime import timedelta
+
+        today = datetime.utcnow().date()
+        today_start = datetime.combine(today, datetime.min.time())
+        today_end = datetime.combine(today + timedelta(days=1), datetime.min.time())
+
+        pages = PageRepository.get_active_by_platform(platform)
+        total_available = len(pages)
+
+        done_page_ids = ScrapingProfileResultRepository.get_scraped_page_ids_in_range(
+            start_dt=today_start, end_dt=today_end, platform=platform
+        )
+        pending_pages = [p for p in pages if str(p.uuid) not in done_page_ids]
+
+        session = ScrapingSessionRepository.create(posts_fetched=len(pending_pages))
+
+        # account_id == page_id today (see ScrapingProfileResult's module
+        # docstring for why): this schema has no separate accounts table.
+        profiles = [
+            {"account_id": str(p.uuid), "page_id": str(p.uuid), "url": p.link}
+            for p in pending_pages
+        ]
+
+        return {
+            "session_id": session.session_id,
+            "profiles": profiles,
+            "count": len(profiles),
+            "total_available": total_available,
+        }
+
+    @staticmethod
+    def validate_profile_data(profile: dict) -> tuple[bool, str]:
+        """
+        Validate a single scraped profile record's routing fields.
+
+        Args:
+            profile: Profile dictionary (routing keys + whatever the
+                     scraper captured)
+
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        required_fields = ["page_id", "platform", "account_id"]
+        for field in required_fields:
+            if field not in profile or profile[field] is None:
+                return False, f"missing required field '{field}'"
+
+        if profile["platform"] not in PROFILE_SUPPORTED_PLATFORMS:
+            return False, (
+                f"unsupported platform '{profile['platform']}' for profile-info "
+                f"(only {', '.join(PROFILE_SUPPORTED_PLATFORMS)} today)"
+            )
+
+        return True, ""
+
+    @staticmethod
+    def insert_profile_batch(
+        profiles_data: list[dict],
+        session_id: str = None,
+        profile_results: list[dict] = None,
+    ) -> dict:
+        """
+        Validate and write a batch of scraped profile records into
+        pages_history, and record ScrapingProfileResult rows for every
+        account actually visited this run -- including ones only listed in
+        `profile_results` (visited but unscrapeable), so they're marked
+        done rather than re-served on the next fetch. Mirrors
+        insert_comment_batch's shape and its "reject the whole batch on the
+        first invalid entry" behavior (the external scraper already
+        defensively coerces null/missing fields before sending, precisely
+        because it expects that from this backend).
+
+        Args:
+            profiles_data: List of profile dictionaries (may be empty --
+                           e.g. a batch that was entirely unscrapeable)
+            session_id: Optional session ID to associate results with
+            profile_results: Optional list of {page_id, platform, account_id}
+                              for every account visited this batch, scraped
+                              or not
+
+        Returns:
+            dict: {"inserted": int, "skipped": int, "session_id": str, "total": int}
+        """
+        for idx, profile in enumerate(profiles_data):
+            is_valid, error_msg = ScrapingService.validate_profile_data(profile)
+            if not is_valid:
+                raise ValueError(f"Validation failed at profile index {idx}: {error_msg}")
+
+        inserted = 0
+        processed_keys = set()
+
+        for profile in profiles_data:
+            page_id_raw = profile["page_id"]
+            platform = profile["platform"]
+
+            # page_id arrives as a plain string (it came off JSON), but
+            # PageHistory.page_id is a UUID-typed column -- pass a real
+            # uuid.UUID rather than relying on a given driver being lenient
+            # about a bare string (SQLite's generic UUID emulation isn't;
+            # this surfaced as a test failure before it could surface as a
+            # production one). A malformed id fails this one profile's
+            # validation cleanly rather than however the DB layer would
+            # have reported a bad bind parameter.
+            try:
+                page_id = uuid.UUID(str(page_id_raw))
+            except (ValueError, AttributeError, TypeError):
+                raise ValueError(
+                    f"profile for page_id={page_id_raw!r} is not a valid UUID"
+                )
+
+            # Everything scraped is kept in pages_history.data as-is, minus
+            # the routing keys -- the scraper's own field names (followers,
+            # biography, profile_image_link, ...) already match what
+            # PageHistoryRepository's Instagram case-builders and
+            # scrape_validation_service.PROFILE_FIELD_MAP expect, so no
+            # remapping is needed here, only stripping the envelope.
+            data = {
+                k: v for k, v in profile.items()
+                if k not in ("page_id", "platform", "account_id")
+            }
+
+            PageHistoryRepository.create(
+                page_id=page_id,
+                data=data,
+                source="own_scraper",
+                source_meta={"cost_usd": 0.0},
+                commit=False,
+            )
+            inserted += 1
+            processed_keys.add((str(page_id_raw), platform))
+
+        if profile_results:
+            for pr in profile_results:
+                page_id = pr["page_id"]
+                platform = pr["platform"]
+                account_id = pr.get("account_id") or page_id
+                ScrapingProfileResultRepository.record(
+                    page_id=page_id,
+                    platform=platform,
+                    account_id=account_id,
+                    profile_inserted=(str(page_id), platform) in processed_keys,
+                    scraping_session_id=session_id,
+                    commit=False,
+                )
+
+        from api.models.comment_model import db
+        db.session.commit()
+
+        return {
+            "inserted": inserted,
+            "skipped": 0,
+            "session_id": session_id,
+            "total": inserted,
         }
 

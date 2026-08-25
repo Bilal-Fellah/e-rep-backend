@@ -1,6 +1,7 @@
 # Data-access methods for page repository.
 from api import db
 from api.models import Page
+from api.models.entity_model import Entity
 from api.utils.logging_utils import instrument_repository_class
 from sqlalchemy import func, select
 
@@ -10,11 +11,11 @@ class PageRepository:
     @staticmethod
     def get_by_id(page_id: int) -> Page | None:
         return Page.query.get(page_id)
-    
+
     @staticmethod
     def get_by_link(page_link: str) -> Page | None:
         return Page.query.filter_by(link=page_link).first()
-    
+
     @staticmethod
     def get_all() -> list[Page]:
         return Page.query.all()
@@ -23,6 +24,19 @@ class PageRepository:
     def get_by_platform(query_platform) -> list[Page]:
         return db.session.scalars(
             select(Page).where(Page.platform == query_platform)
+        ).all()
+
+    @staticmethod
+    def get_active_by_platform(platform: str) -> list[Page]:
+        """Pages on `platform` belonging to an entity flagged `to_scrape` —
+        the same "is this actually still being tracked" filter
+        trigger_request.py uses on the Bright Data side, so the own-scraper
+        profile fetch (ScrapingService.fetch_profiles_for_scraping) offers
+        the same roster rather than a different one."""
+        return db.session.scalars(
+            select(Page)
+            .join(Entity, Entity.id == Page.entity_id)
+            .where(Page.platform == platform, Entity.to_scrape.is_(True))
         ).all()
 
     @staticmethod

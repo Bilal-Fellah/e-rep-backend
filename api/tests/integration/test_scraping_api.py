@@ -214,9 +214,13 @@ class TestApifyProfileScraping:
             db.session.flush()
             
             # Create failed pages_history for active entity (missing comments)
+            # datetime.utcnow(), not datetime.now(): the route this feeds
+            # (get_failed_pages_for_today) windows on UTC ("yesterday 22:00
+            # UTC to now"), so a local-time value drifts outside that window
+            # by the local UTC offset near day boundaries.
             active_history = PageHistory(
                 page_id=active_page.uuid,
-                recorded_at=datetime.now(),
+                recorded_at=datetime.utcnow(),
                 data={
                     "posts": [
                         {
@@ -251,7 +255,7 @@ class TestApifyProfileScraping:
             # Create failed pages_history for inactive entity (missing likes)
             inactive_history = PageHistory(
                 page_id=inactive_page.uuid,
-                recorded_at=datetime.now(),
+                recorded_at=datetime.utcnow(),
                 data={
                     "posts": [
                         {
@@ -945,7 +949,6 @@ class TestGetTodayPostsStatus:
 
             res_data = data["data"]
             assert res_data["platform_filter"] == "youtube"
-
             assert res_data["total_count"] == 1
             assert res_data["scraped_count"] == 1
             assert res_data["pending_count"] == 0
@@ -1055,5 +1058,112 @@ class TestGetTodayPostsStatus:
             with app.app_context():
                 PostMV.query.filter(PostMV.post_id.in_([post_old_id, post_new_id])).delete()
                 db.session.commit()
+
+
+class TestProfileFlow:
+    """Integration tests for GET /api/scraping/own_scraper/profiles and
+    POST /api/scraping/profile-info — the profile-info counterpart to
+    TestFetchPosts/TestInsertComments above. See
+    api/docs/scraping_profiles.md for the contract this implements."""
+
+    def test_fetch_profiles_requires_auth(self, client):
+        response = client.get("/api/scraping/own_scraper/profiles?platform=instagram")
+        assert response.status_code == 401
+
+    def test_fetch_profiles_requires_platform(self, client, auth_headers):
+        response = client.get("/api/scraping/own_scraper/profiles", headers=auth_headers)
+        assert response.status_code == 400
+
+    def test_fetch_profiles_rejects_unsupported_platform(self, client, auth_headers):
+        response = client.get("/api/scraping/own_scraper/profiles?platform=tiktok", headers=auth_headers)
+        assert response.status_code == 400
+        assert "tiktok" in response.get_json()["error"]
+
+    def test_fetch_then_insert_profile_round_trip(self, client, auth_headers, app):
+        from api.models.entity_model import Entity
+        from api.models.page_model import Page
+        from api.models.page_history_model import PageHistory
+
+        with app.app_context():
+            entity = Entity(name="Profile Flow Test Co", type="company", to_scrape=True)
+            db.session.add(entity)
+            db.session.commit()
+            page = Page(
+                name="Profile Flow Page",
+                link="https://instagram.com/profile_flow_test_page",
+                platform="instagram",
+                entity_id=entity.id,
+            )
+            db.session.add(page)
+            db.session.commit()
+            page_id = str(page.uuid)
+
+        try:
+            fetch_resp = client.get("/api/scraping/own_scraper/profiles?platform=instagram", headers=auth_headers)
+            assert fetch_resp.status_code == 200
+            fetch_data = fetch_resp.get_json()["data"]
+            assert page_id in {p["page_id"] for p in fetch_data["profiles"]}
+            session_id = fetch_data["session_id"]
+
+            insert_resp = client.post(
+                "/api/scraping/profile-info",
+                headers=auth_headers,
+                json={
+                    "session_id": session_id,
+                    "profiles": [
+                        {
+                            "page_id": page_id,
+                            "platform": "instagram",
+                            "account_id": page_id,
+                            "followers": 4242,
+                            "biography": "integration test bio",
+                            "profile_image_link": "https://example/img.jpg",
+                        }
+                    ],
+                    "profile_results": [
+                        {"page_id": page_id, "platform": "instagram", "account_id": page_id}
+                    ],
+                },
+            )
+            assert insert_resp.status_code == 200
+            insert_data = insert_resp.get_json()["data"]
+            assert insert_data["inserted"] == 1
+
+            with app.app_context():
+                import uuid as uuid_mod
+
+                history = (
+                    PageHistory.query.filter_by(page_id=uuid_mod.UUID(page_id))
+                    .order_by(PageHistory.id.desc())
+                    .first()
+                )
+                assert history is not None
+                assert history.source == "own_scraper"
+                assert history.data["followers"] == 4242
+
+            # Fetching again today must now exclude this page -- it's done.
+            refetch_resp = client.get("/api/scraping/own_scraper/profiles?platform=instagram", headers=auth_headers)
+            refetch_ids = {p["page_id"] for p in refetch_resp.get_json()["data"]["profiles"]}
+            assert page_id not in refetch_ids
+        finally:
+            with app.app_context():
+                import uuid as uuid_mod
+
+                from api.models.scraping_profile_result_model import ScrapingProfileResult
+
+                PageHistory.query.filter_by(page_id=uuid_mod.UUID(page_id)).delete()
+                ScrapingProfileResult.query.filter_by(page_id=page_id).delete()
+                Page.query.filter_by(uuid=uuid_mod.UUID(page_id)).delete()
+                Entity.query.filter_by(name="Profile Flow Test Co").delete()
+                db.session.commit()
+
+    def test_insert_profile_info_rejects_missing_fields(self, client, auth_headers):
+        response = client.post(
+            "/api/scraping/profile-info",
+            headers=auth_headers,
+            json={"profiles": [{"page_id": "p1", "platform": "instagram"}]},  # no account_id
+        )
+        assert response.status_code == 400
+        assert response.get_json()["success"] is False
 
 

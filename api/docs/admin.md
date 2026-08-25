@@ -364,6 +364,229 @@ Severity per category: `critical` | `serious` | `warning` | `ok`.
 
 ---
 
+## **GET /api/admin/corrections/targets**
+
+Whitelist of what can be corrected, for the admin UI to build a form from.
+This is not a generic table editor — only these `(target_type, field)` pairs
+can ever be written through this API.
+
+```json
+{
+  "success": true,
+  "data": {
+    "targets": {
+      "entity": [
+        { "field": "name", "label": "Name", "choices": null },
+        { "field": "type", "label": "Type", "choices": ["company", "influencer", "small-business"] }
+      ],
+      "page": [
+        { "field": "name", "label": "Name", "choices": null },
+        { "field": "link", "label": "Link", "choices": null }
+      ],
+      "page_history": [
+        { "field": "followers", "label": "Followers", "choices": null },
+        { "field": "biography", "label": "Biography", "choices": null }
+      ],
+      "post_metric": [
+        { "field": "likes", "label": "Likes", "choices": null },
+        { "field": "comments", "label": "Comments", "choices": null },
+        { "field": "shares", "label": "Shares", "choices": null }
+      ]
+    }
+  }
+}
+```
+
+`target_id` is `entities.id` / `pages.uuid` / `pages_history.id` respectively.
+`page_history` corrects one top-level key inside that snapshot's scraped
+`data` JSON (e.g. a missing follower count) — it does not touch nested
+`posts`/`updates`/`top_videos` arrays.
+
+`post_metric` corrects `likes`/`comments`/`shares` on **one post, from one
+specific historical snapshot** — i.e. "this post's numbers on this day".
+Its `target_id` is the composite string
+`"<pages_history_id>:<post_id>"` (e.g. `"482:DGx123"`): the
+`pages_history_id` picks the day (find it via `GET /api/admin/pages-history`
+or the Pages History admin page, which already shows each snapshot's JSON
+including every post's id), and `post_id` is that post's id within that
+snapshot's `posts`/`updates`/`top_videos` array (Facebook has no array — its
+`pages_history` row *is* the post, so `post_id` there must match that row's
+own `post_id`). Not every platform tracks `shares` (instagram, linkedin,
+youtube don't) — applying `shares` to one of those returns a 400 naming the
+fields that platform does support. On success, `posts_mv`/`posts_history_mv`
+are refreshed best-effort after the write commits; a refresh failure never
+fails the request (the write already succeeded). Note these two views have
+no other scheduled refresh in this codebase — `flask refresh-mv` only
+covers `page_posts_metrics_mv` — so on a refresh failure they stay stale
+until the next successful `post_metric` correction or a manual
+`REFRESH MATERIALIZED VIEW`.
+
+---
+
+## **GET /api/admin/corrections**
+
+History of applied corrections (append-only audit log), newest first.
+
+Query params: `target_type` (`entity` | `page` | `page_history` |
+`post_metric`, optional), `limit` (default 50, max 200), `offset`.
+
+```json
+{
+  "success": true,
+  "data": {
+    "corrections": [
+      {
+        "id": 1, "admin_user_id": 3, "target_type": "page_history",
+        "target_id": "482", "field": "followers",
+        "old_value": null, "new_value": "104200",
+        "reason": "Scraper missed the follower count on this run; confirmed via live profile.",
+        "created_at": "2026-08-20T10:00:00+00:00"
+      }
+    ],
+    "total": 1, "limit": 50, "offset": 0
+  }
+}
+```
+
+---
+
+## **POST /api/admin/corrections**
+
+Apply one whitelisted correction and log it in the same transaction — the
+write and its audit row either both commit or neither does.
+
+### Request
+
+```json
+{
+  "target_type": "page_history",
+  "target_id": "482",
+  "field": "followers",
+  "new_value": 104200,
+  "reason": "Scraper missed the follower count on this run; confirmed via live profile."
+}
+```
+
+### Behavior
+
+- Validates `target_type`/`field` against the whitelist from
+  `/api/admin/corrections/targets`.
+- Reads the current value, writes the new one, and inserts an audit row
+  (old value, new value, reason, admin, timestamp) — all in one DB
+  transaction, so a bad write can never leave an unexplained change.
+- `reason` is required and cannot be blank.
+
+### Errors
+
+- `target_type must be one of [...]` (400)
+- `'<field>' is not a correctable field for '<target_type>'. Allowed: [...]` (400)
+- `A reason is required for every correction.` (400)
+- `No <target_type> found with id '<target_id>'.` (400)
+- `Value must be a whole number.` (400, for integer fields like `followers`)
+- `post_metric target_id must be "<pages_history_id>:<post_id>" ...` (400)
+- `'<platform>' posts don't track '<field>'. Supported here: [...]` (400, e.g. `shares` on instagram)
+- `No post '<post_id>' found in pages_history #<id>'s '<array_key>'.` (400)
+
+---
+
+## **GET /api/admin/data-integrity/summary**
+
+Read-only null-rate report: how much scraped data is missing, per platform,
+so an admin knows where to point `/api/admin/corrections` instead of
+guessing. `shares_tracked` is `false` (and `null_shares` is `null`) for
+platforms that structurally never collect shares — that's not a data gap,
+so it's never counted as one.
+
+`sample_gaps` rows carry the actual scraped values, not just a count — a
+bare "followers is null" doesn't tell you whether this is a real scrape
+failure or one field, and a bare "likes is missing" doesn't let you check
+the real post. `profile_snapshots.sample_gaps` includes `page_link`
+(visit the live page), `biography`, and `profile_image` — everything else
+that snapshot *did* capture, so an all-empty row reads as "scrape
+failed" and a mostly-full row reads as "just this one field." Similarly
+`posts.sample_gaps` includes the post's `url`, `caption`, and every metric
+this snapshot captured (`likes`/`comments`/`shares`, nulls included) —
+click through and compare against the live post.
+
+```json
+{
+  "success": true,
+  "data": {
+    "profile_snapshots": {
+      "by_platform": [
+        { "platform": "instagram", "total": 40, "null_followers": 3 }
+      ],
+      "sample_gaps": [
+        {
+          "correction_target_id": "482",
+          "platform": "instagram", "page_name": "Acme IG",
+          "page_link": "https://instagram.com/acme",
+          "recorded_at": "2026-08-19T04:00:00+00:00",
+          "biography": "Acme on Instagram",
+          "profile_image": "https://.../acme.jpg"
+        }
+      ]
+    },
+    "posts": {
+      "by_platform": [
+        {
+          "platform": "instagram", "total": 300,
+          "null_likes": 2, "null_comments": 0,
+          "shares_tracked": false, "null_shares": null
+        }
+      ],
+      "sample_gaps": [
+        {
+          "correction_target_id": "500:DGx123",
+          "platform": "instagram", "page_name": "Acme IG",
+          "recorded_at": "2026-08-19T04:00:00+00:00",
+          "missing_fields": ["likes"],
+          "url": "https://instagram.com/p/DGx123",
+          "caption": "first post",
+          "likes": null, "comments": 4,
+          "shares": null, "shares_tracked": false
+        }
+      ]
+    }
+  }
+}
+```
+
+Each `sample_gaps[].correction_target_id` can be pasted directly as
+`target_id` into `POST /api/admin/corrections` (with `target_type`
+`page_history` or `post_metric` respectively) to fix that specific gap.
+
+---
+
+## **GET /api/admin/data-integrity/daily**
+
+Same null rates as `/summary`, broken down by day (`recorded_at`'s date) so
+a bad scrape run on one specific date is visible instead of averaged away
+across the whole history.
+
+Query params: `days` (default 14, clamped to `[1, 90]`).
+
+```json
+{
+  "success": true,
+  "data": {
+    "days": 14,
+    "profile_snapshots": [
+      { "date": "2026-08-19", "platform": "instagram", "total": 5, "null_followers": 1 }
+    ],
+    "posts": [
+      {
+        "date": "2026-08-19", "platform": "instagram", "total": 40,
+        "null_likes": 2, "null_comments": 0,
+        "shares_tracked": false, "null_shares": null
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## **GET /api/admin/logs**
 
 Read the backend JSONL error logs (newest first).
