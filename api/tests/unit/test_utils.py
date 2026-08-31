@@ -13,6 +13,7 @@ from api.utils.page_uuid import create_page_uuid, normalize_page_link
 from api.utils.posts_utils import _to_number, ensure_datetime, parse_relative_time
 from api.utils.request_parsing import normalize_to_utc_datetime, parse_iso_date, today_date
 from api.utils.validators import (
+    normalize_phone,
     validate_email,
     validate_enum,
     validate_password,
@@ -55,6 +56,28 @@ def test_validators_email_phone_password():
     assert validate_email(123) is False
     assert validate_phone(123) is False
     assert validate_password(123) is False
+
+
+def test_validate_phone_ignores_formatting_noise():
+    """A number is judged on its digits, not on how the keyboard spaced it."""
+    canonical = "+213555598510"
+    for typed in [
+        canonical,
+        "+213 555 59 85 10",       # spaces, as our own placeholder shows
+        "+213-555-598-510",        # dashes
+        "(+213) 555 598 510",      # parens
+        " +213555598510 ",         # stray whitespace from a paste
+        "+213555598510\u00a0",     # non-breaking space
+        "\u200f+213555598510",     # invisible RTL mark from an Arabic keyboard
+        "+\u0662\u0661\u0663\u0665\u0665\u0665\u0665\u0669\u0668\u0665\u0661\u0660",  # Arabic-Indic digits
+    ]:
+        assert validate_phone(typed) is True, typed
+        assert normalize_phone(typed) == canonical, typed
+
+    # Genuinely malformed input is still rejected.
+    for bad in ["abc", "", "+213", "+213555abc510", "+2135555985100000000", "   "]:
+        assert validate_phone(bad) is False, bad
+    assert normalize_phone(None) is None
 
 
 def test_auth_utils_email_phone_and_token_extraction():

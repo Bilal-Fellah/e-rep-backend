@@ -1,5 +1,6 @@
 # Shared helper functions for validators.
 import re
+import unicodedata
 
 ALLOWED_ROLES = ["registered", "subscribed", "admin"]
 ALLOWED_PROFESSIONS = ["community_manager", "marketing", "ceo", "journalist", "influencer", "student", "sales", "other"]
@@ -36,10 +37,40 @@ def validate_email(email):
     return re.fullmatch(pattern, email) is not None
 
 
+_PHONE_PATTERN = re.compile(r"\+?[0-9]{8,15}")
+
+# Separators stripped before matching: whitespace, the spacing our own
+# placeholder shows ("+1 234 567 8900"), and the invisible bidi marks that
+# Arabic/RTL keyboards insert around a leading "+".
+_PHONE_SEPARATORS = "-.()"
+
+# Arabic-Indic and extended Arabic-Indic digits, which NFKC does not fold.
+_ARABIC_DIGITS = str.maketrans("\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+                              "\u06f0\u06f1\u06f2\u06f3\u06f4\u06f5\u06f6\u06f7\u06f8\u06f9",
+                              "01234567890123456789")
+
+
+def normalize_phone(phone):
+    """Strips formatting noise from a phone number, returning the bare +digits form.
+
+    Returns None for non-strings. This runs before validate_phone so that a
+    number is judged on its digits, not on how the user's keyboard spaced it.
+    """
+    if not isinstance(phone, str):
+        return None
+    cleaned = unicodedata.normalize("NFKC", phone).translate(_ARABIC_DIGITS)
+    # Drop whitespace, common separators, and invisible format characters.
+    return "".join(
+        ch for ch in cleaned
+        if not ch.isspace() and ch not in _PHONE_SEPARATORS and unicodedata.category(ch) != "Cf"
+    )
+
+
 def validate_phone(phone):
-    if not phone or not isinstance(phone, str):
+    normalized = normalize_phone(phone)
+    if not normalized:
         return False
-    return re.match(r'^\+?[0-9]{8,15}$', phone) is not None
+    return _PHONE_PATTERN.fullmatch(normalized) is not None
 
 
 def validate_password(password):

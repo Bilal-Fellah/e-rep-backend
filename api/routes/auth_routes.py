@@ -36,6 +36,7 @@ from api.utils.rate_limit import client_ip, record_failure, too_many_failures
 from api.utils.validators import (
     ALLOWED_PROFESSIONS,
     ALLOWED_ROLES,
+    normalize_phone,
     sanitize_string,
     validate_enum,
     validate_password,
@@ -115,7 +116,8 @@ def register_user():
         if not validate_password(data["password"]):
             return error_response("Password must be at least 8 characters", 400)
 
-        if not validate_phone(data["phone_number"]):
+        phone = normalize_phone(data["phone_number"])
+        if not validate_phone(phone):
             return error_response("Invalid phone number format", 400)
 
         role = data.get("role", "registered")
@@ -136,7 +138,6 @@ def register_user():
         if UserRepository.find_by_email(email):
             return error_response("Email already exists", 409)
 
-        phone = data["phone_number"].strip()
         from api.models.user_model import User as UserModel
         if UserModel.query.filter_by(phone_number=phone).first():
             return error_response("Phone number already in use", 409)
@@ -613,7 +614,8 @@ def complete_profile():
         if missing:
             return error_response(f"missing required key: {missing}", 400)
 
-        if not validate_phone(data["phone_number"]):
+        phone = normalize_phone(data["phone_number"])
+        if not validate_phone(phone):
             return error_response("Invalid phone number format", 400)
 
         err = validate_enum(data["profession"], ALLOWED_PROFESSIONS, "profession")
@@ -622,7 +624,7 @@ def complete_profile():
 
         user = UserRepository.update_profile(
             user_id=user.id,
-            phone_number=data["phone_number"].strip(),
+            phone_number=phone,
             profession=data["profession"],
         )
 
