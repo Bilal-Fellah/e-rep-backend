@@ -18,6 +18,7 @@ from api.services.admin_service import AdminService
 from api.services.correction_service import CorrectionError, CorrectionService
 from api.services.data_integrity_service import DataIntegrityService
 from api.services.orchestration_report_service import OrchestrationReportService
+from api.services.priority_entity_service import PriorityEntityError, PriorityEntityService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
 from api.services.tracked_keyword_service import TrackedKeywordService
@@ -874,3 +875,128 @@ def list_tracked_keywords():
     all users, with a mention count each."""
     platform = request.args.get("platform", default="tiktok")
     return success_response({"keywords": TrackedKeywordService.list_all_for_admin(platform)})
+
+
+# ---------------------------------------------------------------------------
+# Priority clients -- the short list of paying customers whose data gets
+# checked harder than the fleet-wide Data Integrity report checks anything.
+# Per-page freshness/completeness for one client, plus firing an
+# own-scraper run on their behalf and verifying it actually produced data
+# for *their* pages. See api/services/priority_entity_service.py for why a
+# "run for this client" is still a platform-wide run under the hood, and
+# api/docs/priority_entities.md for the response shapes.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/priority/entities", methods=["GET"])
+@require_role("admin")
+def list_priority_entities():
+    """Every priority client with its data health rolled up."""
+    days = request.args.get("days", default=7, type=int)
+    return success_response({"entities": PriorityEntityService.list_with_health(days)})
+
+
+@admin_bp.route("/priority/entities", methods=["POST"])
+@require_role("admin")
+def add_priority_entity():
+    """Put an entity on the priority list."""
+    payload = request.get_json() or {}
+
+    entity_id = payload.get("entity_id")
+    if entity_id is None:
+        return error_response("Missing required field: 'entity_id'.", 400)
+
+    try:
+        result = PriorityEntityService.add(
+            entity_id=int(entity_id),
+            label=payload.get("label"),
+            note=payload.get("note"),
+            added_by=getattr(request, "user_id", None),
+        )
+    except (TypeError, ValueError) as exc:
+        # PriorityEntityError subclasses ValueError; a non-integer
+        # entity_id lands here too, and both are the caller's mistake.
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>", methods=["POST"])
+@require_role("admin")
+def update_priority_entity(entity_id):
+    """Edit the label/note on a priority entry. An empty string clears the
+    field; omitting it leaves it unchanged."""
+    payload = request.get_json() or {}
+    try:
+        result = PriorityEntityService.update(
+            entity_id=entity_id, label=payload.get("label"), note=payload.get("note")
+        )
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>", methods=["DELETE"])
+@require_role("admin")
+def remove_priority_entity(entity_id):
+    """Take an entity off the priority list. Deletes nothing else."""
+    try:
+        result = PriorityEntityService.remove(entity_id)
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 404)
+    return success_response(result)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>/check", methods=["GET"])
+@require_role("admin")
+def check_priority_entity(entity_id):
+    """The full per-page validity report for one client."""
+    days = request.args.get("days", default=7, type=int)
+    try:
+        result = PriorityEntityService.check_entity(entity_id, days)
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 404)
+    return success_response(result)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>/scrape", methods=["POST"])
+@require_role("admin")
+def trigger_priority_scrape(entity_id):
+    """Queue an own-scraper run on this client's behalf. Platform-wide
+    under the hood -- tagged with the entity so the run can be attributed
+    and then verified against this client's own pages."""
+    payload = request.get_json() or {}
+
+    platform = payload.get("platform")
+    mode = payload.get("mode")
+    if not platform:
+        return error_response("Missing required field: 'platform'.", 400)
+    if not mode:
+        return error_response("Missing required field: 'mode'.", 400)
+
+    try:
+        result = PriorityEntityService.trigger_scrape(
+            entity_id=entity_id,
+            platform=platform,
+            mode=mode,
+            requested_by=getattr(request, "user_id", None),
+        )
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>/scrape-check", methods=["GET"])
+@require_role("admin")
+def verify_priority_scrape(entity_id):
+    """Did the run queued as `trigger_id` actually bring back data for this
+    client's pages? Answered from the data itself, not the run's status."""
+    trigger_id = request.args.get("trigger_id", type=int)
+    if trigger_id is None:
+        return error_response("Missing required query parameter: 'trigger_id'.", 400)
+
+    try:
+        result = PriorityEntityService.verify_scrape(entity_id, trigger_id)
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)

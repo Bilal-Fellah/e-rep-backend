@@ -50,10 +50,33 @@ class ScrapeTriggerService:
             raise ScrapeTriggerError(f"'{platform}'/'{mode}' isn't triggerable (only {options} today).")
 
     @staticmethod
-    def request_trigger(platform: str, mode: str, requested_by: int | None = None) -> dict:
+    def request_trigger(
+        platform: str,
+        mode: str,
+        requested_by: int | None = None,
+        entity_id: int | None = None,
+    ) -> dict:
+        """Queue a run. `entity_id` is provenance only -- it records which
+        priority client the run was fired for (Priority page); the run
+        itself is still platform-wide, because no scraper on the VPS can
+        target a single entity today."""
         ScrapeTriggerService._validate_platform_mode(platform, mode)
-        row = ScrapeTriggerRepository.create(platform=platform, mode=mode, requested_by=requested_by)
+        row = ScrapeTriggerRepository.create(
+            platform=platform, mode=mode, requested_by=requested_by, entity_id=entity_id
+        )
         return ScrapeTriggerService._serialize(row)
+
+    @staticmethod
+    def list_for_entity(entity_id: int, limit: int = 20) -> list[dict]:
+        return [
+            ScrapeTriggerService._serialize(r)
+            for r in ScrapeTriggerRepository.list_for_entity(entity_id, limit)
+        ]
+
+    @staticmethod
+    def get(request_id: int) -> dict | None:
+        row = ScrapeTriggerRepository.get_by_id(request_id)
+        return ScrapeTriggerService._serialize(row) if row is not None else None
 
     @staticmethod
     def list_recent(limit: int = 50) -> list[dict]:
@@ -93,6 +116,7 @@ class ScrapeTriggerService:
             "mode": row.mode,
             "status": row.status,
             "requested_by": row.requested_by,
+            "entity_id": row.entity_id,
             "requested_at": row.requested_at.isoformat() if row.requested_at else None,
             "started_at": row.started_at.isoformat() if row.started_at else None,
             "finished_at": row.finished_at.isoformat() if row.finished_at else None,

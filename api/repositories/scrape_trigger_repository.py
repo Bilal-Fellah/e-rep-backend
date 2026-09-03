@@ -8,12 +8,39 @@ class ScrapeTriggerRepository:
     """Repository for scrape_trigger_requests database operations."""
 
     @staticmethod
-    def create(platform: str, mode: str, requested_by: int | None, commit: bool = True) -> ScrapeTriggerRequest:
-        row = ScrapeTriggerRequest(platform=platform, mode=mode, status="pending", requested_by=requested_by)
+    def create(
+        platform: str,
+        mode: str,
+        requested_by: int | None,
+        entity_id: int | None = None,
+        commit: bool = True,
+    ) -> ScrapeTriggerRequest:
+        row = ScrapeTriggerRequest(
+            platform=platform,
+            mode=mode,
+            status="pending",
+            requested_by=requested_by,
+            entity_id=entity_id,
+        )
         db.session.add(row)
         if commit:
             db.session.commit()
         return row
+
+    @staticmethod
+    def list_for_entity(entity_id: int, limit: int = 20) -> list[ScrapeTriggerRequest]:
+        """Manual runs fired from the Priority page for one client, newest
+        first -- the per-entity slice of list_recent()."""
+        return (
+            ScrapeTriggerRequest.query.filter_by(entity_id=entity_id)
+            .order_by(ScrapeTriggerRequest.requested_at.desc(), ScrapeTriggerRequest.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+    @staticmethod
+    def get_by_id(request_id: int) -> ScrapeTriggerRequest | None:
+        return db.session.get(ScrapeTriggerRequest, request_id)
 
     @staticmethod
     def list_recent(limit: int = 50) -> list[ScrapeTriggerRequest]:
