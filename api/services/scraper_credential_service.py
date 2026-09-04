@@ -8,7 +8,7 @@ from api.repositories.scraper_credential_repository import ScraperCredentialRepo
 from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
 from api.utils.logging_utils import instrument_service_class
 
-SUPPORTED_PLATFORMS = ("linkedin", "tiktok", "facebook")
+SUPPORTED_PLATFORMS = ("linkedin", "tiktok", "facebook", "instagram")
 SUPPORTED_CREDENTIAL_TYPES = ("cookies",)
 CHECK_STATUSES = ("ok", "auth_failed", "error")
 
@@ -28,11 +28,25 @@ AUTH_COOKIE_NAMES_BY_PLATFORM = {
     "linkedin": ("li_at",),
     "tiktok": ("sessionid", "sid_tt"),
     "facebook": ("c_user", "xs"),
+    # Mirrors instagram_scraper/auth.py's is_logged_in(), which requires
+    # sessionid AND ds_user_id together.
+    "instagram": ("sessionid", "ds_user_id"),
 }
 
 # How many days out an expiring credential should start showing yellow/red
 # in the admin UI.
 EXPIRY_WARNING_DAYS = 14
+
+# Which pass to fire automatically when fresh cookies are saved. "comments"
+# for most platforms, since that's the flow their session gates. Instagram
+# is the exception: its profile pass is the one that collects post
+# engagement (likes/comments per post), so that's the run worth resuming
+# the moment a dead session is replaced -- and it's the pass that silently
+# produced nothing while the July cookie file sat expired.
+AUTO_TRIGGER_MODE_BY_PLATFORM = {
+    "instagram": "profile",
+}
+DEFAULT_AUTO_TRIGGER_MODE = "comments"
 
 
 class ScraperCredentialError(ValueError):
@@ -162,7 +176,9 @@ class ScraperCredentialService:
         if credential_type == "cookies":
             try:
                 result["auto_triggered"] = ScrapeTriggerService.request_trigger(
-                    platform=platform, mode="comments", requested_by=updated_by
+                    platform=platform,
+                    mode=AUTO_TRIGGER_MODE_BY_PLATFORM.get(platform, DEFAULT_AUTO_TRIGGER_MODE),
+                    requested_by=updated_by,
                 )
             except ScrapeTriggerError:
                 pass
