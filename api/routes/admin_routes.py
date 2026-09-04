@@ -21,6 +21,7 @@ from api.services.orchestration_report_service import OrchestrationReportService
 from api.services.priority_entity_service import PriorityEntityError, PriorityEntityService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
+from api.services.scraping_health_service import ScrapingHealthService
 from api.services.tracked_keyword_service import TrackedKeywordService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
@@ -1000,3 +1001,30 @@ def verify_priority_scrape(entity_id):
     except PriorityEntityError as exc:
         return error_response(str(exc), 400)
     return success_response(result)
+
+
+# ---------------------------------------------------------------------------
+# Scraping Health -- per-day delivery for each collection source, and comment
+# coverage measured against Bright Data's own per-post count. Distinct from
+# /scraping (session-level operations): this asks what the data looks like
+# once it lands, and whether anything is missing from it. See
+# api/services/scraping_health_service.py and api/docs/scraping_health.md.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scraping-health/daily", methods=["GET"])
+@require_role("admin")
+def get_scraping_health_daily():
+    """Per-day, per-platform activity for Bright Data and the own scraper,
+    plus session outcomes. Query: days (default 14, max 90)."""
+    days = request.args.get("days", default=14, type=int)
+    return success_response(ScrapingHealthService.daily(days))
+
+
+@admin_bp.route("/scraping-health/comment-coverage", methods=["GET"])
+@require_role("admin")
+def get_scraping_health_comment_coverage():
+    """Are we collecting every comment that exists? Reach (did we visit the
+    post) and completeness (did we get all of its comments) reported
+    separately. Query: days -- the post-age window (default 30)."""
+    days = request.args.get("days", default=30, type=int)
+    return success_response(ScrapingHealthService.comment_coverage(days))
