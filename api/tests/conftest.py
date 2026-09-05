@@ -27,6 +27,7 @@ import api.models.scrape_trigger_request_model
 import api.models.tracked_keyword_model
 import api.models.keyword_mention_model
 import api.models.priority_entity_model
+import api.models.client_entity_link_model
 
 
 @pytest.fixture(scope="session")

@@ -15,6 +15,10 @@ from api.repositories.user_repository import UserRepository
 from api.repositories.preapproved_mail_repository import PreapprovedMailRepository
 from api.repositories.subscription_repository import SubscriptionRepository
 from api.services.admin_service import AdminService
+from api.services.client_entity_link_service import (
+    ClientEntityLinkError,
+    ClientEntityLinkService,
+)
 from api.services.correction_service import CorrectionError, CorrectionService
 from api.services.data_integrity_service import DataIntegrityService
 from api.services.orchestration_report_service import OrchestrationReportService
@@ -1028,3 +1032,104 @@ def get_scraping_health_comment_coverage():
     separately. Query: days -- the post-age window (default 30)."""
     days = request.args.get("days", default=30, type=int)
     return success_response(ScrapingHealthService.comment_coverage(days))
+
+
+# ---------------------------------------------------------------------------
+# Client <-> company links. A client asks to be added to a company from the
+# app; nothing links until an admin approves it here, because anyone can
+# claim to run any brand. Many-to-many: agencies handle several brands, and
+# colleagues from one company each have their own login. See
+# api/services/client_entity_link_service.py and api/docs/company_links.md.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/company-links", methods=["GET"])
+@require_role("admin")
+def list_company_links():
+    """Every link and request, pending first. Query: status, limit."""
+    status = request.args.get("status")
+    limit = request.args.get("limit", default=200, type=int)
+    try:
+        return success_response(ClientEntityLinkService.list_all(status=status, limit=limit))
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 400)
+
+
+@admin_bp.route("/company-links", methods=["POST"])
+@require_role("admin")
+def create_company_link():
+    """Link a client to a company directly, without waiting for them to ask
+    -- the usual case when it was agreed off-platform."""
+    payload = request.get_json() or {}
+
+    user_id = payload.get("user_id")
+    entity_id = payload.get("entity_id")
+    if user_id is None:
+        return error_response("Missing required field: 'user_id'.", 400)
+    if entity_id is None:
+        return error_response("Missing required field: 'entity_id'.", 400)
+
+    try:
+        result = ClientEntityLinkService.link_directly(
+            user_id=int(user_id),
+            entity_id=int(entity_id),
+            reviewed_by=getattr(request, "user_id", None),
+            role=payload.get("role", "member"),
+            review_note=payload.get("review_note"),
+        )
+    except (TypeError, ValueError) as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/company-links/<int:link_id>/approve", methods=["POST"])
+@require_role("admin")
+def approve_company_link(link_id):
+    """Approve a pending request. Optionally sets the client's role."""
+    payload = request.get_json() or {}
+    try:
+        result = ClientEntityLinkService.approve(
+            link_id=link_id,
+            reviewed_by=getattr(request, "user_id", None),
+            role=payload.get("role"),
+            review_note=payload.get("review_note"),
+        )
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+@admin_bp.route("/company-links/<int:link_id>/reject", methods=["POST"])
+@require_role("admin")
+def reject_company_link(link_id):
+    """Reject a request. The note is shown to the client, so it's worth
+    saying why."""
+    payload = request.get_json() or {}
+    try:
+        result = ClientEntityLinkService.reject(
+            link_id=link_id,
+            reviewed_by=getattr(request, "user_id", None),
+            review_note=payload.get("review_note"),
+        )
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+@admin_bp.route("/company-links/<int:link_id>", methods=["DELETE"])
+@require_role("admin")
+def remove_company_link(link_id):
+    """Remove a link outright -- how an approval is undone. Rejecting would
+    leave a row implying the client asked and was refused."""
+    try:
+        result = ClientEntityLinkService.unlink(link_id)
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 404)
+    return success_response(result)
+
+
+@admin_bp.route("/entities/<int:entity_id>/clients", methods=["GET"])
+@require_role("admin")
+def list_entity_clients(entity_id):
+    """Which client accounts are approved on this company."""
+    return success_response({"clients": ClientEntityLinkService.clients_for_entity(entity_id)})

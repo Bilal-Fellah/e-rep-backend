@@ -106,6 +106,17 @@ ROLE_PERMISSIONS = {
     "admin.get_data_integrity_summary": [UserRole.ADMIN.value],
     "admin.get_data_integrity_daily": [UserRole.ADMIN.value],
 
+    # Client <-> company links (admin approves; clients request)
+    "admin.list_company_links": [UserRole.ADMIN.value],
+    "admin.create_company_link": [UserRole.ADMIN.value],
+    "admin.approve_company_link": [UserRole.ADMIN.value],
+    "admin.reject_company_link": [UserRole.ADMIN.value],
+    "admin.remove_company_link": [UserRole.ADMIN.value],
+    "admin.list_entity_clients": [UserRole.ADMIN.value],
+    "data.list_my_company_links": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.request_company_link": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.withdraw_company_link": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+
     # Scraping health (per-source delivery + comment coverage)
     "admin.get_scraping_health_daily": [UserRole.ADMIN.value],
     "admin.get_scraping_health_comment_coverage": [UserRole.ADMIN.value],
