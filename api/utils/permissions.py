@@ -106,6 +106,30 @@ ROLE_PERMISSIONS = {
     "admin.get_data_integrity_summary": [UserRole.ADMIN.value],
     "admin.get_data_integrity_daily": [UserRole.ADMIN.value],
 
+    # Client <-> company links (admin approves; clients request)
+    "admin.list_company_links": [UserRole.ADMIN.value],
+    "admin.create_company_link": [UserRole.ADMIN.value],
+    "admin.approve_company_link": [UserRole.ADMIN.value],
+    "admin.reject_company_link": [UserRole.ADMIN.value],
+    "admin.remove_company_link": [UserRole.ADMIN.value],
+    "admin.list_entity_clients": [UserRole.ADMIN.value],
+    "data.list_my_company_links": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.request_company_link": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.withdraw_company_link": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+
+    # Scraping health (per-source delivery + comment coverage)
+    "admin.get_scraping_health_daily": [UserRole.ADMIN.value],
+    "admin.get_scraping_health_comment_coverage": [UserRole.ADMIN.value],
+
+    # Priority clients (paying customers watched more closely)
+    "admin.list_priority_entities": [UserRole.ADMIN.value],
+    "admin.add_priority_entity": [UserRole.ADMIN.value],
+    "admin.update_priority_entity": [UserRole.ADMIN.value],
+    "admin.remove_priority_entity": [UserRole.ADMIN.value],
+    "admin.check_priority_entity": [UserRole.ADMIN.value],
+    "admin.trigger_priority_scrape": [UserRole.ADMIN.value],
+    "admin.verify_priority_scrape": [UserRole.ADMIN.value],
+
     # Entity admin extras (in the data blueprint)
     "data.update_entity": [UserRole.ADMIN.value],
     "data.set_entity_scrape": [UserRole.ADMIN.value],
@@ -129,6 +153,8 @@ ROLE_PERMISSIONS = {
     "data.create_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.delete_keyword": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
     "data.list_keyword_mentions": [UserRole.REGISTERED.value, UserRole.SUBSCRIBED.value, UserRole.ADMIN.value],
+    "data.get_keyword_search_now_status": [UserRole.ADMIN.value],
+    "data.trigger_keyword_search_now": [UserRole.ADMIN.value],
 }
 
 # ============================================================================

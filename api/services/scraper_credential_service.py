@@ -5,9 +5,10 @@
 from datetime import datetime, timezone
 
 from api.repositories.scraper_credential_repository import ScraperCredentialRepository
+from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
 from api.utils.logging_utils import instrument_service_class
 
-SUPPORTED_PLATFORMS = ("linkedin", "tiktok", "facebook")
+SUPPORTED_PLATFORMS = ("linkedin", "tiktok", "facebook", "instagram")
 SUPPORTED_CREDENTIAL_TYPES = ("cookies",)
 CHECK_STATUSES = ("ok", "auth_failed", "error")
 
@@ -27,11 +28,25 @@ AUTH_COOKIE_NAMES_BY_PLATFORM = {
     "linkedin": ("li_at",),
     "tiktok": ("sessionid", "sid_tt"),
     "facebook": ("c_user", "xs"),
+    # Mirrors instagram_scraper/auth.py's is_logged_in(), which requires
+    # sessionid AND ds_user_id together.
+    "instagram": ("sessionid", "ds_user_id"),
 }
 
 # How many days out an expiring credential should start showing yellow/red
 # in the admin UI.
 EXPIRY_WARNING_DAYS = 14
+
+# Which pass to fire automatically when fresh cookies are saved. "comments"
+# for most platforms, since that's the flow their session gates. Instagram
+# is the exception: its profile pass is the one that collects post
+# engagement (likes/comments per post), so that's the run worth resuming
+# the moment a dead session is replaced -- and it's the pass that silently
+# produced nothing while the July cookie file sat expired.
+AUTO_TRIGGER_MODE_BY_PLATFORM = {
+    "instagram": "profile",
+}
+DEFAULT_AUTO_TRIGGER_MODE = "comments"
 
 
 class ScraperCredentialError(ValueError):
@@ -138,6 +153,36 @@ class ScraperCredentialService:
             updated_by=updated_by,
         )
         return ScraperCredentialService._serialize_masked(row)
+
+    @staticmethod
+    def upsert_and_maybe_trigger(
+        platform: str, value, credential_type: str = "cookies", updated_by: int | None = None
+    ) -> dict:
+        """Same as upsert(), plus: fresh cookies are usually pasted in
+        specifically because the scraper was failing on the stale ones --
+        don't make the admin also remember to separately hit "Trigger now".
+        Queues a comments pass immediately so the VPS watcher picks it up
+        within ~30s and re-fetches whatever posts are still "due" (a prior
+        credential-failure run never marks them scraped, so this naturally
+        resumes rather than skips anything).
+
+        Best-effort: a queueing hiccup must never fail the credential save
+        itself -- the result's "auto_triggered" key is None when nothing
+        was queued (a non-cookies credential_type, or the queue attempt
+        itself failed), the trigger dict otherwise.
+        """
+        result = ScraperCredentialService.upsert(platform, value, credential_type, updated_by)
+        result["auto_triggered"] = None
+        if credential_type == "cookies":
+            try:
+                result["auto_triggered"] = ScrapeTriggerService.request_trigger(
+                    platform=platform,
+                    mode=AUTO_TRIGGER_MODE_BY_PLATFORM.get(platform, DEFAULT_AUTO_TRIGGER_MODE),
+                    requested_by=updated_by,
+                )
+            except ScrapeTriggerError:
+                pass
+        return result
 
     @staticmethod
     def get_raw_for_scraper(platform: str, credential_type: str = "cookies"):

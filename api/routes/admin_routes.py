@@ -15,11 +15,17 @@ from api.repositories.user_repository import UserRepository
 from api.repositories.preapproved_mail_repository import PreapprovedMailRepository
 from api.repositories.subscription_repository import SubscriptionRepository
 from api.services.admin_service import AdminService
+from api.services.client_entity_link_service import (
+    ClientEntityLinkError,
+    ClientEntityLinkService,
+)
 from api.services.correction_service import CorrectionError, CorrectionService
 from api.services.data_integrity_service import DataIntegrityService
 from api.services.orchestration_report_service import OrchestrationReportService
+from api.services.priority_entity_service import PriorityEntityError, PriorityEntityService
 from api.services.scraper_credential_service import ScraperCredentialError, ScraperCredentialService
 from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTriggerService
+from api.services.scraping_health_service import ScrapingHealthService
 from api.services.tracked_keyword_service import TrackedKeywordService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
@@ -836,7 +842,7 @@ def upsert_scraper_credentials():
         return error_response("Missing required field: 'value'.", 400)
 
     try:
-        result = ScraperCredentialService.upsert(
+        result = ScraperCredentialService.upsert_and_maybe_trigger(
             platform=platform,
             value=value,
             credential_type=credential_type,
@@ -906,3 +912,256 @@ def list_tracked_keywords():
     all users, with a mention count each."""
     platform = request.args.get("platform", default="tiktok")
     return success_response({"keywords": TrackedKeywordService.list_all_for_admin(platform)})
+
+
+# ---------------------------------------------------------------------------
+# Priority clients -- the short list of paying customers whose data gets
+# checked harder than the fleet-wide Data Integrity report checks anything.
+# Per-page freshness/completeness for one client, plus firing an
+# own-scraper run on their behalf and verifying it actually produced data
+# for *their* pages. See api/services/priority_entity_service.py for why a
+# "run for this client" is still a platform-wide run under the hood, and
+# api/docs/priority_entities.md for the response shapes.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/priority/entities", methods=["GET"])
+@require_role("admin")
+def list_priority_entities():
+    """Every priority client with its data health rolled up."""
+    days = request.args.get("days", default=7, type=int)
+    return success_response({"entities": PriorityEntityService.list_with_health(days)})
+
+
+@admin_bp.route("/priority/entities", methods=["POST"])
+@require_role("admin")
+def add_priority_entity():
+    """Put an entity on the priority list."""
+    payload = request.get_json() or {}
+
+    entity_id = payload.get("entity_id")
+    if entity_id is None:
+        return error_response("Missing required field: 'entity_id'.", 400)
+
+    try:
+        result = PriorityEntityService.add(
+            entity_id=int(entity_id),
+            label=payload.get("label"),
+            note=payload.get("note"),
+            added_by=getattr(request, "user_id", None),
+        )
+    except (TypeError, ValueError) as exc:
+        # PriorityEntityError subclasses ValueError; a non-integer
+        # entity_id lands here too, and both are the caller's mistake.
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>", methods=["POST"])
+@require_role("admin")
+def update_priority_entity(entity_id):
+    """Edit the label/note on a priority entry. An empty string clears the
+    field; omitting it leaves it unchanged."""
+    payload = request.get_json() or {}
+    try:
+        result = PriorityEntityService.update(
+            entity_id=entity_id, label=payload.get("label"), note=payload.get("note")
+        )
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>", methods=["DELETE"])
+@require_role("admin")
+def remove_priority_entity(entity_id):
+    """Take an entity off the priority list. Deletes nothing else."""
+    try:
+        result = PriorityEntityService.remove(entity_id)
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 404)
+    return success_response(result)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>/check", methods=["GET"])
+@require_role("admin")
+def check_priority_entity(entity_id):
+    """The full per-page validity report for one client."""
+    days = request.args.get("days", default=7, type=int)
+    try:
+        result = PriorityEntityService.check_entity(entity_id, days)
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 404)
+    return success_response(result)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>/scrape", methods=["POST"])
+@require_role("admin")
+def trigger_priority_scrape(entity_id):
+    """Queue an own-scraper run on this client's behalf. Platform-wide
+    under the hood -- tagged with the entity so the run can be attributed
+    and then verified against this client's own pages."""
+    payload = request.get_json() or {}
+
+    platform = payload.get("platform")
+    mode = payload.get("mode")
+    if not platform:
+        return error_response("Missing required field: 'platform'.", 400)
+    if not mode:
+        return error_response("Missing required field: 'mode'.", 400)
+
+    try:
+        result = PriorityEntityService.trigger_scrape(
+            entity_id=entity_id,
+            platform=platform,
+            mode=mode,
+            requested_by=getattr(request, "user_id", None),
+        )
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/priority/entities/<int:entity_id>/scrape-check", methods=["GET"])
+@require_role("admin")
+def verify_priority_scrape(entity_id):
+    """Did the run queued as `trigger_id` actually bring back data for this
+    client's pages? Answered from the data itself, not the run's status."""
+    trigger_id = request.args.get("trigger_id", type=int)
+    if trigger_id is None:
+        return error_response("Missing required query parameter: 'trigger_id'.", 400)
+
+    try:
+        result = PriorityEntityService.verify_scrape(entity_id, trigger_id)
+    except PriorityEntityError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+# ---------------------------------------------------------------------------
+# Scraping Health -- per-day delivery for each collection source, and comment
+# coverage measured against Bright Data's own per-post count. Distinct from
+# /scraping (session-level operations): this asks what the data looks like
+# once it lands, and whether anything is missing from it. See
+# api/services/scraping_health_service.py and api/docs/scraping_health.md.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scraping-health/daily", methods=["GET"])
+@require_role("admin")
+def get_scraping_health_daily():
+    """Per-day, per-platform activity for Bright Data and the own scraper,
+    plus session outcomes. Query: days (default 14, max 90)."""
+    days = request.args.get("days", default=14, type=int)
+    return success_response(ScrapingHealthService.daily(days))
+
+
+@admin_bp.route("/scraping-health/comment-coverage", methods=["GET"])
+@require_role("admin")
+def get_scraping_health_comment_coverage():
+    """Are we collecting every comment that exists? Reach (did we visit the
+    post) and completeness (did we get all of its comments) reported
+    separately. Query: days -- the post-age window (default 30)."""
+    days = request.args.get("days", default=30, type=int)
+    return success_response(ScrapingHealthService.comment_coverage(days))
+
+
+# ---------------------------------------------------------------------------
+# Client <-> company links. A client asks to be added to a company from the
+# app; nothing links until an admin approves it here, because anyone can
+# claim to run any brand. Many-to-many: agencies handle several brands, and
+# colleagues from one company each have their own login. See
+# api/services/client_entity_link_service.py and api/docs/company_links.md.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/company-links", methods=["GET"])
+@require_role("admin")
+def list_company_links():
+    """Every link and request, pending first. Query: status, limit."""
+    status = request.args.get("status")
+    limit = request.args.get("limit", default=200, type=int)
+    try:
+        return success_response(ClientEntityLinkService.list_all(status=status, limit=limit))
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 400)
+
+
+@admin_bp.route("/company-links", methods=["POST"])
+@require_role("admin")
+def create_company_link():
+    """Link a client to a company directly, without waiting for them to ask
+    -- the usual case when it was agreed off-platform."""
+    payload = request.get_json() or {}
+
+    user_id = payload.get("user_id")
+    entity_id = payload.get("entity_id")
+    if user_id is None:
+        return error_response("Missing required field: 'user_id'.", 400)
+    if entity_id is None:
+        return error_response("Missing required field: 'entity_id'.", 400)
+
+    try:
+        result = ClientEntityLinkService.link_directly(
+            user_id=int(user_id),
+            entity_id=int(entity_id),
+            reviewed_by=getattr(request, "user_id", None),
+            role=payload.get("role", "member"),
+            review_note=payload.get("review_note"),
+        )
+    except (TypeError, ValueError) as exc:
+        return error_response(str(exc), 400)
+
+    return success_response(result, 201)
+
+
+@admin_bp.route("/company-links/<int:link_id>/approve", methods=["POST"])
+@require_role("admin")
+def approve_company_link(link_id):
+    """Approve a pending request. Optionally sets the client's role."""
+    payload = request.get_json() or {}
+    try:
+        result = ClientEntityLinkService.approve(
+            link_id=link_id,
+            reviewed_by=getattr(request, "user_id", None),
+            role=payload.get("role"),
+            review_note=payload.get("review_note"),
+        )
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+@admin_bp.route("/company-links/<int:link_id>/reject", methods=["POST"])
+@require_role("admin")
+def reject_company_link(link_id):
+    """Reject a request. The note is shown to the client, so it's worth
+    saying why."""
+    payload = request.get_json() or {}
+    try:
+        result = ClientEntityLinkService.reject(
+            link_id=link_id,
+            reviewed_by=getattr(request, "user_id", None),
+            review_note=payload.get("review_note"),
+        )
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 400)
+    return success_response(result)
+
+
+@admin_bp.route("/company-links/<int:link_id>", methods=["DELETE"])
+@require_role("admin")
+def remove_company_link(link_id):
+    """Remove a link outright -- how an approval is undone. Rejecting would
+    leave a row implying the client asked and was refused."""
+    try:
+        result = ClientEntityLinkService.unlink(link_id)
+    except ClientEntityLinkError as exc:
+        return error_response(str(exc), 404)
+    return success_response(result)
+
+
+@admin_bp.route("/entities/<int:entity_id>/clients", methods=["GET"])
+@require_role("admin")
+def list_entity_clients(entity_id):
+    """Which client accounts are approved on this company."""
+    return success_response({"clients": ClientEntityLinkService.clients_for_entity(entity_id)})

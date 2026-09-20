@@ -32,6 +32,14 @@ class ScrapeTriggerRequest(db.Model):
     requested_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     requested_at = db.Column(db.DateTime(timezone=True), server_default=db.func.now(), nullable=False)
 
+    # Which priority client this run was fired for, when it came from the
+    # Priority page (api/services/priority_entity_service.py). Provenance
+    # only -- the VPS watcher ignores it and still runs the platform-wide
+    # service, since no scraper can target a single entity today. It's what
+    # lets the Priority page attribute a run to a client and then verify
+    # that *that client's* pages actually got fresh data afterwards.
+    entity_id = db.Column(db.Integer, db.ForeignKey("entities.id", ondelete="SET NULL"), nullable=True)
+
     started_at = db.Column(db.DateTime(timezone=True), nullable=True)
     finished_at = db.Column(db.DateTime(timezone=True), nullable=True)
 

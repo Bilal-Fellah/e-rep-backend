@@ -628,7 +628,14 @@ class InfluenceHistoryService:
                     "post_id": post_id,
                     "platform": platform,
                     "create_time": post_date,
-                    **{m["name"]: post.get(m["name"], 0) for m in metrics},
+                    # Absent is NOT zero. A scrape that captured the post but
+                    # none of its engagement fields (Instagram routinely
+                    # returns caption/image/url and nothing else) tells us
+                    # nothing about the counter -- defaulting it to 0 here made
+                    # the next day's delta read as a loss of every like the
+                    # post had ever accumulated. Keep None and let the gain
+                    # loop below skip the sample.
+                    **{m["name"]: post.get(m["name"]) for m in metrics},
                 }
 
         sorted_days = sorted(daily_posts.keys())
@@ -654,23 +661,44 @@ class InfluenceHistoryService:
 
             samples.sort(key=lambda x: x[0])
 
-            for idx in range(1, len(samples)):
-                prev_day, prev_data = samples[idx - 1]
-                cur_day, cur_data = samples[idx]
+            # Each metric advances on its own timeline. A snapshot that didn't
+            # capture `likes` is not evidence about likes, so it can't act as
+            # an endpoint for a likes delta -- otherwise the gap reads as a
+            # crash to zero on the way in and an identical spike on the way
+            # back out. Two metrics on the same post can therefore have
+            # different "last seen" days, and a gap spanning several days has
+            # its gain spread across them exactly as a missing day already was.
+            for metric in metric_defs:
+                metric_name = metric["name"]
+                last_day = None
+                last_val = None
 
-                span_days = (cur_day - prev_day).days
-                if span_days <= 0:
-                    continue
+                for cur_day, cur_data in samples:
+                    raw = cur_data.get(metric_name)
+                    if raw is None:
+                        continue
+                    cur_val = _to_number(raw)
 
-                for metric in metric_defs:
-                    metric_name = metric["name"]
-                    prev_val = _to_number(prev_data.get(metric_name, 0))
-                    cur_val = _to_number(cur_data.get(metric_name, 0))
-                    step_gain = (cur_val - prev_val) / span_days
+                    if last_day is not None:
+                        span_days = (cur_day - last_day).days
+                        if span_days > 0:
+                            # A counter that fell means interactions were
+                            # removed (deleted comments, a hidden like count),
+                            # not that negative interactions occurred. The
+                            # day's *new* interactions are zero -- this graph
+                            # answers "how much arrived today", which has no
+                            # negative case.
+                            step_gain = max(cur_val - last_val, 0.0) / span_days
+                            # Recorded even when it's 0: we observed the metric
+                            # at both ends and nothing arrived, which is a
+                            # measurement, not a gap. Only genuinely
+                            # unobserved metrics are left out of the payload.
+                            for step in range(1, span_days + 1):
+                                day = last_day + timedelta(days=step)
+                                distributed_gains[day][platform][metric_name] += step_gain
 
-                    for step in range(1, span_days + 1):
-                        day = prev_day + timedelta(days=step)
-                        distributed_gains[day][platform][metric_name] += step_gain
+                    last_day = cur_day
+                    last_val = cur_val
 
         summary = []
         for day in all_days:
