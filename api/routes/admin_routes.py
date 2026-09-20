@@ -23,6 +23,7 @@ from api.services.scrape_trigger_service import ScrapeTriggerError, ScrapeTrigge
 from api.services.tracked_keyword_service import TrackedKeywordService
 from api.services.subscription_service import SubscriptionService
 from api.services.posts_created_at_service import PostsCreatedAtService
+from api.services.email_service import EmailService
 from api.utils.datetime_utils import iso_utc
 from api.utils.permissions import require_role
 
@@ -68,6 +69,37 @@ def ping():
             "ok": True,
             "user_id": getattr(request, "user_id", None),
             "role": getattr(request, "user_role", None),
+        }
+    )
+
+
+@admin_bp.route("/mail/send", methods=["POST"])
+@require_role("admin")
+def send_mail():
+    """Send an email through the configured provider (Resend)."""
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        result = EmailService.send_email(
+            to=payload.get("to"),
+            subject=payload.get("subject"),
+            html=payload.get("html"),
+            text=payload.get("text"),
+            reply_to=payload.get("reply_to"),
+            from_email=payload.get("from_email"),
+            from_name=payload.get("from_name"),
+            tags=payload.get("tags"),
+        )
+    except ValueError as exc:
+        return error_response(str(exc), 400)
+    except RuntimeError as exc:
+        return error_response(str(exc), 500)
+
+    return success_response(
+        {
+            "message_id": result.get("id"),
+            "provider": result.get("provider"),
+            "status_code": result.get("status_code"),
         }
     )
 

@@ -19,6 +19,43 @@ Lightweight auth/wiring check. Returns the caller's identity.
 
 ---
 
+## **POST /api/admin/mail/send**
+
+Send an email using the configured Resend provider.
+
+### Request
+
+```json
+{
+  "to": "recipient@example.com",
+  "subject": "Hello from Brendex",
+  "html": "<p>This is an HTML email.</p>",
+  "text": "This is a plain-text fallback.",
+  "reply_to": "support@yourdomain.com"
+}
+```
+
+Notes:
+- `to` can be either a string email or a list of emails.
+- You must provide at least one of `html` or `text`.
+- `from_email`, `from_name`, and `tags` are optional overrides in the request body.
+- If `reply_to` is omitted, `MAIL_REPLY_TO` is used when configured.
+
+### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "message_id": "0f4f9fbc-...",
+    "provider": "resend",
+    "status_code": 200
+  }
+}
+```
+
+---
+
 ## **GET /api/admin/users**
 
 List users with optional search and pagination.

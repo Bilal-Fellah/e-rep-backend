@@ -47,6 +47,10 @@ logs/               # Rotating JSONL log files (route, service, repository error
 | `ALERTS_ENGAGEMENT_THRESHOLD_UP` | Optional increase threshold ratio (default: 0.50) |
 | `ALERTS_ENGAGEMENT_THRESHOLD_DOWN` | Optional drop threshold ratio (default: 0.50) |
 | `ALERTS_ENGAGEMENT_MIN_ABS_CHANGE` | Optional min absolute change for anomaly alerts (default: 10) |
+| `RESEND_API_KEY` | Resend API key used to send emails |
+| `MAIL_FROM_EMAIL` | Default sender email address (must be from your verified domain in Resend) |
+| `MAIL_FROM_NAME` | Optional default sender display name |
+| `MAIL_REPLY_TO` | Optional default reply-to email address |
 
 ## Running Locally
 
